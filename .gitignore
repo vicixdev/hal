@@ -1,0 +1,7 @@
+build/**
+!build/.gitkeep
+**/.DS_Store
+
+shared/back
+tools/slang
+
