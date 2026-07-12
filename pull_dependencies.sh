@@ -34,8 +34,22 @@ pull_github_release () {
 	rm ./.tmp/download.tar.gz
 }
 
+get_slang () {
+	case $(uname) in
+		Darwin)	local slang_os=macos ;;
+		Linux)	local slang_os=linux ;;
+	esac
+
+	case $(uname -m) in
+		x86_64)		local slang_arch=x86_64 ;;
+		aarch64)	local slang_arch=aarch64 ;;
+	esac
+
+	pull_github_release tools/slang shader-slang slang v2026.13 slang-2026.13-$slang_os-$slang_arch
+}
+
 pull_github_commit shared/back laytan back 9d4117268e49a710727de4eae1e65d7417fc1c2a
-pull_github_release tools/slang shader-slang slang v2026.13 slang-2026.13-macos-aarch64
+get_slang
 
 rm -rf ./.tmp
 
