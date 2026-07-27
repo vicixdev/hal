@@ -14,13 +14,6 @@ _MEMORY_TO_RESOURCEOPTIONS := [Memory]MTL.ResourceOptions {
 	.Readback	= { .HazardTrackingModeUntracked },
 }
 
-// @(rodata)
-// _MEMORY_TO_RESOURCEOPTIONS := [Memory]MTL.ResourceOptions {
-// 	.Default	= { .CPUCacheModeWriteCombined },
-// 	.Private	= { .StorageModePrivate },
-// 	.Readback	= {},
-// }
-
 
 _Buffer_Metadata :: struct {
 	handle:		Handle,

@@ -1,9 +1,9 @@
 package gfx
 
 import "base:runtime"
-import "core:mem"
-import "core:log"
 import hm "core:container/handle_map"
+import "core:log"
+import "core:mem"
 
 // Features:
 //	- Vertex pooling (no explicit layout)
@@ -19,14 +19,12 @@ import hm "core:container/handle_map"
 
 Error :: enum {
 	Out_Of_Gpu_Memory,
-
 	Invalid_Buffer,
 	Invalid_Texture,
 	Invalid_View,
 	Invalid_Command_Buffer,
 	Invalid_Library,
 	Invalid_Pipeline,
-
 	Incompatible_Pipeline,
 }
 
@@ -93,14 +91,14 @@ Texture_Usage :: enum {
 	Depth_stencil_attachment,
 }
 
-Texture_Descriptor :: struct { 
-	type:		Texture_Type,
-	dimensions:	[3]int,
-	mip_count:	int,
-	layer_count:	int,
-	sample_count:	int,
-	format:		Pixel_Format,
-	usage:		Texture_Usage,
+Texture_Descriptor :: struct {
+	type:         Texture_Type,
+	dimensions:   [3]int,
+	mip_count:    int,
+	layer_count:  int,
+	sample_count: int,
+	format:       Pixel_Format,
+	usage:        Texture_Usage,
 }
 
 Texture_Channel_Swizzle :: enum {
@@ -118,12 +116,12 @@ Texture_Swizzle :: struct {
 }
 
 View_Descriptor :: struct {
-	format:		Pixel_Format,
-	base_mip:	int,
-	mip_count:	int,
-	base_layer:	int,
-	layer_count:	int,
-	swizzle:	Texture_Swizzle,
+	format:      Pixel_Format,
+	base_mip:    int,
+	mip_count:   int,
+	base_layer:  int,
+	layer_count: int,
+	swizzle:     Texture_Swizzle,
 }
 
 Stage :: enum {
@@ -135,32 +133,32 @@ Stage :: enum {
 Stages :: bit_set[Stage]
 
 Buffer :: struct {
-	handle:		Handle,
+	handle:  Handle,
 	using _: struct #raw_union {
 		// If the memory type is `Default` or `Readback` it contains the Cpu Mapped Virtual Address.
-		contents:	rawptr,
+		contents:  rawptr,
 		// If the memory type is `Private` contains a gpu-decodable reference to a buffer + offset into it.
 		//	Depending on the implementation, if device pointer are supported, it is the Gpu Virtual Address,
 		//	otherwise it is a handle that will require decoding on the GPU side.
-		reference:	GpuDataRef,
+		reference: GpuDataRef,
 	},
 }
 
-Texture		:: distinct Handle
-View		:: distinct Handle
-Command_Buffer	:: distinct Handle
-Library		:: distinct Handle
-Pipeline	:: distinct Handle
+Texture :: distinct Handle
+View :: distinct Handle
+Command_Buffer :: distinct Handle
+Library :: distinct Handle
+Pipeline :: distinct Handle
 
-Constant_Type	:: enum {
+Constant_Type :: enum {
 	U32,
 	F32,
 }
 
-Constant	:: struct {
-	index:	int,
-	value:	rawptr,
-	type:	Constant_Type,
+Constant :: struct {
+	index: int,
+	value: rawptr,
+	type:  Constant_Type,
 }
 
 init: proc() : _init
@@ -195,36 +193,67 @@ label_buffer :: proc(buffer: Buffer, label: string) {
 	_label_buffer(buffer, label)
 }
 
-size_align_of: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) : _size_align_of
-create_texture: proc(buffer: Buffer, descriptor: Texture_Descriptor) -> (handle: Texture, res: Result) : _create_texture
+size_align_of: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) :
+	_size_align_of
+create_texture: proc(
+		buffer: Buffer,
+		descriptor: Texture_Descriptor,
+	) -> (
+		handle: Texture,
+		res: Result,
+	) :
+	_create_texture
 destroy_texture: proc(texture: Texture) : _destroy_texture
 label_texture: proc(texture: Texture, label: string) : _label_texture
 
 create_default_view: proc(texture: Texture) -> (View, Result) : _create_default_view
-create_view_with_descriptor: proc(texture: Texture, descriptor: View_Descriptor) -> (View, Result) : _create_view_with_descriptor
-create_view :: proc{ create_default_view, create_view_with_descriptor }
+create_view_with_descriptor: proc(
+		texture: Texture,
+		descriptor: View_Descriptor,
+	) -> (
+		View,
+		Result,
+	) :
+	_create_view_with_descriptor
+create_view :: proc {
+	create_default_view,
+	create_view_with_descriptor,
+}
 label_view: proc(view: View, label: string) : _label_view
 
 create_library_from_bytes: proc(bytes: []byte) -> (Library, Result) : _create_library_from_bytes
 create_library_from_file: proc(path: string) -> (Library, Result) : _create_library_from_file
-create_library :: proc { create_library_from_bytes, create_library_from_file }
+create_library :: proc {
+	create_library_from_bytes,
+	create_library_from_file,
+}
 
 create_compute_pipeline: proc(
-	library: Library, name: string,
+	library: Library,
+	name: string,
 	constants: []Constant,
 	group_size: [3]int,
-) -> (Pipeline, Result)
+) -> (
+	Pipeline,
+	Result,
+)
 create_render_pipeline: proc() -> Pipeline
 
 start_command_encoding: proc() -> (Command_Buffer, Result) : _start_command_encoding
 
 syncronize_buffers: proc(cb: Command_Buffer)
-mem_copy: proc(cb: Command_Buffer, destination: Buffer, source: Buffer, size: int) -> Result : _mem_copy
+mem_copy: proc(cb: Command_Buffer, destination: Buffer, source: Buffer, size: int) -> Result :
+	_mem_copy
 
 set_pipeline: proc(cb: Command_Buffer, pipeline: Pipeline) -> Result
 set_indirect_buffer_pool: proc(cb: Command_Buffer, buffers: []Buffer) -> Result
 set_texture_pool: proc(cb: Command_Buffer, textures: []View) -> Result
-set_buffer: proc(cb: Command_Buffer, buffer: Buffer, index: int, stage: Raster_Stage = .Compute) -> Result
+set_buffer: proc(
+	cb: Command_Buffer,
+	buffer: Buffer,
+	index: int,
+	stage: Raster_Stage = .Compute,
+) -> Result
 
 // copy_buffer_to_texture: proc(cb: Command_Buffer, )
 // copy_texture_to_buffer
@@ -233,9 +262,19 @@ dispatch: proc(cb: Command_Buffer, groups: [3]int) -> Result
 
 generate_mipmaps: proc(cb: Command_Buffer, texture: Texture) -> Result : _generate_mipmaps
 
-begin_renderpass: proc(cb: Command_Buffer /* ... */)
+begin_renderpass: proc(
+	cb: Command_Buffer,
+	/* ... */
+)
 end_renderpass: proc(cb: Command_Buffer)
-draw: proc(cb: Command_Buffer, vertices: int, instances: int, vertex_arg: Buffer, fragment_arg: Buffer, base_vertex: int)
+draw: proc(
+	cb: Command_Buffer,
+	vertices: int,
+	instances: int,
+	vertex_arg: Buffer,
+	fragment_arg: Buffer,
+	base_vertex: int,
+)
 draw_indexed: proc(
 	cb: Command_Buffer,
 	indices: int,
@@ -252,8 +291,9 @@ barrier: proc(cb: Command_Buffer, before: Stages, after: Stages) -> Result : _ba
 
 submit: proc(cb: Command_Buffer) -> Result : _submit
 
-label :: proc{
+label :: proc {
 	label_buffer,
 	label_texture,
 	label_view,
 }
+

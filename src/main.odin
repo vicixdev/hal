@@ -1,9 +1,9 @@
 package main
 
-import "gfx"
 import "core:log"
+import "gfx"
 // import "core:mem"
-import "core:time"
+// import "core:time"
 import "shared:back"
 
 main :: proc() {
@@ -61,25 +61,26 @@ main :: proc() {
 
 	// log.info(tex, v1, v2, etex, eview1, eview2)
 
-	upload, _ := gfx.alloc(.Default, 128)
-	gpu, _ := gfx.alloc(.Private, 128)
-	download, _ := gfx.alloc(.Readback, 128)
+	// upload, _ := gfx.alloc(.Default, 128)
+	// gpu, _ := gfx.alloc(.Private, 128)
+	// download, _ := gfx.alloc(.Readback, 128)
 
-	for i in 0..<128 {
-		(cast([^]byte)upload.contents)[i] = cast(byte)i
-	}
-	gfx.mark_as_modified(upload, 128)
+	// for i in 0..<128 {
+	// 	(cast([^]byte)upload.contents)[i] = cast(byte)i
+	// }
+	// gfx.mark_as_modified(upload, 128)
 
-	cb, _ := gfx.start_command_encoding()
-	gfx.mem_copy(cb, gpu, upload, 128)
-	gfx.barrier(cb, { .Transfer }, { .Transfer })
-	gfx.barrier(cb, { .Compute }, { .Transfer })
-	gfx.mem_copy(cb, download, gpu, 128)
-	gfx.submit(cb)
+	// cb, _ := gfx.start_command_encoding()
+	// gfx.mem_copy(cb, gpu, upload, 128)
+	// gfx.barrier(cb, { .Transfer }, { .Transfer })
+	// gfx.barrier(cb, { .Compute }, { .Transfer })
+	// gfx.mem_copy(cb, download, gpu, 128)
+	// gfx.submit(cb)
 
-	time.sleep(1 * 1000 * 1000 * 1000)
+	// time.sleep(1 * 1000 * 1000 * 1000)
 
-	for i in 0..<128 {
-		log.info(i, (cast([^]byte)download.contents)[i])
-	}
+	// for i in 0..<128 {
+	// 	log.info(i, (cast([^]byte)download.contents)[i])
+	// }
 }
+

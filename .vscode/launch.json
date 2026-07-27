@@ -7,7 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
+            "name": "Debug (lldb)",
+            "program": "${workspaceFolder}/build/out",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb-dap",
+            "request": "launch",
+            "name": "Debug (lldb-dap)",
             "program": "${workspaceFolder}/build/out",
             "args": [],
             "cwd": "${workspaceFolder}"
