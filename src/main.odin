@@ -17,49 +17,54 @@ main :: proc() {
 	back.tracking_allocator_init(&tracking_allocator, context.allocator)
 	defer back.tracking_allocator_destroy(&tracking_allocator)
 
-	context.allocator = back.tracking_allocator(&tracking_allocator)
-	defer back.tracking_allocator_print_results(&tracking_allocator)
+	// context.allocator = back.tracking_allocator(&tracking_allocator)
+	// defer back.tracking_allocator_print_results(&tracking_allocator)
 
 	gfx.init()
 	defer gfx.fini()
 
 	// buffer, _ := gfx.alloc(.Default, 128 * 1024 * 1024)
-	// defer gfx.dealloc(buffer)
+	buffer, _ := gfx.alloc(.Default, 128 * 1024 * 1024 + 1)
+	// buffer, _ := gfx.alloc(.Default, 128)
+	defer gfx.dealloc(buffer)
 
-	// log.info(buffer, buffer.contents)
+	log.info(buffer, buffer.contents)
 
-	// gpu, _ := gfx.gpu_reference_of(buffer)
+	gpu, _ := gfx.gpu_address_of(buffer)
 
-	// buffer.reference += 10
-	// gpu2, _ := gfx.gpu_reference_of(buffer)
+	buffer.address += 10
+	gpu2, _ := gfx.gpu_address_of(buffer)
 
-	// log.info(gpu, gpu2)
+	log.info(gpu, gpu2)
 
-	// tex_desc := gfx.Texture_Descriptor {
-	// 	type = .D2,
-	// 	dimensions = { 640, 480, 1 },
-	// 	mip_count = 1,
-	// 	layer_count = 1,
-	// 	sample_count = 1,
-	// 	format = .RGBA8_Unorm,
-	// 	usage = .Storage,
-	// }
-	// _, align, _ := gfx.size_align_of(tex_desc)
+	tex_desc := gfx.Texture_Descriptor {
+		type		= .Cube_Array,
+		dimensions	= { 640, 640, 1 },
+		mip_count	= 1,
+		layer_count	= 6 * 5,
+		sample_count	= 1,
+		format		= .RGBA8_Unorm,
+		usage		= .Storage,
+	}
+	size, align, _ := gfx.size_align_of(tex_desc)
+	log.info(size, align)
 
-	// buffer.reference = mem.align_backward_uintptr(buffer.reference, cast(uintptr)align)
+	texture_buffer, _ := gfx.alloc(.Private, 128 * 1024 * 1024)
 
-	// tex, etex := gfx.create_texture(buffer, tex_desc)
-	// defer gfx.destroy_texture(tex)
-	// v1, eview1 := gfx.create_view(tex)
-	// v2, eview2 := gfx.create_view(tex, {
-	// 	format = .R32_Float,
-	// 	base_mip = 0,
-	// 	mip_count = 1,
-	// 	base_layer = 0,
-	// 	layer_count = 1,
-	// })
+	tex, etex := gfx.create_texture(texture_buffer, tex_desc)
+	defer gfx.destroy_texture(tex)
+	v1, eview1 := gfx.default_view_of(tex)
+	v2, eview2 := gfx.create_view(tex, {
+		type		= .D2_Array,
+		base_mip	= 0,
+		mip_count	= 1,
+		base_layer	= 4,
+		layer_count	= 5,
+	})
 
-	// log.info(tex, v1, v2, etex, eview1, eview2)
+	log.info(tex, v1, v2, etex, eview1, eview2)
+
+	// gfx.print_messages()
 
 	// upload, _ := gfx.alloc(.Default, 128)
 	// gpu, _ := gfx.alloc(.Private, 128)
