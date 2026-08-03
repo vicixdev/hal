@@ -80,6 +80,7 @@ init :: proc() {
 
 	hm.dynamic_init(&_buffers, context.allocator)
 	hm.dynamic_init(&_textures, context.allocator)
+	hm.dynamic_init(&_samplers, context.allocator)
 
 	when TARGET_API == .Vulkan {
 		vk_init()
@@ -89,16 +90,21 @@ init :: proc() {
 }
 
 fini :: proc() {
-	buffer_it := hm.dynamic_iterator_make(&_buffers)
-	for _, buffer in hm.iterate(&buffer_it) {
-		dealloc({
-			handle = buffer,
-		})
+	sampler_it := hm.dynamic_iterator_make(&_samplers)
+	for _, sampler in hm.iterate(&sampler_it) {
+		destroy_sampler(sampler)
 	}
 
 	texture_it := hm.dynamic_iterator_make(&_textures)
 	for _, texture in hm.iterate(&texture_it) {
 		destroy_texture(texture)
+	}
+
+	buffer_it := hm.dynamic_iterator_make(&_buffers)
+	for _, buffer in hm.iterate(&buffer_it) {
+		dealloc({
+			handle = buffer,
+		})
 	}
 
 	when TARGET_API == .Vulkan {
@@ -107,6 +113,7 @@ fini :: proc() {
 		m3_fini()
 	}
 
+	hm.dynamic_destroy(&_samplers)
 	hm.dynamic_destroy(&_textures)
 	hm.dynamic_destroy(&_buffers)
 

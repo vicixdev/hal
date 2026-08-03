@@ -41,6 +41,14 @@ m3_fini :: proc() {
 }
 
 m3_begin_tracing :: proc() {
+	m3_begin_tracing_on_device(m3_device)
+}
+
+m3_begin_tracing_on_device :: proc(device: ^MTL.Device) {
+	if m3_is_tracing {
+		log.errorf("Could not start a capture. Another capture is already active.")
+	}
+
 	capture_manager := MTL.CaptureManager.sharedCaptureManager()
 	if !capture_manager->supportsDestination(.GPUTraceDocument) {
 		log.info("Could not start a capture. Try starting the application with the following environment variables:")
@@ -63,7 +71,7 @@ m3_begin_tracing :: proc() {
 	output_url := NS.URL.alloc()->initFileURLWithPath(NS.AT("/tmp/hal.gputrace"))
 	defer output_url->release()
 
-	capture_desc->setCaptureObject(m3_device)
+	capture_desc->setCaptureObject(device)
 	capture_desc->setDestination(.GPUTraceDocument)
 	capture_desc->setOutputURL(output_url)
 

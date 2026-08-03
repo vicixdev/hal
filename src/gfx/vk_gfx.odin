@@ -1,6 +1,7 @@
 package gfx
 
 import "base:runtime"
+import "base:intrinsics"
 import "core:dynlib"
 import "core:log"
 import vmem "core:mem/virtual"
@@ -159,7 +160,16 @@ vk_init_instance :: proc() {
 			engineVersion		= vk.MAKE_VERSION(0, 1, 0),
 			apiVersion		= vk.MAKE_VERSION(1, 3, 0),
 		},
-		pNext			= has_debug_utils ? &vk_debug_messenger_descriptor : nil,
+	}
+	if has_debug_utils {
+		vk_link(&instance_desc, &vk_debug_messenger_descriptor)
+	}
+	when ODIN_OS == .Darwin && ODIN_DEBUG {
+		export_info := vk.ExportMetalObjectCreateInfoEXT {
+			sType			= .EXPORT_METAL_OBJECT_CREATE_INFO_EXT,
+			exportObjectType	= { .METAL_DEVICE },
+		}
+		vk_link(&instance_desc, &export_info)
 	}
 
 	vk_call(vk.CreateInstance(&instance_desc, nil, &vk_instance))
@@ -442,6 +452,11 @@ vk_create_device_and_queue :: proc() {
 			vk_try_use_device_extension("VK_KHR_portability_subset"),
 			"Vulkan on macOS does not expose the VK_KHR_portability_enumeration extension. Broken install?",
 		)
+
+		ensure(
+			vk_try_use_device_extension("VK_EXT_metal_objects"),
+			"Vulkan on macOS does not expose the VK_EXT_metal_objects extension. Broken install?",
+		)
 	}
 
 	queue_priority: f32 = 1.0
@@ -485,6 +500,21 @@ vk_create_device_and_queue :: proc() {
 
 	log.debugf("Acquired device and queue.")
 
+	when ODIN_OS == .Darwin && ODIN_DEBUG {
+		log.debugf("Trying to enable tracing...")
+
+		metal_device_info	:= vk.ExportMetalDeviceInfoEXT {
+			sType	= .EXPORT_METAL_DEVICE_INFO_EXT,
+		}
+		export_info		:= vk.ExportMetalObjectsInfoEXT {
+			sType	= .EXPORT_METAL_OBJECTS_INFO_EXT,
+			pNext	= &metal_device_info,
+		}
+		vk.ExportMetalObjectsEXT(vk_device, &export_info)
+
+		m3_begin_tracing_on_device(auto_cast metal_device_info.mtlDevice)
+	}
+
 }
 
 vk_init :: proc() {
@@ -503,7 +533,20 @@ vk_init :: proc() {
 	vk_create_device_and_queue()
 }
 
-vk_fini :: proc() {}
+vk_fini :: proc() {
+	when ODIN_OS == .Darwin && ODIN_DEBUG {
+		m3_end_tracing()
+	}
+
+	vk.DestroyDevice(vk_device, nil)
+
+	if vk_has_validation {
+		vk.DestroyDebugUtilsMessengerEXT(vk_instance, vk_debug_messenger, nil)
+	}
+	vk.DestroyInstance(vk_instance, nil)
+
+	dynlib.unload_library(vk_loader_lib)
+}
 
 
 vk_create_library_from_bytes :: proc(bytes: []byte) -> (handle: Library, res: Result) {
@@ -609,5 +652,15 @@ vk_call :: proc(res: vk.Result, expr := #caller_expression, loc := #caller_locat
 	} else {
 		assert(res == .SUCCESS, "Vulkan error.", loc)
 	}
+}
+
+vk_link :: proc(a: ^$T, b: ^$U)
+	where intrinsics.type_has_field(T, "pNext"),
+		intrinsics.type_has_field(U, "pNext") {
+
+	old_link := a.pNext
+	a.pNext = b
+
+	b.pNext = old_link
 }
 
