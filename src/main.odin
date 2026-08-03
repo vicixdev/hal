@@ -64,6 +64,18 @@ main :: proc() {
 
 	log.info(tex, v1, v2, etex, eview1, eview2)
 
+	sampler_desc := gfx.Sampler_Descriptor {
+		min_filter	= .Nearest,
+		mag_filter	= .Linear,
+		mip_filter	= .Linear,
+		address_u	= .Clamp_To_Border,
+		address_v	= .Clamp_To_Border,
+		address_w	= .Clamp_To_Border,
+		border_color	= .Opaque_Black_Float,
+	}
+	sampler, _ := gfx.create_sampler(sampler_desc)
+	defer gfx.destroy_sampler(sampler)
+
 	// gfx.print_messages()
 
 	// upload, _ := gfx.alloc(.Default, 128)

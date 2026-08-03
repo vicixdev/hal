@@ -19,7 +19,7 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API :: #config(GFX_TARGET_API, Target_Api.Vulkan)
+TARGET_API :: #config(GFX_TARGET_API, Target_Api.Metal_3)
 
 Error :: enum {
 	Out_Of_Gpu_Memory,
@@ -31,6 +31,7 @@ Error :: enum {
 	Invalid_Buffer,
 	Invalid_Texture,
 	Invalid_View,
+	Invalid_Sampler,
 	Invalid_Command_Buffer,
 	Invalid_Library,
 	Invalid_Pipeline,
@@ -374,5 +375,6 @@ _metadata_of :: proc {
 	_buffer_metadata_of,
 	_texture_metadata_of,
 	_view_metadata_of,
+	_sampler_metadata_of,
 }
 
