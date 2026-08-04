@@ -41,6 +41,11 @@ vk_sampler_descriptor_to_vk :: proc(descriptor: Sampler_Descriptor) -> (info: vk
 
 	info.borderColor	= vk_BORDER_COLOR_TO_VK[descriptor.border_color]
 
+	if descriptor.max_anisotropy > 1 {
+		info.anisotropyEnable	= true
+		info.maxAnisotropy	= cast(f32)descriptor.max_anisotropy
+	}
+
 	return
 }
 

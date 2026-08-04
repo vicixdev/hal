@@ -19,15 +19,19 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API :: #config(GFX_TARGET_API, Target_Api.Metal_3)
+TARGET_API :: #config(GFX_TARGET_API, Target_Api.Vulkan)
 
 Error :: enum {
+	Not_Initialized,
+	Device_Not_Selected,
+
 	Out_Of_Gpu_Memory,
 	Invalid_Align,
 	Incompatible_Memory_Type,
 
 	Invalid_Descriptor,
 
+	Invalid_Device,
 	Invalid_Buffer,
 	Invalid_Texture,
 	Invalid_View,
@@ -75,6 +79,8 @@ Constant :: struct {
 	type:  Constant_Type,
 }
 
+_initialized:	bool
+
 init :: proc() {
 	_init_messaging_system()
 
@@ -87,6 +93,8 @@ init :: proc() {
 	} else when TARGET_API == .Metal_3 {
 		m3_init()
 	}
+
+	_initialized = true
 }
 
 fini :: proc() {
@@ -119,6 +127,10 @@ fini :: proc() {
 
 	print_messages()
 	_fini_messaging_system()
+
+	_is_device_selected = false
+	_device_info = nil
+	_initialized = false
 }
 
 create_library_from_bytes :: proc(bytes: []byte) -> (Library, Result) {
@@ -376,6 +388,7 @@ label :: proc {
 	label_buffer,
 	label_texture,
 	label_view,
+	label_sampler,
 }
 
 _metadata_of :: proc {
@@ -385,3 +398,14 @@ _metadata_of :: proc {
 	_sampler_metadata_of,
 }
 
+_check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {
+	_check_condition(
+		_initialized,
+		.Not_Initialized,
+		.Error,
+		"Not initialized",
+		"The gfx package has not yet been initialized. Please call `gfx::init`.",
+		location=location,
+	) or_return
+	return nil
+}

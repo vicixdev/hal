@@ -35,6 +35,8 @@ Sampler_Descriptor :: struct {
 	address_w:	Address_Mode,
 
 	border_color:	Border_Color,
+
+	max_anisotropy:	int,
 }
 
 _Sampler_Metadata :: struct {
@@ -49,7 +51,9 @@ _Sampler_Metadata :: struct {
 
 _samplers: hm.Dynamic_Handle_Map(_Sampler_Metadata, Sampler)
 
-create_sampler :: proc(descriptor: Sampler_Descriptor) -> (sampler: Sampler, res: Result) {
+create_sampler :: proc(descriptor: Sampler_Descriptor, location := #caller_location) -> (sampler: Sampler, res: Result) {
+	_check_device_selected(location) or_return
+
 	handle, metadata := _add_sampler_metadata() or_return
 	defer if res != nil do _remove_sampler_metadata(handle)
 
@@ -64,7 +68,11 @@ create_sampler :: proc(descriptor: Sampler_Descriptor) -> (sampler: Sampler, res
 	return handle, nil
 }
 
-destroy_sampler :: proc(sampler: Sampler) {
+destroy_sampler :: proc(sampler: Sampler, location := #caller_location) {
+	if _check_device_selected(location) != nil {
+		return
+	}
+
 	metadata, metadata_res := _metadata_of(sampler)
 	if metadata_res != nil {
 		return
@@ -79,7 +87,9 @@ destroy_sampler :: proc(sampler: Sampler) {
 	_remove_sampler_metadata(sampler)
 }
 
-label_sampler :: proc(sampler: Sampler, label: string) -> Result {
+label_sampler :: proc(sampler: Sampler, label: string, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(sampler) or_return
 
 	when TARGET_API == .Vulkan {

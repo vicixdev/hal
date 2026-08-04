@@ -75,14 +75,14 @@ _init_messaging_system :: proc() -> Result {
 	vmem.arena_init_growing(&_messages_arena) or_return
 	_messages_allocator = vmem.arena_allocator(&_messages_arena)
 
-	queue.init(&_message_queue)
+	queue.init(&_message_queue, allocator=context.allocator)
 
 	return nil
 }
 
 _fini_messaging_system :: proc() {
-	vmem.arena_destroy(&_messages_arena)
 	queue.destroy(&_message_queue)
+	vmem.arena_destroy(&_messages_arena)
 }
 
 _queue_message_struct :: proc(message: Message) {

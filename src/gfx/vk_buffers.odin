@@ -11,7 +11,7 @@ vk_Buffer_Metadata :: struct {
 
 vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result {
 
-	memory_type := type == .Private ? vk_private_memory : vk_shared_memory
+	memory_type := type == .Private ? vk_device_info.private_memory : vk_device_info.shared_memory
 
 	allocate_flags_info := vk.MemoryAllocateFlagsInfo {
 		sType	= .MEMORY_ALLOCATE_FLAGS_INFO,
@@ -27,7 +27,14 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 	memory: vk.DeviceMemory
 	vk_call(vk.AllocateMemory(vk_device, &allocate_info, nil, &memory))
 
-	queue_family_indices := []u32{ vk_selected_queue_family }
+	queue_family_indices: []u32
+	if vk_device_info.has_transfer_queue_family {
+		queue_family_indices =
+			{ vk_device_info.default_queue_family, vk_device_info.transfer_queue_family }
+	} else {
+		queue_family_indices = { vk_device_info.default_queue_family }
+	}
+
 	buffer_info := vk.BufferCreateInfo {
 		sType	= .BUFFER_CREATE_INFO,
 		size	= cast(vk.DeviceSize)size,
@@ -78,7 +85,7 @@ vk_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 }
 
 vk_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) {
-	if vk_is_shared_memory_coherent {
+	if _device_info.properties.coherent_memory {
 		return
 	}
 
@@ -92,7 +99,7 @@ vk_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length:
 }
 
 vk_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) {
-	if vk_is_shared_memory_coherent {
+	if _device_info.properties.coherent_memory {
 		return
 	}
 

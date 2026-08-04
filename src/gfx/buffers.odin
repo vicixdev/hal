@@ -3,8 +3,6 @@ package gfx
 import "core:mem"
 import hm "core:container/handle_map"
 
-ALLOCATION_MIN_ALIGN :: 16 * mem.Kilobyte
-
 Memory :: enum {
 	Default,
 	Private,
@@ -41,32 +39,39 @@ _buffers: hm.Dynamic_Handle_Map(_Buffer_Metadata, Handle)
 alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer: Buffer, res: Result) {
 	size := size
 
-	if size < ALLOCATION_MIN_ALIGN {
+	_check_device_selected(location) or_return
+
+	if size < _device_info.limits.min_allocation_size {
 		_queue_generic_message(
 			.Warning,
 			"Small GPU allocation",
 			"Small GPU allocation detected (%d bytes). The gfx::alloc procedure should be used to " +
-			"allocate big buffers (>= 16 kilobytes), which should be suballocated by the application " +
-			"using custom allocators. The size will be adjusted to 16 kilobytes.",
+			"allocate big buffers (at least device_info.limits.min_allocation_size bytes, or %d " +
+			"bytes for the current device), which should be suballocated by the application using " +
+			"custom allocators. The size will be adjusted to %d bytes.",
 			size,
+			_device_info.limits.min_allocation_size,
+			_device_info.limits.min_allocation_size,
 			location=location,
 		)
 
-		size = ALLOCATION_MIN_ALIGN
+		size = _device_info.limits.min_allocation_size
 	}
 
-	if !_is_aligned(cast(uintptr)size, ALLOCATION_MIN_ALIGN) {
+	if !_is_aligned(cast(uintptr)size, _device_info.limits.allocation_alignment) {
 		_queue_generic_message(
 			.Warning,
 			"Unaligned GPU allocation",
 			"Unaligned allocation detected (%d bytes). The gfx::alloc procedure should be used to " +
-			"allocate big memory aligned buffers (with 16 kilobytes alignements). The size will be " +
-			"up-aligned.",
+			"allocate large memory aligned buffers (according to device_info.limits.allocation_alignment, " +
+			"or %d bytes for the current device). The size will be adjusted to %d bytes.",
 			size,
+			_device_info.limits.allocation_alignment,
+			mem.align_forward_int(size, _device_info.limits.allocation_alignment),
 			location=location,
 		)
 
-		size = mem.align_forward_int(size, ALLOCATION_MIN_ALIGN)
+		size = mem.align_forward_int(size, _device_info.limits.allocation_alignment)
 	}
 
 	handle, metadata := _add_buffer_metadata() or_return
@@ -92,6 +97,10 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer:
 }
 
 dealloc :: proc(buffer: Buffer, location := #caller_location) {
+	if _check_device_selected(location) != nil {
+		return
+	}
+
 	metadata, res := _metadata_of(buffer)
 	if res != nil {
 		return
@@ -106,7 +115,9 @@ dealloc :: proc(buffer: Buffer, location := #caller_location) {
 	hm.remove(&_buffers, buffer.handle)
 }
 
-gpu_address_of :: proc(buffer: Buffer) -> (address: uintptr, res: Result) {
+gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address: uintptr, res: Result) {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(buffer) or_return
 
 	if metadata.memory_type == .Private {
@@ -117,9 +128,12 @@ gpu_address_of :: proc(buffer: Buffer) -> (address: uintptr, res: Result) {
 	return metadata.gpu_address + offset, nil
 }
 
-mark_as_modified :: proc(buffer: Buffer, length: int) -> Result {
+mark_as_modified :: proc(buffer: Buffer, length: int, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(buffer) or_return
 
+	// NOTE: Only `.Default` can be used to upload data. `.Readback` can only be used for downloading data.
 	if metadata.memory_type != .Default {
 		return nil
 	}
@@ -133,10 +147,13 @@ mark_as_modified :: proc(buffer: Buffer, length: int) -> Result {
 	return nil
 }
 
-prepare_for_readback :: proc(buffer: Buffer, length: int) -> Result {
+prepare_for_readback :: proc(buffer: Buffer, length: int, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(buffer) or_return
 
-	if metadata.memory_type != .Readback {
+	// NOTE: Both `.Default` and `.Readback` can be used for readback (download) purposes.
+	if metadata.memory_type == .Private {
 		return nil
 	}
 
@@ -149,7 +166,9 @@ prepare_for_readback :: proc(buffer: Buffer, length: int) -> Result {
 	return nil
 }
 
-label_buffer :: proc(buffer: Buffer, label: string) -> Result {
+label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(buffer) or_return
 
 	when TARGET_API == .Vulkan {
@@ -183,7 +202,7 @@ _remove_buffer_metadata :: proc(handle: Handle) {
 	hm.remove(&_buffers, handle)
 }
 
-_is_aligned :: proc(p: uintptr, align: int) -> bool {
+_is_aligned :: proc(p: uintptr, #any_int align: int) -> bool {
 	return (p & (uintptr(align) - 1)) == 0
 }
 

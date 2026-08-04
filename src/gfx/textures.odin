@@ -99,6 +99,7 @@ size_align_of :: proc(
 	location := #caller_location,
 ) -> (size: int, align: int, res: Result) {
 
+	_check_device_selected(location) or_return
 	_check_texture_descriptor(descriptor, location) or_return
 
 	when TARGET_API == .Vulkan {
@@ -116,6 +117,9 @@ create_texture :: proc(
 	handle: Texture,
 	res: Result,
 ) {
+
+	_check_device_selected(location) or_return
+
 	// NOTE: size_align_of() also checks for the descriptor validity.
 	required_size, required_align := size_align_of(descriptor, location) or_return
 
@@ -177,7 +181,11 @@ create_texture :: proc(
 	return texture, nil
 }
 
-destroy_texture :: proc(texture: Texture) {
+destroy_texture :: proc(texture: Texture, location := #caller_location) {
+	if _check_device_selected(location) != nil {
+		return
+	}
+
 	metadata, res := _metadata_of(texture)
 	if res != nil {
 		return
@@ -214,7 +222,9 @@ destroy_texture :: proc(texture: Texture) {
 	_remove_texture_metadata(texture)
 }
 
-label_texture :: proc(texture: Texture, label: string) -> Result {
+label_texture :: proc(texture: Texture, label: string, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(texture) or_return
 
 	when TARGET_API == .Vulkan {
@@ -226,7 +236,9 @@ label_texture :: proc(texture: Texture, label: string) -> Result {
 	return nil
 }
 
-default_view_of :: proc(texture: Texture) -> (view: View, res: Result) {
+default_view_of :: proc(texture: Texture, location := #caller_location) -> (view: View, res: Result) {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(texture) or_return
 	return metadata.default_view, nil
 }
@@ -239,6 +251,8 @@ create_view :: proc(
 	view: View,
 	res: Result,
 ) {
+
+	_check_device_selected(location) or_return
 
 	texture_metadata := _metadata_of(texture) or_return
 
@@ -264,7 +278,9 @@ create_view :: proc(
 	return handle, nil
 }
 
-label_view :: proc(view: View, label: string) -> Result {
+label_view :: proc(view: View, label: string, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
+
 	metadata := _metadata_of(view) or_return
 
 	when TARGET_API == .Vulkan {

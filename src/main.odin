@@ -23,6 +23,10 @@ main :: proc() {
 	gfx.init()
 	defer gfx.fini()
 
+	devices, _ := gfx.enumerate_devices()
+	log.infof("%#v", devices)
+	gfx.select_device(devices[0].id)
+
 	// buffer, _ := gfx.alloc(.Default, 128 * 1024 * 1024)
 	buffer, _ := gfx.alloc(.Default, 128 * 1024 * 1024 + 1)
 	// buffer, _ := gfx.alloc(.Default, 128)
@@ -50,6 +54,7 @@ main :: proc() {
 	log.info(size, align)
 
 	texture_buffer, _ := gfx.alloc(.Private, 128 * 1024 * 1024)
+	// texture_buffer, _ := gfx.alloc(.Private, 1024)
 
 	tex, etex := gfx.create_texture(texture_buffer, tex_desc)
 	defer gfx.destroy_texture(tex)
@@ -72,9 +77,12 @@ main :: proc() {
 		address_v	= .Clamp_To_Border,
 		address_w	= .Clamp_To_Border,
 		border_color	= .Opaque_Black_Float,
+		max_anisotropy	= 16,
 	}
 	sampler, _ := gfx.create_sampler(sampler_desc)
 	defer gfx.destroy_sampler(sampler)
+
+	gfx.label(sampler, "My cool sampler!?!")
 
 	// gfx.print_messages()
 

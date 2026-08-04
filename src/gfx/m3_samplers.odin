@@ -1,5 +1,6 @@
 package gfx
 
+import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
 m3_Sampler_Metadata :: struct {
@@ -38,6 +39,10 @@ m3_sampler_descriptor_to_mtl :: proc(descriptor: Sampler_Descriptor) -> (info: ^
 	info->setTAddressMode(m3_ADDRESS_MODE_TO_MTL[descriptor.address_w])
 
 	info->setBorderColor(m3_BORDER_COLOR_TO_MTL[descriptor.border_color])
+
+	if descriptor.max_anisotropy > 1 {
+		info->setMaxAnisotropy(cast(NS.UInteger)descriptor.max_anisotropy)
+	}
 
 	return
 }
