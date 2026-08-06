@@ -76,7 +76,25 @@ Command_Buffer :: distinct Handle
 
 _initialized:	bool
 
-init :: proc() {
+Vulkan_Shader_Format :: enum {
+	Spirv,
+	// When targeting MoltenVK on MacOS, it is possible to directly load Metallib shaders, instead of Spirv ones.
+	Metallib,
+}
+
+Init_Descriptor :: struct {
+	vk:	struct {
+		loader_path:	string,
+		shader_format:	Vulkan_Shader_Format,
+	},
+	m3:	struct {},
+}
+
+_settings:	Init_Descriptor
+
+init :: proc(descriptor: Init_Descriptor) {
+	_settings = descriptor
+
 	_init_messaging_system()
 
 	hm.dynamic_init(&_buffers, context.allocator)

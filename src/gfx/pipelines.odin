@@ -110,7 +110,13 @@ load_bytecode_of :: proc(
 	allocator: runtime.Allocator,
 ) -> (bytecode: []byte, err: os.Error) {
 
-	bytecode_extension :: ".spv" when TARGET_API == .Vulkan else ".metallib"
+	// bytecode_extension :: ".spv" when TARGET_API == .Vulkan else ".metallib"
+	bytecode_extension: string
+	if TARGET_API == .Vulkan && _settings.vk.shader_format == .Spirv {
+		bytecode_extension = ".spv"
+	} else {
+		bytecode_extension = ".metallib"
+	}
 
 	bytecode_path := strings.concatenate({
 		collection_path,

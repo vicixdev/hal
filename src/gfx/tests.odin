@@ -5,16 +5,16 @@ import "core:testing"
 
 @(test)
 check_init_fini :: proc(t: ^testing.T) {
-	init()
+	init({})
 	fini()
 }
 
 @(test)
 check_multi_init :: proc(t: ^testing.T) {
-	init()
+	init({})
 	fini()
 
-	init()
+	init({})
 	fini()
 }
 

@@ -32,8 +32,13 @@ vk_has_validation:		bool
 vk_user_logger:			log.Logger
 
 vk_load_instance_procs :: proc() {
-	vk_lib, lib_ok := dynlib.load_library(vk_VULKAN_LOADER_PATH)
-	assert(lib_ok, "Could not find the vulkan loader library (expected at " + vk_VULKAN_LOADER_PATH + ").")
+	loader_path := _settings.vk.loader_path
+	if loader_path == "" {
+		loader_path = vk_VULKAN_LOADER_PATH
+	}
+
+	vk_lib, lib_ok := dynlib.load_library(loader_path)
+	assert(lib_ok, "Could not find the vulkan loader library.")
 	vk_loader_lib = vk_lib
 
 	vk_get_proc, get_proc_ok := dynlib.symbol_address(vk_loader_lib, "vkGetInstanceProcAddr")

@@ -3,6 +3,7 @@ package gfx
 import "core:strings"
 import "core:bytes"
 import "core:sync"
+import "core:mem"
 import vk "vendor:vulkan"
 
 vk_Shader_Stage_Metadata :: struct {
@@ -74,10 +75,22 @@ vk_create_render_pipeline :: proc() -> (handle: Pipeline) {
 }
 
 vk_shader_stage_descriptor_to_vk :: proc(descriptor: Shader_Stage_Descriptor) -> (info: vk.ShaderModuleCreateInfo) {
+	kMVKMagicNumberMSLCompiledCode: u32 : 0x19981215
+
 	info.sType	= .SHADER_MODULE_CREATE_INFO
 
-	info.codeSize	= len(descriptor.bytecode)
-	info.pCode	= cast([^]u32)raw_data(descriptor.bytecode)
+	if _settings.vk.shader_format == .Spirv {
+		info.codeSize	= len(descriptor.bytecode)
+		info.pCode	= cast([^]u32)raw_data(descriptor.bytecode)
+	} else {
+		code := bytes.concatenate({
+			mem.any_to_bytes(kMVKMagicNumberMSLCompiledCode),
+			descriptor.bytecode,
+		}, context.temp_allocator)
+
+		info.codeSize	= len(code)
+		info.pCode	= cast([^]u32)raw_data(code)
+	}
 
 	return
 }

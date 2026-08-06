@@ -10,6 +10,7 @@ case "$target_api" in
 
 		slangc ./shaders/basic.slang -profile glsl_450 -target spirv -capability glsl_spirv -capability GL_EXT_buffer_reference -o ./build/basic.spv -fvk-use-entrypoint-name
 		slangc ./shaders/basic.slang -profile glsl_450 -target glsl -capability glsl_spirv -capability GL_EXT_buffer_reference -o ./build/basic.glsl -entry computeMain
+		slangc ./shaders/basic.slang -profile glsl_450 -target metallib	-capability glsl_spirv -capability GL_EXT_buffer_reference -o ./build/basic.metallib -fvk-use-entrypoint-name
 	;;
 	Metal_3)
 		odin build src -collection:shared=shared -out:build/out -debug -strict-style -vet -warnings-as-errors -define:GFX_TARGET_API=Metal_3

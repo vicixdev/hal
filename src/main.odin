@@ -20,7 +20,11 @@ main :: proc() {
 	// context.allocator = back.tracking_allocator(&tracking_allocator)
 	// defer back.tracking_allocator_print_results(&tracking_allocator)
 
-	gfx.init()
+	gfx.init({
+		vk = {
+			shader_format = .Metallib,
+		},
+	})
 	defer gfx.fini()
 
 	devices, _ := gfx.enumerate_devices()
