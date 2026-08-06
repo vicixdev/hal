@@ -3,6 +3,7 @@ package gfx
 import "base:runtime"
 import "core:strings"
 import "core:mem"
+import "core:sync"
 import vk "vendor:vulkan"
 
 vk_Device_Info :: struct {
@@ -33,6 +34,10 @@ vk_physical_device:		vk.PhysicalDevice
 
 vk_device:			vk.Device
 vk_enabled_device_extensions:	[dynamic; 8]cstring
+
+vk_pipeline_cache:		vk.PipelineCache
+vk_pipeline_cache_mutex:	sync.Mutex
+vk_compute_pipeline_layout:	vk.PipelineLayout
 
 vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device_Info, res: Result) {
 	device_count: u32
@@ -96,6 +101,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 
 	device_features := vk.PhysicalDeviceFeatures2 {
 		sType			= .PHYSICAL_DEVICE_FEATURES_2,
+		pNext			= &vk_debug_messenger_descriptor if vk_has_validation else nil,
 		features		= {
 			imageCubeArray		= true,
 			samplerAnisotropy	= true,
@@ -117,8 +123,35 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 
 	// log.debugf("Creating device with extensions: %v.", vk_enabled_device_extensions)
 	vk_call(vk.CreateDevice(vk_physical_device, &descriptor, nil, &vk_device))
-	
+
+	vk_setup_pipeline_layouts()
+
 	return nil
+}
+
+vk_setup_pipeline_layouts :: proc() {
+	compute_push_constant_range := vk.PushConstantRange {
+		stageFlags	= { .COMPUTE },
+		offset		= 0,
+		size		= size_of(uintptr) * 8,
+	}
+	compute_layout_info := vk.PipelineLayoutCreateInfo {
+		sType			= .PIPELINE_LAYOUT_CREATE_INFO,
+		setLayoutCount		= 0,
+		pushConstantRangeCount	= 1,
+		pPushConstantRanges	= &compute_push_constant_range,
+	}
+
+	vk_call(vk.CreatePipelineLayout(vk_device, &compute_layout_info, nil, &vk_compute_pipeline_layout))
+}
+
+vk_setup_pipeline_cache :: proc() {
+	// TODO: Persistent pipeline cache
+	pipeline_cache_info := vk.PipelineCacheCreateInfo {
+		sType			= .PIPELINE_CACHE_CREATE_INFO,
+		initialDataSize		= 0,
+	}
+	vk_call(vk.CreatePipelineCache(vk_device, &pipeline_cache_info, nil, &vk_pipeline_cache))
 }
 
 vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info) {

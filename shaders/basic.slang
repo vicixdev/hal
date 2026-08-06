@@ -1,17 +1,40 @@
-import hal;
+struct Params {
+    float*    in_a;
+    float*    in_b;
+    float*    out;
+}
 
-StructuredBuffer<float> buffer0;
-StructuredBuffer<float> buffer1;
-RWStructuredBuffer<float> result;
+[[vk::constant_id(0)]]
+const float MUL_FACTOR = 1.0;
+
+// struct Texture2D_Wrap {
+//     DescriptorHandle<Texture2D> handle;
+// }
+
+// struct Sampler_Wrap {
+//     DescriptorHandle<SamplerState> handle;
+// }
+
+// StructuredBuffer<Texture2D_Wrap> texture_2d_heap;
+// StructuredBuffer<Sampler_Wrap> sampler_heap;
+
+// StructuredBuffer<DescriptorHandle<Texture2D>> texture_2d_heap;
+// StructuredBuffer<DescriptorHandle<SamplerState>> sampler_heap;
 
 [shader("compute")]
-[numthreads(1, 1, 1)]
-void main(uint3 threadId : SV_DispatchThreadID) {
-  uint index = threadId.x;
+[numthreads(8,8,1)]
+void computeMain(
+    uint3 threadId : SV_DispatchThreadID,
+    uniform Params* params,
+) {
+    uint index = threadId.x;
 
-  Texture2D texture = GetTexture2DAt(0);
-  float4 s = texture.Sample(linearSampler, float2(0, 0));
-
-  result[index] = buffer0[index] + buffer1[index] + s.x;
+    params.out[index] = params.in_a[index] + params.in_b[index] * MUL_FACTOR;
+    // params.out[index] = params.in_a[index] + params.in_b[index] * MUL_FACTOR * texture_2d_heap[0].handle.Sample(
+    //     sampler_heap[0].handle, float2(0, 0)
+    // ).x;
+    // params.out[index] = params.in_a[index] + params.in_b[index] * MUL_FACTOR * texture_2d_heap[0].Sample(
+    //     sampler_heap[0], float2(0, 0)
+    // ).x;
 }
 

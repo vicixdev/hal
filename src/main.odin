@@ -82,7 +82,16 @@ main :: proc() {
 	sampler, _ := gfx.create_sampler(sampler_desc)
 	defer gfx.destroy_sampler(sampler)
 
-	gfx.label(sampler, "My cool sampler!?!")
+	bytecode, _ := gfx.load_bytecode_of("basic", "./build", context.temp_allocator)
+	pipeline, pipeline_res := gfx.create_compute_pipeline(
+		{
+			bytecode	= bytecode,
+			entrypoint	= "computeMain",
+		},
+		{ 1, 1, 1 },
+	)
+	defer gfx.destroy_pipeline(pipeline)
+	log.info(pipeline, pipeline_res)
 
 	// gfx.print_messages()
 

@@ -15,6 +15,9 @@ m3_Device_Info :: struct {
 m3_device:	^MTL.Device
 m3_is_tracing:	bool
 
+m3_queue:	^MTL.CommandQueue
+m3_transfer_queue:	^MTL.CommandQueue
+
 m3_enumerate_devices :: proc(
 	allocator: runtime.Allocator,
 ) -> (available_devices: []Device_Info, res:Result) {

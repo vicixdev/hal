@@ -19,7 +19,15 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API :: #config(GFX_TARGET_API, Target_Api.Vulkan)
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
+when TARGET_API_STRING == "Vulkan" {
+	TARGET_API :: Target_Api.Vulkan
+} else when TARGET_API_STRING == "Metal_3" {
+	TARGET_API :: Target_Api.Metal_3
+} else {
+	#panic("Invalid GFX_TARGET_API parameter: expected `Vulkan` or `Metal_3`, got `" + TARGET_API_STRING + "`.")
+}
 
 Error :: enum {
 	Not_Initialized,
@@ -65,19 +73,6 @@ Stage :: enum {
 Stages :: bit_set[Stage]
 
 Command_Buffer :: distinct Handle
-Library :: distinct Handle
-Pipeline :: distinct Handle
-
-Constant_Type :: enum {
-	U32,
-	F32,
-}
-
-Constant :: struct {
-	index: int,
-	value: rawptr,
-	type:  Constant_Type,
-}
 
 _initialized:	bool
 
@@ -133,256 +128,256 @@ fini :: proc() {
 	_initialized = false
 }
 
-create_library_from_bytes :: proc(bytes: []byte) -> (Library, Result) {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_create_library_from_bytes(bytes)
-	case .Metal_3:
-		return m3_create_library_from_bytes(bytes)
-	case:
-		return nop_create_library_from_bytes(bytes)
-	}
-}
+// create_library_from_bytes :: proc(bytes: []byte) -> (Library, Result) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_create_library_from_bytes(bytes)
+// 	case .Metal_3:
+// 		return m3_create_library_from_bytes(bytes)
+// 	case:
+// 		return nop_create_library_from_bytes(bytes)
+// 	}
+// }
 
-create_library_from_file :: proc(path: string) -> (Library, Result) {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_create_library_from_file(path)
-	case .Metal_3:
-		return m3_create_library_from_file(path)
-	case:
-		return nop_create_library_from_file(path)
-	}
-}
+// create_library_from_file :: proc(path: string) -> (Library, Result) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_create_library_from_file(path)
+// 	case .Metal_3:
+// 		return m3_create_library_from_file(path)
+// 	case:
+// 		return nop_create_library_from_file(path)
+// 	}
+// }
 
-create_library :: proc {
-	create_library_from_bytes,
-	create_library_from_file,
-}
+// create_library :: proc {
+// 	create_library_from_bytes,
+// 	create_library_from_file,
+// }
 
-create_render_pipeline :: proc() -> Pipeline {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_create_render_pipeline()
-	case .Metal_3:
-		panic("Unimplemented.")
-	case:
-		return nop_create_render_pipeline()
-	}
-}
+// create_render_pipeline :: proc() -> Pipeline {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_create_render_pipeline()
+// 	case .Metal_3:
+// 		panic("Unimplemented.")
+// 	case:
+// 		return nop_create_render_pipeline()
+// 	}
+// }
 
-create_compute_pipeline :: proc(
-	library: Library,
-	name: string,
-	constants: []Constant,
-	group_size: [3]int,
-) -> (
-	Pipeline,
-	Result,
-) {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_create_compute_pipeline(library, name, constants, group_size)
-	case .Metal_3:
-		return m3_create_compute_pipeline(library, name, constants, group_size)
-	case:
-		return nop_create_compute_pipeline(library, name, constants, group_size)
-	}
-}
+// create_compute_pipeline :: proc(
+// 	library: Library,
+// 	name: string,
+// 	constants: []Constant,
+// 	group_size: [3]int,
+// ) -> (
+// 	Pipeline,
+// 	Result,
+// ) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_create_compute_pipeline(library, name, constants, group_size)
+// 	case .Metal_3:
+// 		return m3_create_compute_pipeline(library, name, constants, group_size)
+// 	case:
+// 		return nop_create_compute_pipeline(library, name, constants, group_size)
+// 	}
+// }
 
-start_command_encoding :: proc() -> (Command_Buffer, Result) {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_start_command_encoding()
-	case .Metal_3:
-		return m3_start_command_encoding()
-	case:
-		return nop_start_command_encoding()
-	}
-}
+// start_command_encoding :: proc() -> (Command_Buffer, Result) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_start_command_encoding()
+// 	case .Metal_3:
+// 		return m3_start_command_encoding()
+// 	case:
+// 		return nop_start_command_encoding()
+// 	}
+// }
 
-syncronize_buffers :: proc(cb: Command_Buffer) {
-	switch TARGET_API {
-	case .Vulkan:
-		vk_syncronize_buffers(cb)
-	case .Metal_3:
-		panic("Unimplemented.")
-	case:
-		nop_syncronize_buffers(cb)
-	}
-}
+// syncronize_buffers :: proc(cb: Command_Buffer) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		vk_syncronize_buffers(cb)
+// 	case .Metal_3:
+// 		panic("Unimplemented.")
+// 	case:
+// 		nop_syncronize_buffers(cb)
+// 	}
+// }
 
-mem_copy :: proc(cb: Command_Buffer, destination: Buffer, source: Buffer, size: int) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_mem_copy(cb, destination, source, size)
-	case .Metal_3:
-		return m3_mem_copy(cb, destination, source, size)
-	case:
-		return nop_mem_copy(cb, destination, source, size)
-	}
-}
+// mem_copy :: proc(cb: Command_Buffer, destination: Buffer, source: Buffer, size: int) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_mem_copy(cb, destination, source, size)
+// 	case .Metal_3:
+// 		return m3_mem_copy(cb, destination, source, size)
+// 	case:
+// 		return nop_mem_copy(cb, destination, source, size)
+// 	}
+// }
 
-set_pipeline :: proc(cb: Command_Buffer, pipeline: Pipeline) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_set_pipeline(cb, pipeline)
-	case .Metal_3:
-		return m3_set_pipeline(cb, pipeline)
-	case:
-		return nop_set_pipeline(cb, pipeline)
-	}
-}
+// set_pipeline :: proc(cb: Command_Buffer, pipeline: Pipeline) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_set_pipeline(cb, pipeline)
+// 	case .Metal_3:
+// 		return m3_set_pipeline(cb, pipeline)
+// 	case:
+// 		return nop_set_pipeline(cb, pipeline)
+// 	}
+// }
 
-set_indirect_buffer_pool :: proc(cb: Command_Buffer, buffers: []Buffer) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_set_indirect_buffer_pool(cb, buffers)
-	case .Metal_3:
-		return m3_set_indirect_buffer_pool(cb, buffers)
-	case:
-		return nop_set_indirect_buffer_pool(cb, buffers)
-	}
-}
+// set_indirect_buffer_pool :: proc(cb: Command_Buffer, buffers: []Buffer) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_set_indirect_buffer_pool(cb, buffers)
+// 	case .Metal_3:
+// 		return m3_set_indirect_buffer_pool(cb, buffers)
+// 	case:
+// 		return nop_set_indirect_buffer_pool(cb, buffers)
+// 	}
+// }
 
-set_texture_pool :: proc(cb: Command_Buffer, textures: []View) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_set_texture_pool(cb, textures)
-	case .Metal_3:
-		return m3_set_texture_pool(cb, textures)
-	case:
-		return nop_set_texture_pool(cb, textures)
-	}
-}
+// set_texture_pool :: proc(cb: Command_Buffer, textures: []View) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_set_texture_pool(cb, textures)
+// 	case .Metal_3:
+// 		return m3_set_texture_pool(cb, textures)
+// 	case:
+// 		return nop_set_texture_pool(cb, textures)
+// 	}
+// }
 
-set_buffer :: proc(
-	cb: Command_Buffer,
-	buffer: Buffer,
-	index: int,
-	stage: Raster_Stage = .Compute,
-) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_set_buffer(cb, buffer, index, stage)
-	case .Metal_3:
-		return m3_set_buffer(cb, buffer, index, stage)
-	case:
-		return nop_set_buffer(cb, buffer, index, stage)
-	}
-}
+// set_buffer :: proc(
+// 	cb: Command_Buffer,
+// 	buffer: Buffer,
+// 	index: int,
+// 	stage: Raster_Stage = .Compute,
+// ) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_set_buffer(cb, buffer, index, stage)
+// 	case .Metal_3:
+// 		return m3_set_buffer(cb, buffer, index, stage)
+// 	case:
+// 		return nop_set_buffer(cb, buffer, index, stage)
+// 	}
+// }
 
-// copy_buffer_to_texture: proc(cb: Command_Buffer, )
-// copy_texture_to_buffer
-// copy_texture_to_texture
-dispatch :: proc(cb: Command_Buffer, groups: [3]int) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_dispatch(cb, groups)
-	case .Metal_3:
-		return m3_dispatch(cb, groups)
-	case:
-		return nop_dispatch(cb, groups)
-	}
-}
+// // copy_buffer_to_texture: proc(cb: Command_Buffer, )
+// // copy_texture_to_buffer
+// // copy_texture_to_texture
+// dispatch :: proc(cb: Command_Buffer, groups: [3]int) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_dispatch(cb, groups)
+// 	case .Metal_3:
+// 		return m3_dispatch(cb, groups)
+// 	case:
+// 		return nop_dispatch(cb, groups)
+// 	}
+// }
 
-generate_mipmaps :: proc(cb: Command_Buffer, texture: Texture) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_generate_mipmaps(cb, texture)
-	case .Metal_3:
-		return m3_generate_mipmaps(cb, texture)
-	case:
-		return nop_generate_mipmaps(cb, texture)
-	}
-}
+// generate_mipmaps :: proc(cb: Command_Buffer, texture: Texture) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_generate_mipmaps(cb, texture)
+// 	case .Metal_3:
+// 		return m3_generate_mipmaps(cb, texture)
+// 	case:
+// 		return nop_generate_mipmaps(cb, texture)
+// 	}
+// }
 
-begin_renderpass :: proc(
-	cb: Command_Buffer,
-	/* ... */
-) {
-	switch TARGET_API {
-	case .Vulkan:
-		vk_begin_renderpass(cb)
-	case .Metal_3:
-		panic("Unimplemented.")
-	case:
-		nop_begin_renderpass(cb)
-	}
-}
+// begin_renderpass :: proc(
+// 	cb: Command_Buffer,
+// 	/* ... */
+// ) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		vk_begin_renderpass(cb)
+// 	case .Metal_3:
+// 		panic("Unimplemented.")
+// 	case:
+// 		nop_begin_renderpass(cb)
+// 	}
+// }
 
-end_renderpass :: proc(cb: Command_Buffer) {
-	switch TARGET_API {
-	case .Vulkan:
-		vk_end_renderpass(cb)
-	case .Metal_3:
-		panic("Unimplemented.")
-	case:
-		nop_end_renderpass(cb)
-	}
-}
+// end_renderpass :: proc(cb: Command_Buffer) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		vk_end_renderpass(cb)
+// 	case .Metal_3:
+// 		panic("Unimplemented.")
+// 	case:
+// 		nop_end_renderpass(cb)
+// 	}
+// }
 
-draw :: proc(
-	cb: Command_Buffer,
-	vertices: int,
-	instances: int,
-	vertex_arg: Buffer,
-	fragment_arg: Buffer,
-	base_vertex: int,
-) {
-	switch TARGET_API {
-	case .Vulkan:
-		vk_draw(cb, vertices, instances, vertex_arg, fragment_arg, base_vertex)
-	case .Metal_3:
-		panic("Unimplemented.")
-	case:
-		nop_draw(cb, vertices, instances, vertex_arg, fragment_arg, base_vertex)
-	}
-}
+// draw :: proc(
+// 	cb: Command_Buffer,
+// 	vertices: int,
+// 	instances: int,
+// 	vertex_arg: Buffer,
+// 	fragment_arg: Buffer,
+// 	base_vertex: int,
+// ) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		vk_draw(cb, vertices, instances, vertex_arg, fragment_arg, base_vertex)
+// 	case .Metal_3:
+// 		panic("Unimplemented.")
+// 	case:
+// 		nop_draw(cb, vertices, instances, vertex_arg, fragment_arg, base_vertex)
+// 	}
+// }
 
-draw_indexed :: proc(
-	cb: Command_Buffer,
-	indices: int,
-	instances: int,
-	index_buffer: Buffer,
-	vertex_arg: Buffer,
-	fragment_arg: Buffer,
-	base_index: int,
-) {
-	switch TARGET_API {
-	case .Vulkan:
-		vk_draw_indexed(cb, indices, instances, index_buffer, vertex_arg, fragment_arg, base_index)
-	case .Metal_3:
-		panic("Unimplemented.")
-	case:
-		nop_draw_indexed(cb, indices, instances, index_buffer, vertex_arg, fragment_arg, base_index)
-	}
-}
+// draw_indexed :: proc(
+// 	cb: Command_Buffer,
+// 	indices: int,
+// 	instances: int,
+// 	index_buffer: Buffer,
+// 	vertex_arg: Buffer,
+// 	fragment_arg: Buffer,
+// 	base_index: int,
+// ) {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		vk_draw_indexed(cb, indices, instances, index_buffer, vertex_arg, fragment_arg, base_index)
+// 	case .Metal_3:
+// 		panic("Unimplemented.")
+// 	case:
+// 		nop_draw_indexed(cb, indices, instances, index_buffer, vertex_arg, fragment_arg, base_index)
+// 	}
+// }
 
-barrier :: proc(cb: Command_Buffer, before: Stages, after: Stages) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_barrier(cb, before, after)
-	case .Metal_3:
-		return m3_barrier(cb, before, after)
-	case:
-		return nop_barrier(cb, before, after)
-	}
-}
+// barrier :: proc(cb: Command_Buffer, before: Stages, after: Stages) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_barrier(cb, before, after)
+// 	case .Metal_3:
+// 		return m3_barrier(cb, before, after)
+// 	case:
+// 		return nop_barrier(cb, before, after)
+// 	}
+// }
 
-// wait: proc(cb: Command_Buffer)
-// signal: proc(cb: Command_Buffer)
+// // wait: proc(cb: Command_Buffer)
+// // signal: proc(cb: Command_Buffer)
 
-submit :: proc(cb: Command_Buffer) -> Result {
-	switch TARGET_API {
-	case .Vulkan:
-		return vk_submit(cb)
-	case .Metal_3:
-		return m3_submit(cb)
-	case:
-		return nop_submit(cb)
-	}
-}
+// submit :: proc(cb: Command_Buffer) -> Result {
+// 	switch TARGET_API {
+// 	case .Vulkan:
+// 		return vk_submit(cb)
+// 	case .Metal_3:
+// 		return m3_submit(cb)
+// 	case:
+// 		return nop_submit(cb)
+// 	}
+// }
 
 label :: proc {
 	label_buffer,
@@ -396,6 +391,7 @@ _metadata_of :: proc {
 	_texture_metadata_of,
 	_view_metadata_of,
 	_sampler_metadata_of,
+	_pipeline_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {

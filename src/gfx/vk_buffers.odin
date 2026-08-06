@@ -46,7 +46,7 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 			.SHADER_DEVICE_ADDRESS_KHR,
 		},
 		sharingMode		= .EXCLUSIVE,
-		queueFamilyIndexCount	= 1,
+		queueFamilyIndexCount	= cast(u32)len(queue_family_indices),
 		pQueueFamilyIndices	= raw_data(queue_family_indices),
 	}
 

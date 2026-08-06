@@ -1,10 +1,10 @@
 #+build darwin
 package gfx
 
-import hm "core:container/handle_map"
+// import hm "core:container/handle_map"
 
 m3_init :: proc() {
-	hm.dynamic_init(&m3_command_buffers, context.allocator)
+	// hm.dynamic_init(&m3_command_buffers, context.allocator)
 }
 
 m3_fini :: proc() {

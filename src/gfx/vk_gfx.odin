@@ -246,28 +246,6 @@ vk_fini :: proc() {
 }
 
 
-vk_create_library_from_bytes :: proc(bytes: []byte) -> (handle: Library, res: Result) {
-	return
-}
-vk_create_library_from_file :: proc(path: string) -> (handle: Library, res: Result) {
-	return
-}
-
-vk_create_compute_pipeline :: proc(
-	library: Library,
-	name: string,
-	constants: []Constant,
-	group_size: [3]int,
-) -> (
-	handle: Pipeline,
-	res: Result,
-) {
-	return
-}
-vk_create_render_pipeline :: proc() -> (handle: Pipeline) {
-	return
-}
-
 vk_start_command_encoding :: proc() -> (handle: Command_Buffer, res: Result) {
 	return
 }

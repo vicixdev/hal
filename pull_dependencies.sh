@@ -49,7 +49,7 @@ get_slang () {
 }
 
 pull_github_commit shared/back laytan back 9d4117268e49a710727de4eae1e65d7417fc1c2a
-get_slang
+# get_slang
 
 rm -rf ./.tmp
 
