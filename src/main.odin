@@ -2,7 +2,7 @@ package main
 
 import "core:log"
 import "gfx"
-// import "core:mem"
+import "core:mem"
 // import "core:time"
 import "shared:back"
 
@@ -30,6 +30,9 @@ main :: proc() {
 	devices, _ := gfx.enumerate_devices()
 	log.infof("%#v", devices)
 	gfx.select_device(devices[0].id)
+
+	chunky_boy, chunky_boy_res := gfx.alloc(.Private, 512 * mem.Gigabyte)
+	log.info(chunky_boy, chunky_boy_res)
 
 	// buffer, _ := gfx.alloc(.Default, 128 * 1024 * 1024)
 	buffer, _ := gfx.alloc(.Default, 128 * 1024 * 1024 + 1)
@@ -86,11 +89,15 @@ main :: proc() {
 	sampler, _ := gfx.create_sampler(sampler_desc)
 	defer gfx.destroy_sampler(sampler)
 
+	one: f32 = 1.0
 	bytecode, _ := gfx.load_bytecode_of("basic", "./build", context.temp_allocator)
 	pipeline, pipeline_res := gfx.create_compute_pipeline(
 		{
 			bytecode	= bytecode,
 			entrypoint	= "computeMain",
+			constants = {
+				{ index = 0, type = .F32, value = &one },
+			},
 		},
 		{ 1, 1, 1 },
 	)

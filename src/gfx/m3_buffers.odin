@@ -33,7 +33,12 @@ m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 	heap_desc->setType(.Placement)
 
 	heap := m3_device->newHeap(heap_desc)
+	if heap == nil {
+		return .Out_Of_Gpu_Memory
+	}
+
 	buffer := heap->newBufferWithOptions(cast(NS.UInteger)size, resource_options, 0)
+	assert(buffer != nil, "If the MTLHeap allocation succeded, then the buffer allocation should succede.")
 
 	gpu_address := buffer->gpuAddress()
 	cpu_address: rawptr
@@ -59,10 +64,14 @@ m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 //	- Default and readback memory should use MTLStorageModeManaged
 //	- m3_mark_as_modified maps to MTLBuffer->didModifyRange()
 //	- m3_prepare_for_readback maps to MTLBuffer->synchronizeResource()
-m3_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) {}
-m3_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) {}
+m3_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) -> Result {
+	return nil
+}
+m3_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) -> Result {
+	return nil
+}
 
-m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) {
+m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
 
 	heap_label := NS.String.alloc()->initWithOdinString(label)
 	defer heap_label->release()
@@ -72,5 +81,7 @@ m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) {
 
 	metadata.m3.heap->setLabel(heap_label)
 	metadata.m3.buffer->setLabel(buffer_label)
+
+	return nil
 }
 

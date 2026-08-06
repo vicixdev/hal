@@ -11,7 +11,7 @@ vk_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Desc
 	sampler_info := vk_sampler_descriptor_to_vk(descriptor)
 	
 	sampler: vk.Sampler
-	vk_call(vk.CreateSampler(vk_device, &sampler_info, nil, &sampler))
+	vk_call(vk.CreateSampler(vk_device, &sampler_info, nil, &sampler)) or_return
 
 	metadata.vk.sampler = sampler
 
@@ -23,7 +23,7 @@ vk_destroy_sampler :: proc(metadata: ^_Sampler_Metadata) {
 }
 
 vk_label_sampler :: proc(metadata: ^_Sampler_Metadata, label: string) -> Result {
-	vk_label_object(metadata.vk.sampler, .SAMPLER, label)
+	vk_label_object(metadata.vk.sampler, .SAMPLER, label) or_return
 
 	return nil
 }

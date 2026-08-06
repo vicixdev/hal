@@ -49,7 +49,7 @@ vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device
 
 	vk_device_infos = make([dynamic]Device_Info, allocator) or_return
 	for device in available_devices {
-		info := vk_device_info_of(device)
+		info := vk_device_info_of(device) or_return
 
 		if !vk_is_device_suitable(device, &info) {
 			continue
@@ -122,14 +122,15 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	}
 
 	// log.debugf("Creating device with extensions: %v.", vk_enabled_device_extensions)
-	vk_call(vk.CreateDevice(vk_physical_device, &descriptor, nil, &vk_device))
+	vk_call(vk.CreateDevice(vk_physical_device, &descriptor, nil, &vk_device)) or_return
 
-	vk_setup_pipeline_layouts()
+	vk_setup_pipeline_layouts() or_return
+	vk_setup_pipeline_cache() or_return
 
 	return nil
 }
 
-vk_setup_pipeline_layouts :: proc() {
+vk_setup_pipeline_layouts :: proc() -> Result {
 	compute_push_constant_range := vk.PushConstantRange {
 		stageFlags	= { .COMPUTE },
 		offset		= 0,
@@ -142,25 +143,29 @@ vk_setup_pipeline_layouts :: proc() {
 		pPushConstantRanges	= &compute_push_constant_range,
 	}
 
-	vk_call(vk.CreatePipelineLayout(vk_device, &compute_layout_info, nil, &vk_compute_pipeline_layout))
+	vk_call(vk.CreatePipelineLayout(vk_device, &compute_layout_info, nil, &vk_compute_pipeline_layout)) or_return
+
+	return nil
 }
 
-vk_setup_pipeline_cache :: proc() {
+vk_setup_pipeline_cache :: proc() -> Result {
 	// TODO: Persistent pipeline cache
 	pipeline_cache_info := vk.PipelineCacheCreateInfo {
 		sType			= .PIPELINE_CACHE_CREATE_INFO,
 		initialDataSize		= 0,
 	}
-	vk_call(vk.CreatePipelineCache(vk_device, &pipeline_cache_info, nil, &vk_pipeline_cache))
+	vk_call(vk.CreatePipelineCache(vk_device, &pipeline_cache_info, nil, &vk_pipeline_cache)) or_return
+
+	return nil
 }
 
-vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info) {
+vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res: Result) {
 	vk_info := &info._platform.vk
 
 	extension_count: u32
-	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, nil))
+	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, nil)) or_return
 	vk_info.extensions = make([]vk.ExtensionProperties, extension_count, _global_allocator)
-	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, raw_data(vk_info.extensions)))
+	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, raw_data(vk_info.extensions))) or_return
 
 	vk_info.physical_device		= device
 	vk_info.properties.sType	= .PHYSICAL_DEVICE_PROPERTIES_2
@@ -174,10 +179,10 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info) {
 	vk_find_memory_types(device, &info)
 	vk_find_queue_families(device, &info)
 
-	// TODO: Fix memory leak
-	info.name = strings.string_from_ptr(
-		raw_data(vk_info.properties.properties.deviceName[:]),
+	info.name = strings.clone_from_cstring_bounded(
+		cast(cstring)&vk_info.properties.properties.deviceName[0],
 		len(vk_info.properties.properties.deviceName),
+		_global_allocator,
 	)
 	info.type = vk_PHYSICAL_DEVICE_TYPE_TO_GFX[vk_info.properties.properties.deviceType]
 

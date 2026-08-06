@@ -138,6 +138,25 @@ _check_result :: proc(
 	return res
 }
 
+_check_specific_result :: proc(
+	res:		Result,
+	check:		Result,
+	type:		Message_Type,
+	failure_reason:	string,
+	info_message:	string,
+	args:		..any,
+	location:	runtime.Source_Code_Location = {},
+) -> Result {
+	
+	if res != check {
+		return nil
+	}
+
+	_queue_message(res, type, failure_reason, info_message, args=args, location=location)
+
+	return res
+}
+
 _check_condition :: proc(
 	cond:		bool,
 	res:		Result,

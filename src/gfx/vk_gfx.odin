@@ -3,6 +3,7 @@ package gfx
 import "base:runtime"
 import "base:intrinsics"
 import "core:dynlib"
+import "core:strings"
 import "core:log"
 import vk "vendor:vulkan"
 
@@ -27,7 +28,7 @@ vk_instance:			vk.Instance
 vk_has_validation:		bool
 vk_user_logger:			log.Logger
 
-vk_load_instance_procs :: proc() {
+vk_load_instance_procs :: proc() -> Result {
 	loader_path := _settings.vk.loader_path
 	if loader_path == "" {
 		loader_path = vk_VULKAN_LOADER_PATH
@@ -41,6 +42,8 @@ vk_load_instance_procs :: proc() {
 	assert(get_proc_ok, "Could not acquire the vkGetInstanceProc address from the vulkan loader.")
 
 	vk.load_proc_addresses(vk_get_proc)
+
+	return nil
 }
 
 vk_try_use_instance_layer :: proc(layer: cstring) -> (found_layer: bool) {
@@ -77,13 +80,13 @@ vk_try_use_instance_extension :: proc(extension: cstring) -> (found_extension: b
 	return
 }
 
-vk_init_instance :: proc() {
+vk_init_instance :: proc() -> Result {
 	vk_has_validation = ODIN_DEBUG
 
 	instance_layer_count: u32
-	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, nil))
+	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, nil)) or_return
 	vk_instance_layers = make([]vk.LayerProperties, instance_layer_count, _global_allocator)
-	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, raw_data(vk_instance_layers)))
+	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, raw_data(vk_instance_layers))) or_return
 
 	log.debugf("Available instance layers:")
 	for &layer in vk_instance_layers {
@@ -95,9 +98,9 @@ vk_init_instance :: proc() {
 	}
 
 	instance_extension_count: u32 
-	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, nil))
+	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, nil)) or_return
 	vk_instance_extensions = make([]vk.ExtensionProperties, instance_extension_count, _global_allocator)
-	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, raw_data(vk_instance_extensions)))
+	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, raw_data(vk_instance_extensions))) or_return
 
 	log.debugf("Available instance extensions:")
 	for &extension in vk_instance_extensions {
@@ -150,16 +153,18 @@ vk_init_instance :: proc() {
 		vk_link(&instance_desc, &export_info)
 	}
 
-	vk_call(vk.CreateInstance(&instance_desc, nil, &vk_instance))
+	vk_call(vk.CreateInstance(&instance_desc, nil, &vk_instance)) or_return
 	vk.load_proc_addresses(vk_instance)
 
 	if vk_has_validation {
-		vk_call(vk.CreateDebugUtilsMessengerEXT(vk_instance, &vk_debug_messenger_descriptor, nil, &vk_debug_messenger))
+		vk_call(vk.CreateDebugUtilsMessengerEXT(vk_instance, &vk_debug_messenger_descriptor, nil, &vk_debug_messenger)) or_return
 	}
 
 	version: u32
 	vk.EnumerateInstanceVersion(&version)
 	log.debugf("Using Vulkan 1.3.0 (available %d.%d.%d).", vk.VERSION_MAJOR(version), vk.VERSION_MINOR(version), vk.VERSION_PATCH(version))
+
+	return nil
 }
 
 vk_prepare_debug_messenger :: proc() {
@@ -219,11 +224,12 @@ vk_prepare_debug_messenger :: proc() {
 	}
 }
 
-vk_init :: proc() {
-
-	vk_load_instance_procs()
+vk_init :: proc() -> Result {
+	vk_load_instance_procs() or_return
 	vk_prepare_debug_messenger()
-	vk_init_instance()
+	vk_init_instance() or_return
+
+	return nil
 }
 
 vk_fini :: proc() {
@@ -313,16 +319,50 @@ vk_submit :: proc(cb: Command_Buffer) -> Result {
 	return nil
 }
 
-vk_call :: proc(res: vk.Result, expr := #caller_expression, loc := #caller_location) {
-	when ODIN_DEBUG {
-		if res == .SUCCESS {
-			return
-		}
-
-		log.panicf("Vulkan error (%s).", expr)
-	} else {
-		assert(res == .SUCCESS, "Vulkan error.", loc)
+vk_label_object_with_cstring :: proc(object: $T, type: vk.ObjectType, label: cstring) -> Result {
+	if !vk_has_validation {
+		return nil
 	}
+
+	label := vk.DebugUtilsObjectNameInfoEXT {
+		sType		= .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+		objectType	= type,
+		objectHandle	= cast(u64)object,
+		pObjectName	= label,
+	}
+	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label)) or_return
+
+	return nil
+}
+
+vk_label_object_with_string :: proc(object: $T, type: vk.ObjectType, label: string) -> Result {
+	if !vk_has_validation {
+		return nil
+	}
+
+	label := vk.DebugUtilsObjectNameInfoEXT {
+		sType		= .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+		objectType	= type,
+		objectHandle	= cast(u64)object,
+		pObjectName	= strings.clone_to_cstring(label, _temp_allocator),
+	}
+	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label)) or_return
+
+	return nil
+}
+
+vk_label_object :: proc {
+	vk_label_object_with_string,
+	vk_label_object_with_cstring,
+}
+
+vk_call :: proc(res: vk.Result, expr := #caller_expression, loc := #caller_location) -> Result {
+	if res == .SUCCESS {
+		return nil
+	}
+	
+	log.errorf("Operation `%s` caused a vulkan error (%v).", expr, res, location=loc)
+	return vk_result_to_gfx(res)
 }
 
 vk_link :: proc(a: ^$T, b: ^$U)
@@ -335,3 +375,11 @@ vk_link :: proc(a: ^$T, b: ^$U)
 	b.pNext = old_link
 }
 
+vk_result_to_gfx :: proc(res: vk.Result) -> Result {
+	#partial switch res {
+	case .SUCCESS:				return nil
+	case .ERROR_OUT_OF_DEVICE_MEMORY:	return .Out_Of_Gpu_Memory
+	case .ERROR_OUT_OF_HOST_MEMORY:		return .Out_Of_Gpu_Memory
+	case:					return .Generic_Backend_Error
+	}
+}

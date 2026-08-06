@@ -35,11 +35,15 @@ Error :: enum {
 	Not_Initialized,
 	Device_Not_Selected,
 
+	Generic_Backend_Error,
+
 	Out_Of_Gpu_Memory,
 	Invalid_Align,
 	Incompatible_Memory_Type,
 
 	Invalid_Descriptor,
+	Invalid_Pipeline_Bytecode,
+	Invalid_Pipeline_Constants,
 
 	Invalid_Device,
 	Invalid_Buffer,
@@ -99,7 +103,7 @@ _global_allocator:	runtime.Allocator
 _temp_scratch:		mem.Scratch
 _temp_allocator:	runtime.Allocator
 
-init :: proc(descriptor: Init_Descriptor) -> Result {
+init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res: Result) {
 	_settings = descriptor
 
 	vmem.arena_init_growing(&_global_arena) or_return
@@ -117,10 +121,12 @@ init :: proc(descriptor: Init_Descriptor) -> Result {
 	hm.dynamic_init(&_pipelines, _global_allocator)
 
 	when TARGET_API == .Vulkan {
-		vk_init()
+		res = vk_init()
 	} else when TARGET_API == .Metal_3 {
-		m3_init()
+		res = m3_init()
 	}
+
+	_check_generic_backend_error(res, location) or_return
 
 	_initialized = true
 
@@ -439,3 +445,26 @@ _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {
 	) or_return
 	return nil
 }
+
+_check_generic_backend_error :: proc(result: Result, location: runtime.Source_Code_Location) -> Result {
+	if res, is_alloc_error := result.(runtime.Allocator_Error); is_alloc_error && res != nil {
+		_check_result(
+			result,
+			.Error,
+			"Allocation error",
+			"The operation failed due to a memory error.",
+			location=location,
+		) or_return
+	} else {
+		_check_result(
+			result,
+			.Error,
+			"Generic backend error",
+			"The operation failed in an unexpected way.",
+			location=location,
+		) or_return
+	}
+
+	return nil
+}
+

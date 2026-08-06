@@ -1,5 +1,6 @@
 package gfx
 
+import "base:runtime"
 import hm "core:container/handle_map"
 
 Sampler :: distinct Handle
@@ -74,6 +75,7 @@ destroy_sampler :: proc(sampler: Sampler, location := #caller_location) {
 	}
 
 	metadata, metadata_res := _metadata_of(sampler)
+	_check_sampler_handle(metadata_res, sampler, location)
 	if metadata_res != nil {
 		return
 	}
@@ -87,17 +89,34 @@ destroy_sampler :: proc(sampler: Sampler, location := #caller_location) {
 	_remove_sampler_metadata(sampler)
 }
 
-label_sampler :: proc(sampler: Sampler, label: string, location := #caller_location) -> Result {
-	_check_device_selected(location) or_return
+label_sampler :: proc(sampler: Sampler, label: string, location := #caller_location) {
+	if _check_device_selected(location) != nil do return
 
-	metadata := _metadata_of(sampler) or_return
-
-	when TARGET_API == .Vulkan {
-		vk_label_sampler(metadata, label) or_return
-	} else when TARGET_API == .Metal_3 {
-		m3_label_sampler(metadata, label)
+	metadata, metadata_res := _metadata_of(sampler)
+	_check_sampler_handle(metadata_res, sampler, location)
+	if metadata_res != nil {
+		return
 	}
 
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = vk_label_sampler(metadata, label)
+	} else when TARGET_API == .Metal_3 {
+		res = m3_label_sampler(metadata, label)
+	}
+
+	_check_generic_backend_error(res, location)
+}
+
+_check_sampler_handle :: proc(result: Result, sampler: Sampler, location: runtime.Source_Code_Location) -> Result {
+	_check_result(
+		result,
+		.Warning,
+		"Invalid resource handle",
+		"Invalid sampler handle (%v).",
+		sampler,
+		location=location,
+	) or_return
 	return nil
 }
 

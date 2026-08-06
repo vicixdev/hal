@@ -1,5 +1,6 @@
 package gfx
 
+import "base:runtime"
 import "core:mem"
 import hm "core:container/handle_map"
 
@@ -81,10 +82,21 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer:
 	metadata.memory_type	= type
 
 	when TARGET_API == .Vulkan {
-		vk_alloc(metadata, type, size) or_return
+		res = vk_alloc(metadata, type, size)
 	} else when TARGET_API == .Metal_3 {
-		m3_alloc(metadata, type, size) or_return
+		res = m3_alloc(metadata, type, size)
 	}
+
+	_check_specific_result(
+		res,
+		.Out_Of_Gpu_Memory,
+		.Warning,
+		"Out of GPU memory",
+		"The requested allocation of %d bytes failed: not enough free GPU memory.",
+		size,
+		location=location,
+	) or_return
+	_check_generic_backend_error(res, location) or_return
 
 	buffer.handle = handle
 	if type == .Private {
@@ -101,8 +113,9 @@ dealloc :: proc(buffer: Buffer, location := #caller_location) {
 		return
 	}
 
-	metadata, res := _metadata_of(buffer)
-	if res != nil {
+	metadata, metadata_res := _metadata_of(buffer)
+	_check_buffer_handle(metadata_res, buffer, location)
+	if metadata_res != nil {
 		return
 	}
 
@@ -118,7 +131,8 @@ dealloc :: proc(buffer: Buffer, location := #caller_location) {
 gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address: uintptr, res: Result) {
 	_check_device_selected(location) or_return
 
-	metadata := _metadata_of(buffer) or_return
+	metadata, metadata_res := _metadata_of(buffer)
+	_check_buffer_handle(metadata_res, buffer, location) or_return
 
 	if metadata.memory_type == .Private {
 		return buffer.address, nil
@@ -128,61 +142,89 @@ gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address
 	return metadata.gpu_address + offset, nil
 }
 
-mark_as_modified :: proc(buffer: Buffer, length: int, location := #caller_location) -> Result {
-	_check_device_selected(location) or_return
+mark_as_modified :: proc(buffer: Buffer, length: int, location := #caller_location) {
+	if _check_device_selected(location) != nil do return
 
-	metadata := _metadata_of(buffer) or_return
+	metadata, metadata_res := _metadata_of(buffer)
+	_check_buffer_handle(metadata_res, buffer, location)
+	if metadata_res != nil {
+		return
+	}
 
 	// NOTE: Only `.Default` can be used to upload data. `.Readback` can only be used for downloading data.
 	if metadata.memory_type != .Default {
-		return nil
+		return
 	}
 
+	res: Result
 	when TARGET_API == .Vulkan {
-		vk_mark_as_modified(metadata, buffer, length)
+		res = vk_mark_as_modified(metadata, buffer, length)
 	} else when TARGET_API == .Metal_3 {
-		m3_mark_as_modified(metadata, buffer, length)
+		res = m3_mark_as_modified(metadata, buffer, length)
 	}
 
-	return nil
+	_check_generic_backend_error(res, location)
 }
 
-prepare_for_readback :: proc(buffer: Buffer, length: int, location := #caller_location) -> Result {
-	_check_device_selected(location) or_return
+prepare_for_readback :: proc(buffer: Buffer, length: int, location := #caller_location) {
+	if _check_device_selected(location) != nil do return
 
-	metadata := _metadata_of(buffer) or_return
+	metadata, metadata_res := _metadata_of(buffer)
+	_check_buffer_handle(metadata_res, buffer, location)
+	if metadata_res != nil {
+		return
+	}
 
 	// NOTE: Both `.Default` and `.Readback` can be used for readback (download) purposes.
 	if metadata.memory_type == .Private {
-		return nil
+		return
 	}
 
+	res: Result
 	when TARGET_API == .Vulkan {
-		vk_prepare_for_readback(metadata, buffer, length)
+		res = vk_prepare_for_readback(metadata, buffer, length)
 	} else when TARGET_API == .Metal_3 {
-		m3_prepare_for_readback(metadata, buffer, length)
+		res = m3_prepare_for_readback(metadata, buffer, length)
 	}
 
+	_check_generic_backend_error(res, location)
+}
+
+label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location) {
+	if _check_device_selected(location) != nil do return
+
+	metadata, metadata_res := _metadata_of(buffer)
+	_check_buffer_handle(metadata_res, buffer, location)
+	if metadata_res != nil {
+		return
+	}
+
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = vk_label_buffer(metadata, label)
+	} else when TARGET_API == .Metal_3 {
+		res = m3_label_buffer(metadata, label)
+	}
+
+	_check_generic_backend_error(res, location)
+}
+
+_check_buffer_handle :: proc(result: Result, buffer: Buffer, location: runtime.Source_Code_Location) -> Result {
+	_check_result(
+		result,
+		.Warning,
+		"Invalid resource handle",
+		"Invalid buffer handle (%v).",
+		buffer.handle,
+		location=location,
+	) or_return
 	return nil
 }
 
-label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location) -> Result {
-	_check_device_selected(location) or_return
-
-	metadata := _metadata_of(buffer) or_return
-
-	when TARGET_API == .Vulkan {
-		vk_label_buffer(metadata, label)
-	} else when TARGET_API == .Metal_3 {
-		m3_label_buffer(metadata, label)
-	}
-
-	return nil
-}
-
-_buffer_metadata_of :: proc(buffer: Buffer) -> (^_Buffer_Metadata, Result) {
-	metadata, ok := hm.get(&_buffers, buffer.handle)
-	if !ok {
+_buffer_metadata_of :: proc(buffer: Buffer) -> (metadata: ^_Buffer_Metadata, res: Result) {
+	metadata_ok: bool
+	metadata, metadata_ok = hm.get(&_buffers, buffer.handle)
+	if !metadata_ok {
 		return nil, .Invalid_Buffer
 	}
 	

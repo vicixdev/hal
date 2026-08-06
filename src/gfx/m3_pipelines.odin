@@ -3,7 +3,6 @@ package gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import "core:log"
 import "shared:darwext/dispatch"
 
 m3_Pipeline_Stage_Metadata :: struct {
@@ -40,8 +39,14 @@ m3_create_compute_pipeline :: proc(
 
 	library, library_err := m3_device->newLibraryWithData(bytecode_data)
 	if library_err != nil {
-		log.errorf("%s - %s", library_err->localizedFailureReason()->odinString(), library_err->localizedDescription()->odinString())
-		return .Invalid_Pipeline
+		_queue_generic_message(
+			.Error,
+			"Shader compilation error",
+			"The metal library could not compile: %s -- %s",
+			library_err->localizedFailureReason()->odinString(),
+			library_err->localizedDescription()->odinString(),
+		)
+		return .Invalid_Pipeline_Bytecode
 	}
 
 	function_name := NS.String.alloc()->initWithOdinString(descriptor.entrypoint)
@@ -65,8 +70,15 @@ m3_create_compute_pipeline :: proc(
 		function_err: ^NS.Error
 		function, function_err = library->newFunctionWithConstantValues(function_name, constants)
 		if function_err != nil {
-		log.errorf("%s - %s", library_err->localizedFailureReason(), library_err->localizedDescription())
-			return .Invalid_Pipeline
+			_queue_generic_message(
+				.Error,
+				"Shader compilation error",
+				"The metal function `%s` could not specialized: %s -- %s",
+				descriptor.entrypoint,
+				function_err->localizedFailureReason()->odinString(),
+				function_err->localizedDescription()->odinString(),
+			)
+			return .Invalid_Pipeline_Constants
 		}
 	}
 

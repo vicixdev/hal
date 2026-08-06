@@ -63,18 +63,20 @@ enumerate_devices :: proc(
 	}
 
 	when TARGET_API == .Vulkan {
-		_available_devices = vk_enumerate_devices(_global_allocator) or_return
+		_available_devices, res = vk_enumerate_devices(_global_allocator)
 	} else when TARGET_API == .Metal_3 {
-		_available_devices = m3_enumerate_devices(_global_allocator) or_return
+		_available_devices, res = m3_enumerate_devices(_global_allocator)
 	}
+
+	_check_generic_backend_error(res, location) or_return
 
 	return _available_devices, nil
 }
 
-select_device :: proc(device: Device_Id, location := #caller_location) -> Result {
+select_device :: proc(device: Device_Id, location := #caller_location) -> (res: Result) {
 	_check_initialized(location) or_return
 
-	enumerate_devices() or_return
+	enumerate_devices(location) or_return
 
 	_check_condition(
 		cast(uint)device < len(_available_devices),
@@ -88,10 +90,12 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> Result
 	) or_return
 
 	when TARGET_API == .Vulkan {
-		vk_select_device(device) or_return
+		res = vk_select_device(device)
 	} else when TARGET_API == .Metal_3 {
-		m3_select_device(device) or_return
+		res = m3_select_device(device)
 	}
+
+	_check_generic_backend_error(res, location) or_return
 
 	_is_device_selected = true
 	_device_info = &_available_devices[device]

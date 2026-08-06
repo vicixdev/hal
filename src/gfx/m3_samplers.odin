@@ -11,6 +11,9 @@ m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Desc
 
 	sampler_desc := m3_sampler_descriptor_to_mtl(descriptor)
 	sampler := m3_device->newSamplerState(sampler_desc)
+	if sampler == nil {
+		return .Generic_Backend_Error
+	}
 	
 	metadata.m3.sampler = sampler
 

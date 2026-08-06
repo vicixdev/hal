@@ -13,9 +13,9 @@ Constant_Type :: enum {
 }
 
 Constant :: struct {
-	index: int,
-	value: rawptr,
-	type:  Constant_Type,
+	index:	int,
+	value:	rawptr,
+	type:	Constant_Type,
 }
 
 Shader_Stage_Descriptor :: struct {
@@ -66,10 +66,34 @@ create_compute_pipeline :: proc(
 	metadata.compute.desc = descriptor
 
 	when TARGET_API == .Vulkan {
-		vk_create_compute_pipeline(metadata, descriptor, group_size) or_return
+		res = vk_create_compute_pipeline(metadata, descriptor, group_size)
 	} else when TARGET_API == .Metal_3 {
-		m3_create_compute_pipeline(metadata, descriptor, group_size) or_return
+		res = m3_create_compute_pipeline(metadata, descriptor, group_size)
 	}
+
+	_check_specific_result(
+		res,
+		.Invalid_Pipeline_Bytecode,
+		.Error,
+		"Invalid Pipeline Bytecode",
+		"Could not create the compute pipeline because its bytecode (at 0x%x, %d bytes, `%s` entrypoint) is " +
+		"malformed.",
+		raw_data(descriptor.bytecode),
+		len(descriptor.bytecode),
+		descriptor.entrypoint,
+	) or_return
+	_check_specific_result(
+		res,
+		.Invalid_Pipeline_Constants,
+		.Error,
+		"Invalid Pipeline Constants",
+		"Could not create the compute pipeline (bytecode at 0x%x - %d bytes, `%s` entrypoint) because its " +
+		"constants are not valid for the specified bytecode.",
+		raw_data(descriptor.bytecode),
+		len(descriptor.bytecode),
+		descriptor.entrypoint,
+	) or_return
+	_check_generic_backend_error(res, location) or_return
 
 	return handle, nil
 }
@@ -91,6 +115,7 @@ destroy_pipeline :: proc(pipeline: Pipeline, location := #caller_location) {
 	_check_device_selected(location)
 	
 	metadata, metadata_res := _metadata_of(pipeline)
+	_check_pipeline_handle(metadata_res, pipeline, location)
 	if metadata_res != nil {
 		return
 	}
@@ -127,6 +152,18 @@ load_bytecode_of :: proc(
 	bytecode = os.read_entire_file(bytecode_path, allocator) or_return
 
 	return
+}
+
+_check_pipeline_handle :: proc(result: Result, pipeline: Pipeline, location: runtime.Source_Code_Location) -> Result {
+	_check_result(
+		result,
+		.Warning,
+		"Invalid resource handle",
+		"Invalid pipeline handle (%v).",
+		pipeline,
+		location=location,
+	) or_return
+	return nil
 }
 
 _pipeline_metadata_of :: proc(pipeline: Pipeline) -> (^_Pipeline_Metadata, Result) {

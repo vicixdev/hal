@@ -1,7 +1,6 @@
 package gfx
 
 import "core:fmt"
-import "core:strings"
 import vk "vendor:vulkan"
 
 vk_Buffer_Metadata :: struct {
@@ -9,7 +8,7 @@ vk_Buffer_Metadata :: struct {
 	buffer:		vk.Buffer,
 }
 
-vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result {
+vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: Result) {
 
 	memory_type := type == .Private ? vk_device_info.private_memory : vk_device_info.shared_memory
 
@@ -25,7 +24,8 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 	}
 
 	memory: vk.DeviceMemory
-	vk_call(vk.AllocateMemory(vk_device, &allocate_info, nil, &memory))
+	vk_call(vk.AllocateMemory(vk_device, &allocate_info, nil, &memory)) or_return
+	defer if res != nil do vk.FreeMemory(vk_device, memory, nil)
 
 	queue_family_indices: []u32
 	if vk_device_info.has_transfer_queue_family {
@@ -51,10 +51,10 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 	}
 
 	buffer: vk.Buffer
-	vk_call(vk.CreateBuffer(vk_device, &buffer_info, nil, &buffer))
+	vk_call(vk.CreateBuffer(vk_device, &buffer_info, nil, &buffer)) or_return
+	defer if res != nil do vk.DestroyBuffer(vk_device, buffer, nil)
 
-	vk_call(vk.BindBufferMemory(vk_device, buffer, memory, 0))
-
+	vk_call(vk.BindBufferMemory(vk_device, buffer, memory, 0)) or_return
 
 	buffer_address_info := vk.BufferDeviceAddressInfo {
 		sType	= .BUFFER_DEVICE_ADDRESS_INFO,
@@ -64,11 +64,11 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 
 	cpu_address: rawptr
 	if type != .Private {
-		vk_call(vk.MapMemory(vk_device, memory, 0, cast(vk.DeviceSize)size, {}, &cpu_address))
+		vk_call(vk.MapMemory(vk_device, memory, 0, cast(vk.DeviceSize)size, {}, &cpu_address)) or_return
 	}
 
-	metadata.cpu_address	= cast(uintptr)cpu_address
-	metadata.gpu_address	= cast(uintptr)gpu_address
+	metadata.cpu_address		= cast(uintptr)cpu_address
+	metadata.gpu_address		= cast(uintptr)gpu_address
 	metadata.vk.device_memory	= memory
 	metadata.vk.buffer		= buffer
 
@@ -84,9 +84,9 @@ vk_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 	vk.FreeMemory(vk_device, metadata.vk.device_memory, nil)
 }
 
-vk_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) {
+vk_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) -> Result {
 	if _device_info.properties.coherent_memory {
-		return
+		return nil
 	}
 
 	memory_range := vk.MappedMemoryRange {
@@ -95,12 +95,14 @@ vk_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length:
 		offset	= cast(vk.DeviceSize)_offset_from_base(buffer, metadata),
 		size	= cast(vk.DeviceSize)length,
 	}
-	vk_call(vk.FlushMappedMemoryRanges(vk_device, 1, &memory_range))
+	vk_call(vk.FlushMappedMemoryRanges(vk_device, 1, &memory_range)) or_return
+
+	return nil
 }
 
-vk_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) {
+vk_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) -> Result {
 	if _device_info.properties.coherent_memory {
-		return
+		return nil
 	}
 
 	memory_range := vk.MappedMemoryRange {
@@ -109,44 +111,17 @@ vk_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, len
 		offset	= cast(vk.DeviceSize)_offset_from_base(buffer, metadata),
 		size	= cast(vk.DeviceSize)length,
 	}
-	vk_call(vk.InvalidateMappedMemoryRanges(vk_device, 1, &memory_range))
+	vk_call(vk.InvalidateMappedMemoryRanges(vk_device, 1, &memory_range)) or_return
+
+	return nil
 }
 
-vk_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) {
-	vk_label_object(metadata.vk.buffer, .BUFFER, fmt.ctprint("%s (Buffer)", label))
-	vk_label_object(metadata.vk.device_memory, .DEVICE_MEMORY, fmt.ctprint("%s (Device memory)", label))
-}
+vk_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
+	context.temp_allocator = _temp_allocator
 
-vk_label_object_with_cstring :: proc(object: $T, type: vk.ObjectType, label: cstring) {
-	if !vk_has_validation {
-		return
-	}
+	vk_label_object(metadata.vk.buffer, .BUFFER, fmt.ctprint("%s (Buffer)", label)) or_return
+	vk_label_object(metadata.vk.device_memory, .DEVICE_MEMORY, fmt.ctprint("%s (Device memory)", label)) or_return
 
-	label := vk.DebugUtilsObjectNameInfoEXT {
-		sType		= .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-		objectType	= type,
-		objectHandle	= cast(u64)object,
-		pObjectName	= label,
-	}
-	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label))
-}
-
-vk_label_object_with_string :: proc(object: $T, type: vk.ObjectType, label: string) {
-	if !vk_has_validation {
-		return
-	}
-
-	label := vk.DebugUtilsObjectNameInfoEXT {
-		sType		= .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-		objectType	= type,
-		objectHandle	= cast(u64)object,
-		pObjectName	= strings.clone_to_cstring(label, _temp_allocator),
-	}
-	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label))
-}
-
-vk_label_object :: proc {
-	vk_label_object_with_string,
-	vk_label_object_with_cstring,
+	return nil
 }
 

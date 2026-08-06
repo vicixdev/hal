@@ -99,6 +99,9 @@ m3_create_view_with_descriptor :: proc(
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_mip, cast(NS.UInteger)descriptor.mip_count),
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_layer, cast(NS.UInteger)descriptor.layer_count),
 	)
+	if view == nil {
+		return .Out_Of_Gpu_Memory
+	}
 
 	metadata.m3.view = view
 

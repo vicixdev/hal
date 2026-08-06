@@ -36,24 +36,26 @@ vk_create_texture :: proc(
 	buffer_metadata:	^_Buffer_Metadata,
 	default_view_metadata:	^_View_Metadata,
 	descriptor:		Texture_Descriptor,
-) -> (handle: Texture, res: Result) {
+) -> (res: Result) {
 
 	image_info := vk_texture_descriptor_to_vk(descriptor)
 
 	image: vk.Image
-	vk_call(vk.CreateImage(vk_device, &image_info, nil, &image))
+	vk_call(vk.CreateImage(vk_device, &image_info, nil, &image)) or_return
+	defer if res != nil do vk.DestroyImage(vk_device, image, nil)
 
 	vk_call(vk.BindImageMemory(
 		vk_device,
 		image,
 		buffer_metadata.vk.device_memory,
 		cast(vk.DeviceSize)_offset_from_base(buffer, buffer_metadata),
-	))
+	)) or_return
 
 	view_info := vk_texture_descriptor_to_vk_view(descriptor, image)
 
 	view: vk.ImageView
-	vk_call(vk.CreateImageView(vk_device, &view_info, nil, &view))
+	vk_call(vk.CreateImageView(vk_device, &view_info, nil, &view)) or_return
+	defer if res != nil do vk.DestroyImage(vk_device, image, nil)
 
 	metadata.vk.image		= image
 	default_view_metadata.vk.view	= view
@@ -66,12 +68,12 @@ vk_destroy_texture :: proc(metadata: ^_Texture_Metadata) {
 }
 
 vk_label_texture :: proc(metadata: ^_Texture_Metadata, label: string) -> Result {
-	vk_label_object(metadata.vk.image, .IMAGE, label)
+	vk_label_object(metadata.vk.image, .IMAGE, label) or_return
 
 	view_metadata, view_res := _metadata_of(metadata.default_view)
 	assert(view_res == nil, "Could not find the default view of an image.")
 
-	vk_label_object(view_metadata.vk.view, .IMAGE_VIEW, fmt.ctprintf("%s (default view)", label))
+	vk_label_object(view_metadata.vk.view, .IMAGE_VIEW, fmt.ctprintf("%s (default view)", label)) or_return
 
 	return nil
 }
@@ -85,7 +87,7 @@ vk_create_view_with_descriptor :: proc(
 	view_info := vk_view_descriptor_to_vk(descriptor, texture_metadata)
 
 	view: vk.ImageView
-	vk_call(vk.CreateImageView(vk_device, &view_info, nil, &view))
+	vk_call(vk.CreateImageView(vk_device, &view_info, nil, &view)) or_return
 
 	metadata.vk.view = view
 
@@ -93,7 +95,7 @@ vk_create_view_with_descriptor :: proc(
 }
 
 vk_label_view :: proc(metadata: ^_View_Metadata, label: string) -> Result {
-	vk_label_object(metadata.vk.view, .IMAGE_VIEW, label)
+	vk_label_object(metadata.vk.view, .IMAGE_VIEW, label) or_return
 
 	return nil
 }

@@ -28,7 +28,12 @@ vk_create_compute_pipeline :: proc(
 ) -> Result {
 
 	shader_module_info := vk_shader_stage_descriptor_to_vk(descriptor)
-	vk_call(vk.CreateShaderModule(vk_device, &shader_module_info, nil, &metadata.vk.compute.module))
+	vk_res := vk.CreateShaderModule(vk_device, &shader_module_info, nil, &metadata.vk.compute.module)
+	if vk_res == .ERROR_INITIALIZATION_FAILED || vk_res == .ERROR_INVALID_SHADER_NV {
+		return .Invalid_Pipeline_Bytecode
+	} else if vk_res != .SUCCESS {
+		return vk_result_to_gfx(vk_res)
+	}
 
 	pipeline_info: vk.ComputePipelineCreateInfo
 	if descriptor.constants != nil {
@@ -54,7 +59,7 @@ vk_create_compute_pipeline :: proc(
 			&pipeline_info,
 			nil,
 			&metadata.vk.compute.pipeline,
-		))
+		)) or_return
 	}
 	
 	return nil
