@@ -63,9 +63,9 @@ enumerate_devices :: proc(
 	}
 
 	when TARGET_API == .Vulkan {
-		_available_devices = vk_enumerate_devices(context.allocator) or_return
+		_available_devices = vk_enumerate_devices(_global_allocator) or_return
 	} else when TARGET_API == .Metal_3 {
-		_available_devices = m3_enumerate_devices(context.allocator) or_return
+		_available_devices = m3_enumerate_devices(_global_allocator) or_return
 	}
 
 	return _available_devices, nil

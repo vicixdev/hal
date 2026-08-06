@@ -17,8 +17,8 @@ main :: proc() {
 	back.tracking_allocator_init(&tracking_allocator, context.allocator)
 	defer back.tracking_allocator_destroy(&tracking_allocator)
 
-	// context.allocator = back.tracking_allocator(&tracking_allocator)
-	// defer back.tracking_allocator_print_results(&tracking_allocator)
+	context.allocator = back.tracking_allocator(&tracking_allocator)
+	defer back.tracking_allocator_print_results(&tracking_allocator)
 
 	gfx.init({
 		vk = {

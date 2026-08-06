@@ -42,7 +42,7 @@ vk_compute_pipeline_layout:	vk.PipelineLayout
 vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device_Info, res: Result) {
 	device_count: u32
 	vk_call(vk.EnumeratePhysicalDevices(vk_instance, &device_count, nil))
-	available_devices := make([]vk.PhysicalDevice, device_count, context.temp_allocator) or_return
+	available_devices := make([]vk.PhysicalDevice, device_count, _temp_allocator) or_return
 	vk_call(vk.EnumeratePhysicalDevices(vk_instance, &device_count, raw_data(available_devices)))
 
 	device_id: Device_Id
@@ -159,7 +159,7 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info) {
 
 	extension_count: u32
 	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, nil))
-	vk_info.extensions = make([]vk.ExtensionProperties, extension_count)
+	vk_info.extensions = make([]vk.ExtensionProperties, extension_count, _global_allocator)
 	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, raw_data(vk_info.extensions)))
 
 	vk_info.physical_device		= device
@@ -175,8 +175,8 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info) {
 	vk_find_queue_families(device, &info)
 
 	// TODO: Fix memory leak
-	info.name = strings.clone_from_cstring_bounded(
-		cast(cstring)&vk_info.properties.properties.deviceName[0],
+	info.name = strings.string_from_ptr(
+		raw_data(vk_info.properties.properties.deviceName[:]),
 		len(vk_info.properties.properties.deviceName),
 	)
 	info.type = vk_PHYSICAL_DEVICE_TYPE_TO_GFX[vk_info.properties.properties.deviceType]

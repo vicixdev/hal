@@ -1,7 +1,6 @@
 package gfx
 
 import "base:runtime"
-import "core:strings"
 import "core:mem"
 import "core:log"
 import "core:os"
@@ -41,7 +40,7 @@ m3_enumerate_devices :: proc(
 			&devices,
 			Device_Info {
 				id		= device_id,
-				name		= strings.clone(device->name()->odinString(), context.allocator),
+				name		= device->name()->odinString(),
 				type		= .Integrated,
 				limits		= {
 					min_allocation_size	= 16 * mem.Kilobyte,

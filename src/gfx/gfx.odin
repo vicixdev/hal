@@ -1,6 +1,8 @@
 package gfx
 
 import "base:runtime"
+import "core:mem"
+import vmem "core:mem/virtual"
 import hm "core:container/handle_map"
 
 // Features:
@@ -90,16 +92,29 @@ Init_Descriptor :: struct {
 	m3:	struct {},
 }
 
-_settings:	Init_Descriptor
+_settings:		Init_Descriptor
 
-init :: proc(descriptor: Init_Descriptor) {
+_global_arena:		vmem.Arena
+_global_allocator:	runtime.Allocator
+_temp_scratch:		mem.Scratch
+_temp_allocator:	runtime.Allocator
+
+init :: proc(descriptor: Init_Descriptor) -> Result {
 	_settings = descriptor
 
-	_init_messaging_system()
+	vmem.arena_init_growing(&_global_arena) or_return
+	_global_allocator = vmem.arena_allocator(&_global_arena)
 
-	hm.dynamic_init(&_buffers, context.allocator)
-	hm.dynamic_init(&_textures, context.allocator)
-	hm.dynamic_init(&_samplers, context.allocator)
+	mem.scratch_init(&_temp_scratch, 32 * mem.Megabyte) or_return
+	_temp_allocator = mem.scratch_allocator(&_temp_scratch)
+
+	_init_messaging_system() or_return
+
+	hm.dynamic_init(&_buffers, _global_allocator)
+	hm.dynamic_init(&_textures, _global_allocator)
+	hm.dynamic_init(&_views, _global_allocator)
+	hm.dynamic_init(&_samplers, _global_allocator)
+	hm.dynamic_init(&_pipelines, _global_allocator)
 
 	when TARGET_API == .Vulkan {
 		vk_init()
@@ -108,6 +123,8 @@ init :: proc(descriptor: Init_Descriptor) {
 	}
 
 	_initialized = true
+
+	return nil
 }
 
 fini :: proc() {
@@ -134,12 +151,11 @@ fini :: proc() {
 		m3_fini()
 	}
 
-	hm.dynamic_destroy(&_samplers)
-	hm.dynamic_destroy(&_textures)
-	hm.dynamic_destroy(&_buffers)
-
 	print_messages()
 	_fini_messaging_system()
+
+	vmem.arena_destroy(&_global_arena)
+	mem.scratch_destroy(&_temp_scratch)
 
 	_is_device_selected = false
 	_device_info = nil

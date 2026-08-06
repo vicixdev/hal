@@ -140,7 +140,7 @@ vk_label_object_with_string :: proc(object: $T, type: vk.ObjectType, label: stri
 		sType		= .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
 		objectType	= type,
 		objectHandle	= cast(u64)object,
-		pObjectName	= strings.clone_to_cstring(label, context.temp_allocator),
+		pObjectName	= strings.clone_to_cstring(label, _temp_allocator),
 	}
 	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label))
 }

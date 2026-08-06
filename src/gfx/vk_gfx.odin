@@ -4,7 +4,6 @@ import "base:runtime"
 import "base:intrinsics"
 import "core:dynlib"
 import "core:log"
-import vmem "core:mem/virtual"
 import vk "vendor:vulkan"
 
 when ODIN_OS == .Linux {
@@ -14,9 +13,6 @@ when ODIN_OS == .Linux {
 } else {
 	#panic("Unsupported vulkan target. Only linux is currently supported.")
 }
-
-vk_global_arena:		vmem.Arena
-vk_global_allocator:		runtime.Allocator
 
 vk_loader_lib:			dynlib.Library
 
@@ -86,7 +82,7 @@ vk_init_instance :: proc() {
 
 	instance_layer_count: u32
 	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, nil))
-	vk_instance_layers = make([]vk.LayerProperties, instance_layer_count, vk_global_allocator)
+	vk_instance_layers = make([]vk.LayerProperties, instance_layer_count, _global_allocator)
 	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, raw_data(vk_instance_layers)))
 
 	log.debugf("Available instance layers:")
@@ -100,7 +96,7 @@ vk_init_instance :: proc() {
 
 	instance_extension_count: u32 
 	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, nil))
-	vk_instance_extensions = make([]vk.ExtensionProperties, instance_extension_count, vk_global_allocator)
+	vk_instance_extensions = make([]vk.ExtensionProperties, instance_extension_count, _global_allocator)
 	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, raw_data(vk_instance_extensions)))
 
 	log.debugf("Available instance extensions:")
@@ -224,11 +220,6 @@ vk_prepare_debug_messenger :: proc() {
 }
 
 vk_init :: proc() {
-
-	arena_err := vmem.arena_init_growing(&vk_global_arena)
-	assert(arena_err == .None, "Could not create a virtual arena for global allocations.")
-
-	vk_global_allocator = vmem.arena_allocator(&vk_global_arena)
 
 	vk_load_instance_procs()
 	vk_prepare_debug_messenger()

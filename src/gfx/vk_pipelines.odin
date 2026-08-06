@@ -86,7 +86,7 @@ vk_shader_stage_descriptor_to_vk :: proc(descriptor: Shader_Stage_Descriptor) ->
 		code := bytes.concatenate({
 			mem.any_to_bytes(kMVKMagicNumberMSLCompiledCode),
 			descriptor.bytecode,
-		}, context.temp_allocator)
+		}, _temp_allocator)
 
 		info.codeSize	= len(code)
 		info.pCode	= cast([^]u32)raw_data(code)
@@ -107,7 +107,7 @@ vk_make_compute_pipeline_desc :: proc(
 	info.stage	= {
 		stage			= { .COMPUTE },
 		module			= module,
-		pName			= strings.clone_to_cstring(descriptor.entrypoint, context.temp_allocator),
+		pName			= strings.clone_to_cstring(descriptor.entrypoint, _temp_allocator),
 		pSpecializationInfo	= specialization,
 	}
 
@@ -116,7 +116,6 @@ vk_make_compute_pipeline_desc :: proc(
 
 vk_constants_to_specialization_info :: proc(
 	descriptor:	Shader_Stage_Descriptor,
-	allocator :=	context.temp_allocator,
 ) -> (info: vk.SpecializationInfo) {
 
 	required_space_for_constants := 0
@@ -125,12 +124,12 @@ vk_constants_to_specialization_info :: proc(
 	}
 
 	constants_buffer: bytes.Buffer
-	bytes.buffer_init_allocator(&constants_buffer, 0, required_space_for_constants, allocator)
+	bytes.buffer_init_allocator(&constants_buffer, 0, required_space_for_constants, _temp_allocator)
 	for constant in descriptor.constants {
 		bytes.buffer_write_ptr(&constants_buffer, constant.value, _SIZE_OF_CONSTANT_TYPE[constant.type])
 	}
 
-	entries := make([]vk.SpecializationMapEntry, len(descriptor.constants), allocator)
+	entries := make([]vk.SpecializationMapEntry, len(descriptor.constants), _temp_allocator)
 	offset := 0
 	for &entry, i in entries {
 		size := _SIZE_OF_CONSTANT_TYPE[descriptor.constants[i].type]

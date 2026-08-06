@@ -15,7 +15,9 @@ struct Sampler_Wrap {
     DescriptorHandle<SamplerState> handle;
 }
 
+[[vk::binding(0, 0)]]
 StructuredBuffer<Texture2D_Wrap> texture_2d_heap;
+[[vk::binding(0, 1)]]
 StructuredBuffer<Sampler_Wrap> sampler_heap;
 
 // StructuredBuffer<DescriptorHandle<Texture2D>> texture_2d_heap;
