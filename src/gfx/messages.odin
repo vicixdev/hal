@@ -197,3 +197,4 @@ _check_generic_condition :: proc(
 _impl :: proc(a, b: bool) -> bool {
 	return !a || b
 }
+

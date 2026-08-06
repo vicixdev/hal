@@ -327,7 +327,7 @@ vk_label_object_with_cstring :: proc(object: $T, type: vk.ObjectType, label: cst
 	label := vk.DebugUtilsObjectNameInfoEXT {
 		sType		= .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
 		objectType	= type,
-		objectHandle	= cast(u64)object,
+		objectHandle	= cast(u64)cast(uintptr)object,
 		pObjectName	= label,
 	}
 	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label)) or_return

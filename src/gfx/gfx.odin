@@ -23,10 +23,17 @@ Target_Api :: enum {
 
 TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
 } else when TARGET_API_STRING == "Metal_3" {
 	TARGET_API :: Target_Api.Metal_3
+} else when TARGET_API_STRING == "" {
+	when ODIN_OS == .Darwin {
+		TARGET_API :: Target_Api.Metal_3
+	} else {
+		TARGET_API :: Target_Api.Vulkan
+	}
 } else {
 	#panic("Invalid GFX_TARGET_API parameter: expected `Vulkan` or `Metal_3`, got `" + TARGET_API_STRING + "`.")
 }
@@ -85,7 +92,7 @@ Stage :: enum {
 
 Stages :: bit_set[Stage]
 
-Command_Buffer :: distinct Handle
+// Command_Buffer :: distinct Handle
 
 _initialized:	bool
 

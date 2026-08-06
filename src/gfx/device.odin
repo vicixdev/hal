@@ -91,14 +91,17 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 
 	when TARGET_API == .Vulkan {
 		res = vk_select_device(device)
+		_check_generic_backend_error(res, location) or_return
+
 	} else when TARGET_API == .Metal_3 {
 		res = m3_select_device(device)
+		_check_generic_backend_error(res, location) or_return
 	}
 
-	_check_generic_backend_error(res, location) or_return
+	_device_info = &_available_devices[device]
+	ensure(_setup_queues() == nil, "If the device got selected, then the queue setup should not fail.")
 
 	_is_device_selected = true
-	_device_info = &_available_devices[device]
 
 	return nil
 }

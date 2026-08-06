@@ -308,11 +308,11 @@ vk_find_queue_families :: proc(device: vk.PhysicalDevice, info: ^Device_Info) {
 
 	// NOTE: If we couln't find a different queue family for transfer, then let's try to use the default one as
 	//	transfer.
-	if !vk_info.has_transfer_queue_family {
-		if vk_info.queue_families[vk_info.default_queue_family].queueFamilyProperties.queueCount > 1 {
-			vk_info.transfer_queue_family = vk_info.default_queue_family
-		}
-	}
+	// if !vk_info.has_transfer_queue_family {
+	// 	if vk_info.queue_families[vk_info.default_queue_family].queueFamilyProperties.queueCount > 1 {
+	// 		vk_info.transfer_queue_family = vk_info.default_queue_family
+	// 	}
+	// }
 }
 
 vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> bool {
