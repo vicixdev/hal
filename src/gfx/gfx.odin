@@ -31,6 +31,13 @@ when TARGET_API_STRING == "Vulkan" {
 	#panic("Invalid GFX_TARGET_API parameter: expected `Vulkan` or `Metal_3`, got `" + TARGET_API_STRING + "`.")
 }
 
+when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
+	#panic(
+		"The Metal_3 backend is only available when targeting macOS. Please use the Vulkan backend for other " +
+		"platforms.",
+	)
+}
+
 Error :: enum {
 	Not_Initialized,
 	Device_Not_Selected,
