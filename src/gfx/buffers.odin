@@ -8,7 +8,7 @@ Memory :: enum {
 	Default,
 	Private,
 	Readback,
-	// Staging,
+	Staging,
 }
 
 Buffer :: struct {
@@ -141,54 +141,6 @@ gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address
 
 	offset := _offset_from_base(buffer, metadata)
 	return metadata.gpu_address + offset, nil
-}
-
-mark_as_modified :: proc(buffer: Buffer, length: int, location := #caller_location) {
-	if _check_device_selected(location) != nil do return
-
-	metadata, metadata_res := _metadata_of(buffer)
-	_check_buffer_handle(metadata_res, buffer, location)
-	if metadata_res != nil {
-		return
-	}
-
-	// NOTE: Only `.Default` can be used to upload data. `.Readback` can only be used for downloading data.
-	if metadata.memory_type != .Default {
-		return
-	}
-
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_mark_as_modified(metadata, buffer, length)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_mark_as_modified(metadata, buffer, length)
-	}
-
-	_check_generic_backend_error(res, location)
-}
-
-prepare_for_readback :: proc(buffer: Buffer, length: int, location := #caller_location) {
-	if _check_device_selected(location) != nil do return
-
-	metadata, metadata_res := _metadata_of(buffer)
-	_check_buffer_handle(metadata_res, buffer, location)
-	if metadata_res != nil {
-		return
-	}
-
-	// NOTE: Both `.Default` and `.Readback` can be used for readback (download) purposes.
-	if metadata.memory_type == .Private {
-		return
-	}
-
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_prepare_for_readback(metadata, buffer, length)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_prepare_for_readback(metadata, buffer, length)
-	}
-
-	_check_generic_backend_error(res, location)
 }
 
 label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location) {

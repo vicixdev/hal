@@ -25,11 +25,6 @@ Device_Properties :: struct {
 	// The device is fast at executing interleaved compute and render operations.
 	fast_compute_render_interleaving:	bool,
 
-	// Host and device memory accesses are automatically kept synchronized.
-	//	If true, calls to `gfx::mark_as_modified` and `gfx::prepare_for_readback` are not required and ignored.
-	//	If false, the user must manually synchronize the buffers using the aforementioned functions.
-	coherent_memory:		bool,
-
 	// The priority queue for data transfer operations is available.
 	transfer_queue:			bool,
 }

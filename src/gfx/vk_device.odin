@@ -20,6 +20,8 @@ vk_Device_Info :: struct {
 	has_private_memory:	bool,
 	shared_memory:		u32,
 	has_shared_memory:	bool,
+	updown_memory:		u32,
+	has_updown_memory:	bool,
 
 	queue_families:		[dynamic; 8]vk.QueueFamilyProperties2,
 	default_queue_family:	u32,
@@ -231,17 +233,22 @@ vk_find_memory_types :: proc(device: vk.PhysicalDevice, info: ^Device_Info) {
 
 	vk_info.private_memory, vk_info.has_private_memory = vk_search_for_memory_type(info, { .DEVICE_LOCAL })
 
-	vk_info.shared_memory, vk_info.has_shared_memory = vk_search_for_memory_type(info, { .DEVICE_LOCAL, .HOST_VISIBLE })
+	vk_info.shared_memory, vk_info.has_shared_memory =
+		vk_search_for_memory_type(info, { .DEVICE_LOCAL, .HOST_VISIBLE, .HOST_COHERENT })
 	if !vk_info.has_shared_memory {
-		vk_info.shared_memory, vk_info.has_shared_memory = vk_search_for_memory_type(info, { .HOST_VISIBLE })
+		vk_info.shared_memory, vk_info.has_shared_memory =
+			vk_search_for_memory_type(info, { .HOST_VISIBLE, .HOST_COHERENT })
 	} else {
 		info.properties.host_accessible_device_memory = true
 	}
 
-	if vk_info.has_shared_memory {
-		info.properties.coherent_memory =
-			.HOST_COHERENT in vk_info.memory_properties.memoryProperties.memoryTypes[vk_info.shared_memory].propertyFlags ||
-			.HOST_CACHED in vk_info.memory_properties.memoryProperties.memoryTypes[vk_info.shared_memory].propertyFlags
+	vk_info.updown_memory, vk_info.has_updown_memory =
+		vk_search_for_memory_type(info, { .DEVICE_LOCAL, .HOST_VISIBLE, .HOST_COHERENT })
+	updown_memory_size := vk_info.memory_properties.memoryProperties.memoryHeaps[
+		vk_info.memory_properties.memoryProperties.memoryTypes[vk_info.updown_memory].heapIndex].size
+	if !vk_info.has_updown_memory || updown_memory_size < 512 * mem.Megabyte {
+		vk_info.updown_memory, vk_info.has_updown_memory =
+			vk_search_for_memory_type(info, { .HOST_VISIBLE, .HOST_COHERENT })
 	}
 }
 
@@ -346,6 +353,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 	return vk_info.device_address_features.bufferDeviceAddress == true &&
 		vk_info.has_default_queue_family &&
 		vk_info.has_private_memory &&
+		vk_info.has_updown_memory &&
 		vk_info.has_shared_memory
 }
 

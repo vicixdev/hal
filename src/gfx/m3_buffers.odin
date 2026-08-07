@@ -68,17 +68,6 @@ m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 	unordered_remove(&m3_residency_set_handles, metadata.m3.index_in_residency_set)
 }
 
-// NOTE: If non apple silicon hardware will ever be supported:
-//	- Default and readback memory should use MTLStorageModeManaged
-//	- m3_mark_as_modified maps to MTLBuffer->didModifyRange()
-//	- m3_prepare_for_readback maps to MTLBuffer->synchronizeResource()
-m3_mark_as_modified :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) -> Result {
-	return nil
-}
-m3_prepare_for_readback :: proc(metadata: ^_Buffer_Metadata, buffer: Buffer, length: int) -> Result {
-	return nil
-}
-
 m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
 
 	heap_label := NS.String.alloc()->initWithOdinString(label)
@@ -96,6 +85,7 @@ m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
 @(rodata)
 m3_MEMORY_TO_RESOURCEOPTIONS := [Memory]MTL.ResourceOptions {
 	.Default	= { .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked },
+	.Staging	= { .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked },
 	.Private	= { .StorageModePrivate, .HazardTrackingModeUntracked },
 	.Readback	= { .HazardTrackingModeUntracked },
 }

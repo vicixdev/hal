@@ -51,7 +51,6 @@ m3_enumerate_devices :: proc(
 				properties	= {
 					host_accessible_device_memory	= true,
 					fast_compute_render_interleaving = false,
-					coherent_memory			= true,
 					transfer_queue			= true,
 				},
 				_platform	= {

@@ -21,8 +21,8 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
-TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
