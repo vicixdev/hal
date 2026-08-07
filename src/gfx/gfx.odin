@@ -21,8 +21,8 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
@@ -54,6 +54,8 @@ Error :: enum {
 	Out_Of_Gpu_Memory,
 	Invalid_Align,
 	Incompatible_Memory_Type,
+	Invalid_Pipeline_Argument,
+	Out_Of_Bounds,
 
 	Invalid_Descriptor,
 	Invalid_Pipeline_Bytecode,
@@ -67,7 +69,9 @@ Error :: enum {
 	Invalid_Command_Buffer,
 	Invalid_Library,
 	Invalid_Pipeline,
+	Invalid_Queue,
 
+	Queue_Already_In_Use,
 	Incompatible_Pipeline,
 }
 
@@ -116,6 +120,7 @@ _global_arena:		vmem.Arena
 _global_allocator:	runtime.Allocator
 _temp_scratch:		mem.Scratch
 _temp_allocator:	runtime.Allocator
+_generic_allocator:	runtime.Allocator
 
 init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res: Result) {
 	_settings = descriptor
@@ -125,6 +130,8 @@ init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res:
 
 	mem.scratch_init(&_temp_scratch, 32 * mem.Megabyte) or_return
 	_temp_allocator = mem.scratch_allocator(&_temp_scratch)
+
+	_generic_allocator = context.allocator
 
 	_init_messaging_system() or_return
 
@@ -446,6 +453,8 @@ _metadata_of :: proc {
 	_view_metadata_of,
 	_sampler_metadata_of,
 	_pipeline_metadata_of,
+	_queue_metadata_of,
+	_command_buffer_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {

@@ -48,6 +48,8 @@ m3_sampler_descriptor_to_mtl :: proc(descriptor: Sampler_Descriptor) -> (info: ^
 		info->setMaxAnisotropy(cast(NS.UInteger)descriptor.max_anisotropy)
 	}
 
+	info->setSupportArgumentBuffers(true)
+
 	return
 }
 

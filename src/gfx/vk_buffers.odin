@@ -45,7 +45,7 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: 
 			.INDIRECT_BUFFER,
 			.SHADER_DEVICE_ADDRESS_KHR,
 		},
-		sharingMode		= .EXCLUSIVE,
+		sharingMode		= .CONCURRENT,
 		queueFamilyIndexCount	= cast(u32)len(queue_family_indices),
 		pQueueFamilyIndices	= raw_data(queue_family_indices),
 	}

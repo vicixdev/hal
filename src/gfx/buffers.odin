@@ -8,6 +8,7 @@ Memory :: enum {
 	Default,
 	Private,
 	Readback,
+	// Staging,
 }
 
 Buffer :: struct {

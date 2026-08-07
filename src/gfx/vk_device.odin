@@ -38,6 +38,7 @@ vk_enabled_device_extensions:	[dynamic; 8]cstring
 vk_pipeline_cache:		vk.PipelineCache
 vk_pipeline_cache_mutex:	sync.Mutex
 vk_compute_pipeline_layout:	vk.PipelineLayout
+vk_render_pipeline_layout:	vk.PipelineLayout
 
 vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device_Info, res: Result) {
 	device_count: u32
@@ -143,7 +144,20 @@ vk_setup_pipeline_layouts :: proc() -> Result {
 		pPushConstantRanges	= &compute_push_constant_range,
 	}
 
+	render_push_constant_range := vk.PushConstantRange {
+		stageFlags	= { .VERTEX, .FRAGMENT },
+		offset		= 0,
+		size		= size_of(uintptr) * 8,
+	}
+	render_layout_info := vk.PipelineLayoutCreateInfo {
+		sType			= .PIPELINE_LAYOUT_CREATE_INFO,
+		setLayoutCount		= 0,
+		pushConstantRangeCount	= 1,
+		pPushConstantRanges	= &render_push_constant_range,
+	}
+
 	vk_call(vk.CreatePipelineLayout(vk_device, &compute_layout_info, nil, &vk_compute_pipeline_layout)) or_return
+	vk_call(vk.CreatePipelineLayout(vk_device, &render_layout_info, nil, &vk_compute_pipeline_layout)) or_return
 
 	return nil
 }

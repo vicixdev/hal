@@ -1,0 +1,108 @@
+package gfx
+
+import vk "vendor:vulkan"
+
+vk_Command_Buffer_Metadata :: struct {
+	command_buffer:	vk.CommandBuffer,
+}
+
+vk_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+	allocate_info := vk.CommandBufferAllocateInfo {
+		sType			= .COMMAND_BUFFER_ALLOCATE_INFO,
+		commandPool		= queue_metadata.vk.command_pool,
+		level			= .PRIMARY,
+		commandBufferCount	= 1,
+	}
+	vk_call(vk.AllocateCommandBuffers(vk_device, &allocate_info, &metadata.vk.command_buffer)) or_return
+
+	return nil
+}
+
+vk_begin_command_encoding :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+	begin_info := vk.CommandBufferBeginInfo {
+		sType	= .COMMAND_BUFFER_BEGIN_INFO,
+		flags	= { .ONE_TIME_SUBMIT },
+	}
+	vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
+
+	return nil
+}
+
+vk_mem_copy :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	destination_metadata:	^_Buffer_Metadata,
+	destination_offset:	uintptr,
+	source_metadata:	^_Buffer_Metadata,
+	source_offset:		uintptr,
+	length:			int,
+) -> Result {
+	
+	copy_region := vk.BufferCopy2 {
+		srcOffset	= cast(vk.DeviceSize)source_offset,
+		dstOffset	= cast(vk.DeviceSize)destination_offset,
+		size		= cast(vk.DeviceSize)length,
+	}
+	copy_info := vk.CopyBufferInfo2 {
+		sType	= .COPY_BUFFER_INFO_2,
+		srcBuffer	= source_metadata.vk.buffer,
+		dstBuffer	= destination_metadata.vk.buffer,
+		regionCount	= 1,
+		pRegions	= &copy_region,
+	}
+	vk.CmdCopyBuffer2(
+		metadata.vk.command_buffer,
+		&copy_info,
+	)
+
+	return nil
+}
+
+vk_barrier :: proc(metadata: ^_Command_Buffer_Metadata, after: Stages, before: Stages) -> Result {
+	memory_barrier := vk.MemoryBarrier2 {
+		sType			= .MEMORY_BARRIER_2,
+		srcStageMask		= vk_stages_to_vk(after),
+		srcAccessMask		= { .MEMORY_WRITE, .MEMORY_READ },
+		dstStageMask		= vk_stages_to_vk(before),
+		dstAccessMask		= { .MEMORY_WRITE, .MEMORY_READ },
+	}
+	barrier_info := vk.DependencyInfo {
+		sType			= .DEPENDENCY_INFO,
+		memoryBarrierCount	= 1,
+		pMemoryBarriers		= &memory_barrier,
+	}
+	vk.CmdPipelineBarrier2(metadata.vk.command_buffer, &barrier_info)
+	
+	return nil
+}
+
+vk_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
+
+	command_buffer_submit_info := vk.CommandBufferSubmitInfo {
+		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
+		commandBuffer	= metadata.vk.command_buffer,
+	}
+	submit_info := vk.SubmitInfo2 {
+		sType			= .SUBMIT_INFO_2,
+		commandBufferInfoCount	= 1,
+		pCommandBufferInfos	= &command_buffer_submit_info,
+	}
+	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+
+	return nil
+}
+
+vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {
+	for stage in stages {
+		flags += vk_STAGE_TO_VK[stage]
+	}
+
+	return
+}
+
+vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
+	.Transfer	= { .TRANSFER },
+	.Compute	= { .COMPUTE_SHADER },
+	.Raster		= { .COLOR_ATTACHMENT_OUTPUT },
+}
+
