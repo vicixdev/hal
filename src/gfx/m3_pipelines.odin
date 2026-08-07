@@ -55,6 +55,15 @@ m3_create_compute_pipeline :: proc(
 	function: ^MTL.Function
 	if descriptor.constants == nil {
 		function = library->newFunctionWithName(function_name)
+		if function == nil {
+			_queue_generic_message(
+				.Error,
+				"Shader compilation error",
+				"The metal function `%v` could not compile.",
+				descriptor.entrypoint,
+			)
+			return .Invalid_Pipeline_Bytecode
+		}
 	} else {
 		constants := MTL.FunctionConstantValues.alloc()->init()
 		defer constants->release()
@@ -81,6 +90,23 @@ m3_create_compute_pipeline :: proc(
 			return .Invalid_Pipeline_Constants
 		}
 	}
+
+	pipeline, pipeline_err := m3_device->newComputePipelineStateWithFunction(function)
+	if pipeline_err != nil {
+		_queue_generic_message(
+			.Error,
+			"Shader compilation error",
+			"Could not create a compute pipeline from function `%s`: %s -- %s",
+			descriptor.entrypoint,
+			pipeline_err->localizedFailureReason()->odinString(),
+			pipeline_err->localizedDescription()->odinString(),
+		)
+		return .Generic_Backend_Error,
+	}
+
+	metadata.m3.compute.library = library
+	metadata.m3.compute.function = function
+	metadata.m3.compute.pipeline = pipeline
 
 	return nil
 }

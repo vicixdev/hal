@@ -71,7 +71,7 @@ m3_select_device :: proc(device: Device_Id) -> Result {
 	m3_device = _available_devices[device]._platform.m3.device
 	m3_queue = m3_device->newCommandQueue()
 
-	when ODIN_DEBUG {
+	when ENABLE_TRACING {
 		m3_begin_tracing()
 	}
 

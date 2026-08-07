@@ -21,8 +21,6 @@ _Command_Buffer_Metadata :: struct {
 	texture_heap_changed:	[Texture_Type]bool,
 	sampler_heap:		[]Sampler,
 	sampler_heap_changed:	bool,
-	argument:		[64]byte,
-	argument_changed:	bool,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -83,40 +81,6 @@ begin_command_encoding :: proc(
 	metadata.in_use = true
 
 	return handle, nil
-}
-
-set_argument_any :: proc(command_buffer: Command_Buffer, argument: any, location := #caller_location) -> (Result) {
-	return set_argument_bytes(command_buffer, mem.any_to_bytes(argument), location)
-}
-
-set_argument_bytes :: proc(
-	command_buffer:		Command_Buffer,
-	argument:		[]byte,
-	location :=		#caller_location,
-) -> (res: Result) {
-
-	_check_condition(
-		len(argument) < 64,
-		.Invalid_Pipeline_Argument,
-		.Error,
-		"Invalid pipeline argument",
-		"The size of the pipeline argument must be at most 64 bytes (%d found).",
-		len(argument),
-		location=location,
-	) or_return
-
-	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
-
-	copy(metadata.argument[:], argument)
-	metadata.argument_changed = true
-
-	return nil
-}
-
-set_argument :: proc{
-	set_argument_bytes,
-	set_argument_any,
 }
 
 set_texture_heap :: proc(
@@ -234,7 +198,65 @@ mem_copy :: proc(
 	return nil
 }
 
-dispatch :: proc(command_buffer: Command_Buffer, compute_pipeline: Pipeline, /*...*/) {}
+dispatch_with_any_argument :: proc(
+	command_buffer:		Command_Buffer,
+	compute_pipeline:	Pipeline,
+	argument:		any,
+	group_count:		[3]int,
+	location :=		#caller_location,
+) -> Result {
+	return dispatch_with_bytes_argument(command_buffer,
+		compute_pipeline,
+		mem.any_to_bytes(argument),
+		group_count,
+		location,
+	)
+}
+
+dispatch_with_bytes_argument :: proc(
+	command_buffer:		Command_Buffer,
+	compute_pipeline:	Pipeline,
+	argument:		[]byte,
+	group_count:		[3]int,
+	location :=		#caller_location,
+) -> (res: Result) {
+	
+	_check_condition(
+		len(argument) < 64,
+		.Invalid_Pipeline_Argument,
+		.Error,
+		"Invalid pipeline argument",
+		"The size of the pipeline argument must be at most 64 bytes (%d found).",
+		len(argument),
+		location=location,
+	) or_return
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	pipeline_metadata, pipeline_res := _metadata_of(compute_pipeline)
+	_check_pipeline_handle(pipeline_res, compute_pipeline, location) or_return
+
+	when TARGET_API == .Vulkan {
+		res = vk_dispatch(metadata, pipeline_metadata, argument, group_count)
+	} else when TARGET_API == .Metal_3 {
+		res = m3_dispatch(metadata, pipeline_metadata, argument, group_count)
+	}
+
+	_check_generic_backend_error(res, location) or_return
+
+	metadata.sampler_heap_changed = false
+	for &heap in metadata.texture_heap_changed {
+		heap = false
+	}
+
+	return nil
+}
+
+dispatch :: proc {
+	dispatch_with_bytes_argument,
+	dispatch_with_any_argument,
+}
 
 barrier	:: proc(command_buffer: Command_Buffer, after: Stages, before: Stages, location := #caller_location) {
 	

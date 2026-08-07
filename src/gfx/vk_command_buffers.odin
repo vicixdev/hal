@@ -38,12 +38,13 @@ vk_mem_copy :: proc(
 ) -> Result {
 	
 	copy_region := vk.BufferCopy2 {
+		sType		= .BUFFER_COPY_2,
 		srcOffset	= cast(vk.DeviceSize)source_offset,
 		dstOffset	= cast(vk.DeviceSize)destination_offset,
 		size		= cast(vk.DeviceSize)length,
 	}
 	copy_info := vk.CopyBufferInfo2 {
-		sType	= .COPY_BUFFER_INFO_2,
+		sType		= .COPY_BUFFER_INFO_2,
 		srcBuffer	= source_metadata.vk.buffer,
 		dstBuffer	= destination_metadata.vk.buffer,
 		regionCount	= 1,
@@ -53,6 +54,33 @@ vk_mem_copy :: proc(
 		metadata.vk.command_buffer,
 		&copy_info,
 	)
+
+	return nil
+}
+
+vk_dispatch :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	pipeline_metadata:	^_Pipeline_Metadata,
+	argument:		[]byte,
+	group_count:		[3]int,
+) -> Result {
+
+	@(static)
+	push_constant_buffer: [64]byte
+
+	push_constant_buffer = {}
+	copy(push_constant_buffer[:], argument)
+
+	vk.CmdPushConstants(
+		metadata.vk.command_buffer,
+		vk_compute_pipeline_layout,
+		{ .COMPUTE },
+		0,
+		64,
+		raw_data(push_constant_buffer[:]),
+	)
+	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, pipeline_metadata.vk.pipeline)
+	vk.CmdDispatch(metadata.vk.command_buffer, cast(u32)group_count.x, cast(u32)group_count.y, cast(u32)group_count.z)
 
 	return nil
 }

@@ -8,7 +8,6 @@ import vk "vendor:vulkan"
 
 vk_Shader_Stage_Metadata :: struct {
 	module:		vk.ShaderModule,
-	pipeline:	vk.Pipeline,
 }
 
 vk_Pipeline_Metadata :: struct {
@@ -19,6 +18,8 @@ vk_Pipeline_Metadata :: struct {
 			fragment:	vk_Shader_Stage_Metadata,
 		},
 	},
+
+	pipeline:	vk.Pipeline,
 }
 
 vk_create_compute_pipeline :: proc(
@@ -58,7 +59,7 @@ vk_create_compute_pipeline :: proc(
 			1,
 			&pipeline_info,
 			nil,
-			&metadata.vk.compute.pipeline,
+			&metadata.vk.pipeline,
 		)) or_return
 	}
 	
@@ -69,7 +70,7 @@ vk_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
 	switch metadata.type {
 	case .Compute:
 		vk.DestroyShaderModule(vk_device, metadata.vk.compute.module, nil)
-		vk.DestroyPipeline(vk_device, metadata.vk.compute.pipeline, nil)
+		vk.DestroyPipeline(vk_device, metadata.vk.pipeline, nil)
 
 	case .Render:
 	}
@@ -110,6 +111,7 @@ vk_make_compute_pipeline_desc :: proc(
 
 	info.layout	= vk_compute_pipeline_layout
 	info.stage	= {
+		sType			= .PIPELINE_SHADER_STAGE_CREATE_INFO,
 		stage			= { .COMPUTE },
 		module			= module,
 		pName			= strings.clone_to_cstring(descriptor.entrypoint, _temp_allocator),

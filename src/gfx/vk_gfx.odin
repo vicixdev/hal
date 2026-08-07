@@ -12,7 +12,7 @@ when ODIN_OS == .Linux {
 } else when ODIN_OS == .Darwin {
 	vk_VULKAN_LOADER_PATH :: "/opt/homebrew/lib/libvulkan.dylib"
 } else {
-	#panic("Unsupported vulkan target. Only linux is currently supported.")
+	#panic("Unsupported vulkan target.")
 }
 
 vk_loader_lib:			dynlib.Library
@@ -81,7 +81,7 @@ vk_try_use_instance_extension :: proc(extension: cstring) -> (found_extension: b
 }
 
 vk_init_instance :: proc() -> Result {
-	vk_has_validation = ODIN_DEBUG
+	vk_has_validation = ENABLE_VALIDATION
 
 	instance_layer_count: u32
 	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, nil)) or_return
@@ -110,14 +110,14 @@ vk_init_instance :: proc() -> Result {
 		)
 	}
 
-	has_validation_layer := vk_try_use_instance_layer("VK_LAYER_KHRONOS_validation")
+	has_validation_layer: bool
+	when ENABLE_VALIDATION {
+		has_validation_layer = vk_try_use_instance_layer("VK_LAYER_KHRONOS_validation")
+	}
 	log.debugf("Creating vulkan instance with layers: %v.", vk_enabled_instance_layers)
 
 	when ODIN_OS == .Darwin {
-		ensure(
-			vk_try_use_instance_extension("VK_KHR_portability_enumeration"),
-			"Vulkan on macOS does not expose the VK_KHR_portability_enumeration extension. Broken install?",
-		)
+		vk_try_use_instance_extension("VK_KHR_portability_enumeration")
 	}
 	has_debug_utils := vk_try_use_instance_extension("VK_EXT_debug_utils")
 	log.debugf("Creating vulkan instance with extensions: %v.", vk_enabled_instance_extensions)
@@ -145,7 +145,7 @@ vk_init_instance :: proc() -> Result {
 	if has_debug_utils {
 		vk_link(&instance_desc, &vk_debug_messenger_descriptor)
 	}
-	when ODIN_OS == .Darwin && ODIN_DEBUG {
+	when ODIN_OS == .Darwin && ENABLE_TRACING {
 		export_info := vk.ExportMetalObjectCreateInfoEXT {
 			sType			= .EXPORT_METAL_OBJECT_CREATE_INFO_EXT,
 			exportObjectType	= { .METAL_DEVICE },
@@ -232,10 +232,21 @@ vk_init :: proc() -> Result {
 	return nil
 }
 
-vk_fini :: proc() {
-	when ODIN_OS == .Darwin && ODIN_DEBUG {
+vk_pre_fini :: proc() {
+	when ODIN_OS == .Darwin && ENABLE_TRACING {
 		m3_end_tracing()
 	}
+	
+	for queue in _queues {
+		vk.QueueWaitIdle(queue.vk.queue)
+		vk.DestroyCommandPool(vk_device, queue.vk.command_pool, nil)
+	}
+}
+
+vk_fini :: proc() {
+	vk.DestroyPipelineLayout(vk_device, vk_compute_pipeline_layout, nil)
+	vk.DestroyPipelineLayout(vk_device, vk_render_pipeline_layout, nil)
+	vk.DestroyPipelineCache(vk_device, vk_pipeline_cache, nil)
 
 	vk.DestroyDevice(vk_device, nil)
 

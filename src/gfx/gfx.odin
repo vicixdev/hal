@@ -21,8 +21,8 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
@@ -44,6 +44,9 @@ when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
 		"platforms.",
 	)
 }
+
+ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
+ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, false)
 
 Error :: enum {
 	Not_Initialized,
@@ -75,7 +78,7 @@ Error :: enum {
 	Incompatible_Pipeline,
 }
 
-Result :: union {
+Result :: union #shared_nil {
 	runtime.Allocator_Error,
 	Error,
 }
@@ -155,6 +158,17 @@ init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res:
 }
 
 fini :: proc() {
+	when TARGET_API == .Vulkan {
+		vk_pre_fini()
+	} else when TARGET_API == .Metal_3 {
+		m3_pre_fini()
+	}
+
+	pipelines_it := hm.dynamic_iterator_make(&_pipelines)
+	for _, pipeline in hm.iterate(&pipelines_it) {
+		destroy_pipeline(pipeline)
+	}
+
 	sampler_it := hm.dynamic_iterator_make(&_samplers)
 	for _, sampler in hm.iterate(&sampler_it) {
 		destroy_sampler(sampler)

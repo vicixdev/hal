@@ -1,3 +1,4 @@
+#+build darwin
 package gfx
 
 import NS "core:sys/darwin/Foundation"
@@ -52,6 +53,27 @@ m3_mem_copy :: proc(
 	return nil
 }
 
+m3_dispatch :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	pipeline_metadata:	^_Pipeline_Metadata,
+	argument:		[]byte,
+	group_count:		[3]int,
+) -> Result {
+	
+	m3_enable_compute_encoder(metadata)
+
+	group_size := pipeline_metadata.compute.group_size
+
+	metadata.m3.compute_encoder->setBytes(argument, 0)
+	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
+	metadata.m3.compute_encoder->dispatchThreadgroups(
+		{ cast(NS.Integer)group_count.x, cast(NS.Integer)group_count.y, cast(NS.Integer)group_count.z },
+		{ cast(NS.Integer)group_size.x, cast(NS.Integer)group_size.y, cast(NS.Integer)group_size.z },
+	)
+
+	return nil
+}
+
 m3_barrier :: proc(metadata: ^_Command_Buffer_Metadata, after: Stages, before: Stages) -> Result {
 	// NOTE: In Metal 3, encoders are executed in encoding order. All operations encoded in render and blit
 	//	encoders are executed in encoding order.
@@ -72,6 +94,10 @@ m3_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_M
 }
 
 m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
+	if metadata.m3.current_encoder == .Blit {
+		return
+	}
+
 	m3_flush_encoder(metadata)
 
 	metadata.m3.blit_encoder = metadata.m3.command_buffer->blitCommandEncoder()
@@ -79,10 +105,16 @@ m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 }
 
 m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
+	if metadata.m3.current_encoder == .Compute {
+		return
+	}
+
 	m3_flush_encoder(metadata)
 
 	metadata.m3.compute_encoder = metadata.m3.command_buffer->computeCommandEncoderWithDispatchType(.Concurrent)
 	metadata.m3.current_encoder = .Compute
+
+	metadata.m3.compute_encoder->useHeaps(m3_residency_set[:])
 }
 
 m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {

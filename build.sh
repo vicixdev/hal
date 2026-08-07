@@ -17,6 +17,9 @@ case "$target_api" in
 
 		slangc ./shaders/basic.slang -profile glsl_450 -target metal	-capability glsl_spirv -capability GL_EXT_buffer_reference -o ./build/basic.metal -fvk-use-entrypoint-name
 		slangc ./shaders/basic.slang -profile glsl_450 -target metallib	-capability glsl_spirv -capability GL_EXT_buffer_reference -o ./build/basic.metallib -fvk-use-entrypoint-name
+
+		# xcrun -sdk macosx metal -frecord-sources -gline-tables-only -c ./shaders/basic.metal -o ./build/basic.air
+		# xcrun -sdk macosx metallib ./build/basic.air -o ./build/basic.metallib
 	;;
 	*)
 		echo "Invalid target api (expected Vulkan or Metal_3)".

@@ -36,6 +36,7 @@ _Pipeline_Metadata :: struct {
 	using type_metadata: struct #raw_union {
 		compute:	struct {
 			using desc:	Shader_Stage_Descriptor,
+			group_size:	[3]int,
 		},
 		render:		struct {
 			vertex:		Shader_Stage_Descriptor,
@@ -64,6 +65,7 @@ create_compute_pipeline :: proc(
 
 	metadata.type = .Compute
 	metadata.compute.desc = descriptor
+	metadata.compute.group_size = group_size
 
 	when TARGET_API == .Vulkan {
 		res = vk_create_compute_pipeline(metadata, descriptor, group_size)

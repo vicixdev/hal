@@ -4,25 +4,24 @@ import "core:log"
 import "gfx"
 import "core:mem"
 import "core:time"
-import "shared:back"
+import "core:debug/trace"
 
 main :: proc() {
 	context.logger = log.create_console_logger()
 	defer log.destroy_console_logger(context.logger)
 
-	back.register_segfault_handler()
-	context.assertion_failure_proc = back.assertion_failure_proc
+	context.assertion_failure_proc = trace.assertion_failure_proc
 
-	tracking_allocator: back.Tracking_Allocator
-	back.tracking_allocator_init(&tracking_allocator, context.allocator)
-	defer back.tracking_allocator_destroy(&tracking_allocator)
+	tracking_allocator: trace.Tracking_Allocator
+	trace.tracking_allocator_init(&tracking_allocator, context.allocator)
+	defer trace.tracking_allocator_destroy(&tracking_allocator)
 
-	context.allocator = back.tracking_allocator(&tracking_allocator)
-	defer back.tracking_allocator_print_results(&tracking_allocator)
+	context.allocator = trace.tracking_allocator(&tracking_allocator)
+	defer trace.tracking_allocator_print_results(&tracking_allocator)
 
 	gfx.init({
 		vk = {
-			shader_format = .Metallib,
+			// shader_format = .Metallib,
 		},
 	})
 	defer gfx.fini()
@@ -89,40 +88,108 @@ main :: proc() {
 	sampler, _ := gfx.create_sampler(sampler_desc)
 	defer gfx.destroy_sampler(sampler)
 
-	one: f32 = 1.0
 	bytecode, _ := gfx.load_bytecode_of("basic", "./build", context.temp_allocator)
 	pipeline, pipeline_res := gfx.create_compute_pipeline(
 		{
 			bytecode	= bytecode,
 			entrypoint	= "computeMain",
-			constants = {
-				{ index = 0, type = .F32, value = &one },
-			},
 		},
 		{ 1, 1, 1 },
 	)
 	defer gfx.destroy_pipeline(pipeline)
 	log.info(pipeline, pipeline_res)
 
-	upload, _ := gfx.alloc(.Default, 128)
-	private, _ := gfx.alloc(.Private, 128)
-	download, _ := gfx.alloc(.Readback, 128)
+	// upload, _ := gfx.alloc(.Default, 128)
+	// private, _ := gfx.alloc(.Private, 128)
+	// download, _ := gfx.alloc(.Readback, 128)
 
-	for i in 0..<128 {
-		(cast([^]byte)upload.contents)[i] = cast(byte)i
+	// for i in 0..<128 {
+	// 	(cast([^]byte)upload.contents)[i] = cast(byte)i
+	// }
+
+	// cb, cb_res := gfx.begin_command_encoding(.Default)
+	// log.info(cb_res)
+	// gfx.mem_copy(cb, private, upload, 128)
+	// gfx.barrier(cb, { .Transfer }, { .Transfer })
+	// gfx.mem_copy(cb, download, private, 128)
+	// gfx.submit(cb)
+
+	// time.sleep(1 * 1000 * 1000 * 1000)
+
+	// for i in 0..<128 {
+	// 	log.info(i, (cast([^]byte)download.contents)[i])
+	// }
+
+	big_mult()
+
+	// upload, _ := gfx.alloc(.Default, 128)
+	// private, _ := gfx.alloc(.Private, 128)
+	// download, _ := gfx.alloc(.Readback, 128)
+
+	// for i in 0..<128 {
+	// 	(cast([^]byte)upload.contents)[i] = cast(byte)i
+	// }
+
+	// cb, cb_res := gfx.begin_command_encoding(.Default)
+	// log.info(cb_res)
+	// gfx.mem_copy(cb, private, upload, 128)
+	// gfx.barrier(cb, { .Transfer }, { .Transfer })
+	// gfx.mem_copy(cb, download, private, 128)
+	// gfx.submit(cb)
+
+	// time.sleep(1 * 1000 * 1000 * 1000)
+
+	// for i in 0..<128 {
+	// 	log.info(i, (cast([^]byte)download.contents)[i])
+	// }
+}
+
+big_mult :: proc() -> gfx.Result {
+	Params :: struct {
+		a:	uintptr,
+		b:	uintptr,
+		res:	uintptr,
 	}
 
-	cb, cb_res := gfx.begin_command_encoding(.Default)
-	log.info(cb_res)
-	gfx.mem_copy(cb, private, upload, 128)
-	gfx.barrier(cb, { .Transfer }, { .Transfer })
-	gfx.mem_copy(cb, download, private, 128)
+	a := gfx.alloc(.Default, 16 * mem.Kilobyte) or_return
+	b := gfx.alloc(.Default, 16 * mem.Kilobyte) or_return
+	res := gfx.alloc(.Private, 16 * mem.Kilobyte) or_return
+	c := gfx.alloc(.Readback, 16 * mem.Kilobyte) or_return
+	
+	for i in 0..<128 {
+		(cast([^]f32)a.contents)[i] = cast(f32)i
+		(cast([^]f32)b.contents)[i] = cast(f32)i / 4
+	}
+
+	bytecode, _ := gfx.load_bytecode_of("basic", "build", context.temp_allocator)
+	pipeline := gfx.create_compute_pipeline(
+		{
+			entrypoint = "computeMain",
+			bytecode = bytecode,
+		},
+		{ 1, 1, 1 },
+	) or_return
+
+	cb := gfx.begin_command_encoding(.Default) or_return
+	gfx.dispatch(
+		cb,
+		pipeline,
+		Params {
+			a = gfx.gpu_address_of(a) or_return,
+			b = gfx.gpu_address_of(b) or_return,
+			res = gfx.gpu_address_of(res) or_return,
+		},
+		{ 128, 1, 1 },
+	)
+	gfx.barrier(cb, { .Compute }, { .Transfer })
+	gfx.mem_copy(cb, c, res, 128 * size_of(f32))
 	gfx.submit(cb)
 
 	time.sleep(1 * 1000 * 1000 * 1000)
-
 	for i in 0..<128 {
-		log.info(i, (cast([^]byte)download.contents)[i])
+		log.info(i, (cast([^]f32)c.contents)[i])
 	}
+
+	return nil
 }
 

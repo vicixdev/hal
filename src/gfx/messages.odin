@@ -179,10 +179,10 @@ _check_condition :: proc(
 _check_generic_condition :: proc(
 	cond:		bool,
 	type:		Message_Type,
-	location:	runtime.Source_Code_Location,
 	failure_reason:	string,
 	info_message:	string,
 	args:		..any,
+	location:	runtime.Source_Code_Location = {},
 ) {
 	
 	if cond == true {

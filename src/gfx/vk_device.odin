@@ -104,15 +104,19 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 
 	device_features := vk.PhysicalDeviceFeatures2 {
 		sType			= .PHYSICAL_DEVICE_FEATURES_2,
-		pNext			= &vk_debug_messenger_descriptor if vk_has_validation else nil,
 		features		= {
 			imageCubeArray		= true,
 			samplerAnisotropy	= true,
 		},
 	}
+	synchronization_features := vk.PhysicalDeviceSynchronization2Features {
+		sType			= .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
+		pNext			= &device_features,
+		synchronization2	= true,
+	}
 	buffer_features := vk.PhysicalDeviceBufferDeviceAddressFeatures {
 		sType			= .PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
-		pNext			= &device_features,
+		pNext			= &synchronization_features,
 		bufferDeviceAddress	= true,
 	}
 	descriptor := vk.DeviceCreateInfo {
@@ -159,7 +163,7 @@ vk_setup_pipeline_layouts :: proc() -> Result {
 	}
 
 	vk_call(vk.CreatePipelineLayout(vk_device, &compute_layout_info, nil, &vk_compute_pipeline_layout)) or_return
-	vk_call(vk.CreatePipelineLayout(vk_device, &render_layout_info, nil, &vk_compute_pipeline_layout)) or_return
+	vk_call(vk.CreatePipelineLayout(vk_device, &render_layout_info, nil, &vk_render_pipeline_layout)) or_return
 
 	return nil
 }
@@ -340,10 +344,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 	vk_info := &info._platform.vk
 
 	when ODIN_OS == .Darwin {
-		ensure(
-			vk_device_has_extension(info, "VK_KHR_portability_subset"),
-			"Vulkan on macOS does not have the VK_KHR_portability_subset device extension. Broken install?",
-		)
+		vk_device_has_extension(info, "VK_KHR_portability_subset")
 		ensure(
 			vk_device_has_extension(info, "VK_EXT_metal_objects"),
 			"Vulkan on macOS does not have the VK_EXT_metal_objects device extension. Broken install?",

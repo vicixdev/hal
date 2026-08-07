@@ -10,11 +10,13 @@ m3_init :: proc() -> Result {
 	return nil
 }
 
-m3_fini :: proc() {
-	when ODIN_DEBUG {
+m3_pre_fini :: proc() {
+	when ENABLE_TRACING {
 		m3_end_tracing()
 	}
+}
 
+m3_fini :: proc() {
 	for device in _available_devices {
 		device._platform.m3.device->release()
 	}
