@@ -1,12 +1,16 @@
 package gfx
 
+import "core:mem"
+
 Queue :: enum {
 	Default,
 	Transfer,
 }
 
 _Queue_Metadata :: struct {
-	type:	Queue,
+	type:		Queue,
+
+	scratch:	Scratch,
 
 	using platform: struct #raw_union {
 		vk:	vk_Queue_Metadata,
@@ -16,29 +20,30 @@ _Queue_Metadata :: struct {
 
 _queues: [Queue]_Queue_Metadata
 
-_setup_queues :: proc() -> Result {
-	_queues[.Default].type	= .Default
-	_queues[.Transfer].type	= .Transfer
-
-	default_queue, _ := _queue_metadata_of(.Default)
-	when TARGET_API == .Vulkan {
-		vk_setup_queue(default_queue) or_return
-	} else {
-		m3_setup_queue(default_queue) or_return
-	}
-	_setup_command_buffer_of(.Default)
-
+_init_queues :: proc() -> Result {
+	_setup_queue(.Default) or_return
 	if _device_info.properties.transfer_queue {
-		transfer_queue := _queue_metadata_of(.Transfer) or_return
-
-		when TARGET_API == .Vulkan {
-			vk_setup_queue(transfer_queue) or_return
-		} else {
-			m3_setup_queue(transfer_queue) or_return
-		}
-
-		_setup_command_buffer_of(.Transfer)
+		_setup_queue(.Transfer) or_return
 	}
+
+	
+	return nil
+}
+
+_setup_queue :: proc(queue: Queue) -> Result {
+	_queues[queue].type = queue
+
+	metadata, metadata_res := _queue_metadata_of(queue)
+	assert(metadata_res == nil)
+
+	create_scratch(&metadata.scratch, .Default, mem.Megabyte) or_return
+
+	when TARGET_API == .Vulkan {
+		vk_setup_queue(metadata) or_return
+	} else {
+		m3_setup_queue(metadata) or_return
+	}
+	_setup_command_buffer_of(queue)
 
 	return nil
 }

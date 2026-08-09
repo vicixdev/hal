@@ -88,6 +88,7 @@ m3_barrier :: proc(metadata: ^_Command_Buffer_Metadata, after: Stages, before: S
 
 m3_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 	m3_flush_encoder(metadata)
+
 	metadata.m3.command_buffer->commit()
 
 	return nil

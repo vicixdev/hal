@@ -33,7 +33,7 @@ vk_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 	command_pool: vk.CommandPool
 	command_pool_desc := vk.CommandPoolCreateInfo {
 		sType			= .COMMAND_POOL_CREATE_INFO,
-		flags			= { .TRANSIENT },
+		flags			= { .TRANSIENT, .RESET_COMMAND_BUFFER },
 		queueFamilyIndex	= queue_family,
 	}
 	vk_call(vk.CreateCommandPool(vk_device, &command_pool_desc, nil, &command_pool)) or_return

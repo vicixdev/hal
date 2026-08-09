@@ -2,6 +2,7 @@ package gfx
 
 import "base:runtime"
 import "core:strings"
+import "core:slice"
 import "core:mem"
 import "core:sync"
 import vk "vendor:vulkan"
@@ -12,6 +13,7 @@ vk_Device_Info :: struct {
 	properties:		vk.PhysicalDeviceProperties2,
 	features:		vk.PhysicalDeviceFeatures2,
 	device_address_features:	vk.PhysicalDeviceBufferDeviceAddressFeatures,
+	descriptor_indexing_features:	vk.PhysicalDeviceDescriptorIndexingFeatures,
 
 	extensions:		[]vk.ExtensionProperties,
 
@@ -41,6 +43,25 @@ vk_pipeline_cache:		vk.PipelineCache
 vk_pipeline_cache_mutex:	sync.Mutex
 vk_compute_pipeline_layout:	vk.PipelineLayout
 vk_render_pipeline_layout:	vk.PipelineLayout
+
+vk_descriptor_set_layout:	vk.DescriptorSetLayout
+vk_descriptor_pool:		vk.DescriptorPool
+
+vk_Descriptor_Binding :: enum u32 {
+	Sampler,
+	Texture_1d_Sampled_Image,
+	Texture_1d_Storage_Image,
+	Texture_2d_Sampled_Image,
+	Texture_2d_Storage_Image,
+	Texture_2d_Array_Sampled_Image,
+	Texture_2d_Array_Storage_Image,
+	Texture_Cube_Sampled_Image,
+	Texture_Cube_Storage_Image,
+	Texture_Cube_Array_Sampled_Image,
+	Texture_Cube_Array_Storage_Image,
+	Texture_3d_Sampled_Image,
+	Texture_3d_Storage_Image,
+}
 
 vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device_Info, res: Result) {
 	device_count: u32
@@ -119,9 +140,20 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		pNext			= &synchronization_features,
 		bufferDeviceAddress	= true,
 	}
+	descriptor_features := vk.PhysicalDeviceDescriptorIndexingFeatures {
+		sType			= .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+		pNext			= &buffer_features,
+		runtimeDescriptorArray				= true,
+		descriptorBindingPartiallyBound			= true,
+		descriptorBindingStorageImageUpdateAfterBind	= true,
+		descriptorBindingSampledImageUpdateAfterBind	= true,
+		descriptorBindingUpdateUnusedWhilePending	= true,
+		shaderStorageImageArrayNonUniformIndexing	= true,
+		shaderSampledImageArrayNonUniformIndexing	= true,
+	}
 	descriptor := vk.DeviceCreateInfo {
 		sType			= .DEVICE_CREATE_INFO,
-		pNext			= &buffer_features,
+		pNext			= &descriptor_features,
 		queueCreateInfoCount	= cast(u32)len(queue_descriptors),
 		pQueueCreateInfos	= raw_data(queue_descriptors),
 		enabledExtensionCount	= cast(u32)len(vk_enabled_device_extensions),
@@ -133,6 +165,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 
 	vk_setup_pipeline_layouts() or_return
 	vk_setup_pipeline_cache() or_return
+	vk_setup_descriptor_pool() or_return
 
 	return nil
 }
@@ -179,6 +212,135 @@ vk_setup_pipeline_cache :: proc() -> Result {
 	return nil
 }
 
+vk_setup_descriptor_pool :: proc() -> Result {
+	descriptor_pools := []vk.DescriptorPoolSize {
+		{ .SAMPLED_IMAGE,	65536 },
+		{ .STORAGE_IMAGE,	65536 },
+		{ .SAMPLER,		4096  },
+	}
+	descriptor_pool_info := vk.DescriptorPoolCreateInfo {
+		sType			= .DESCRIPTOR_POOL_CREATE_INFO,
+		flags			= { .FREE_DESCRIPTOR_SET, .UPDATE_AFTER_BIND },
+		maxSets			= 256,
+		poolSizeCount		= cast(u32)len(descriptor_pools),
+		pPoolSizes		= raw_data(descriptor_pools),
+	}
+	vk_call(vk.CreateDescriptorPool(vk_device, &descriptor_pool_info, nil, &vk_descriptor_pool)) or_return
+
+	descriptor_set_bindings := []vk.DescriptorSetLayoutBinding {
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Sampler,
+			descriptorType		= .SAMPLER,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_1d_Sampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_1d_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Sampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Array_Sampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Array_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Sampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Array_Sampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Array_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_3d_Sampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		{
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_3d_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= 4096,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+	}
+	binding_flags := [vk_Descriptor_Binding]vk.DescriptorBindingFlags {
+		.Sampler			= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_1d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_1d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Array_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Array_Storage_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_Cube_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_Cube_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_Cube_Array_Sampled_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_Cube_Array_Storage_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_3d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_3d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+	}
+	descriptor_set_flags_info := vk.DescriptorSetLayoutBindingFlagsCreateInfo {
+		sType	= .DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+		bindingCount	= cast(u32)len(binding_flags),
+		pBindingFlags	= raw_data(slice.enumerated_array(&binding_flags)),
+	}
+	descriptor_set_layout_info := vk.DescriptorSetLayoutCreateInfo {
+		sType			= .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		flags			= { .UPDATE_AFTER_BIND_POOL },
+		pNext			= &descriptor_set_flags_info,
+		bindingCount		= cast(u32)len(descriptor_set_bindings),
+		pBindings		= raw_data(descriptor_set_bindings),
+	}
+	vk_call(
+		vk.CreateDescriptorSetLayout(vk_device, &descriptor_set_layout_info, nil, &vk_descriptor_set_layout),
+	) or_return
+
+	return nil
+}
+
 vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res: Result) {
 	vk_info := &info._platform.vk
 
@@ -192,8 +354,12 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res:
 	vk.GetPhysicalDeviceProperties2(device, &vk_info.properties)
 
 	vk_info.features.sType = .PHYSICAL_DEVICE_FEATURES_2
+
 	vk_info.device_address_features.sType = .PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES
 	vk_link(&vk_info.features, &vk_info.device_address_features)
+
+	vk_info.descriptor_indexing_features.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
+	vk_link(&vk_info.features, &vk_info.descriptor_indexing_features)
 	vk.GetPhysicalDeviceFeatures2(device, &vk_info.features)
 
 	vk_find_memory_types(device, &info)
@@ -352,6 +518,13 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 	}
 
 	return vk_info.device_address_features.bufferDeviceAddress == true &&
+		vk_info.descriptor_indexing_features.runtimeDescriptorArray == true &&
+		vk_info.descriptor_indexing_features.descriptorBindingPartiallyBound == true &&
+		vk_info.descriptor_indexing_features.descriptorBindingStorageImageUpdateAfterBind == true &&
+		vk_info.descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == true &&
+		vk_info.descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == true &&
+		vk_info.descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing == true &&
+		vk_info.descriptor_indexing_features.shaderStorageImageArrayNonUniformIndexing == true &&
 		vk_info.has_default_queue_family &&
 		vk_info.has_private_memory &&
 		vk_info.has_updown_memory &&

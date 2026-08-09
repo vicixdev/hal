@@ -54,7 +54,7 @@ main :: proc() {
 		layer_count	= 6 * 5,
 		sample_count	= 1,
 		format		= .RGBA8_Unorm,
-		usage		= .Storage,
+		usage		= { .Storage, .Sampled },
 	}
 	size, align, _ := gfx.size_align_of(tex_desc)
 	log.info(size, align)
@@ -98,6 +98,14 @@ main :: proc() {
 	)
 	defer gfx.destroy_pipeline(pipeline)
 	log.info(pipeline, pipeline_res)
+
+	resource_set, _ := gfx.create_resource_set()
+	defer gfx.destroy_resource_set(resource_set)
+
+	gfx.set_texture_set(resource_set, .Cube_Array, { v1 })
+	gfx.set_texture_set(resource_set, .D2_Array, { v2 })
+	gfx.set_storage_texture_set(resource_set, .D2_Array, { v2 })
+	gfx.set_sampler_set(resource_set, { sampler })
 
 	// upload, _ := gfx.alloc(.Default, 128)
 	// private, _ := gfx.alloc(.Private, 128)

@@ -47,6 +47,7 @@ Texture_Usage :: enum {
 	Color_attachment,
 	Depth_stencil_attachment,
 }
+Texture_Usages :: bit_set[Texture_Usage]
 
 Texture_Descriptor :: struct {
 	type:		Texture_Type,
@@ -55,7 +56,7 @@ Texture_Descriptor :: struct {
 	layer_count:	int,
 	sample_count:	int,
 	format:		Pixel_Format,
-	usage:		Texture_Usage,
+	usage:		Texture_Usages,
 }
 
 View_Descriptor :: struct {

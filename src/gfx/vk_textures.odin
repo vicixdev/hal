@@ -109,7 +109,7 @@ vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk
 	info.imageType		= vk_TEXTURE_TYPE_TO_VK[descriptor.type]
 
 	info.format		= vk_PIXEL_FORMAT_TO_VK[descriptor.format]
-	info.usage		= vk_TEXTURE_USAGE_TO_VK[descriptor.usage]
+	info.usage		= vk_texture_usages_to_vk(descriptor.usage)
 
 	info.extent.width	= cast(u32)descriptor.dimensions.x
 	info.extent.height	= cast(u32)descriptor.dimensions.y
@@ -168,6 +168,14 @@ vk_view_descriptor_to_vk :: proc(
 	info.subresourceRange.levelCount	= cast(u32)descriptor.mip_count
 	info.subresourceRange.baseArrayLayer	= cast(u32)descriptor.base_layer
 	info.subresourceRange.layerCount	= cast(u32)descriptor.layer_count
+
+	return
+}
+
+vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsageFlags) {
+	for usage in usages {
+		flags += vk_TEXTURE_USAGE_TO_VK[usage]
+	}
 
 	return
 }

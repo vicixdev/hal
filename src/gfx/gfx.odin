@@ -21,8 +21,8 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
-TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
@@ -45,7 +45,7 @@ when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
 	)
 }
 
-ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
+ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, true)
 ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, false)
 
 Error :: enum {
@@ -73,6 +73,7 @@ Error :: enum {
 	Invalid_Library,
 	Invalid_Pipeline,
 	Invalid_Queue,
+	Invalid_Resource_Set,
 
 	Queue_Already_In_Use,
 	Incompatible_Pipeline,
@@ -143,6 +144,7 @@ init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res:
 	hm.dynamic_init(&_views, _global_allocator)
 	hm.dynamic_init(&_samplers, _global_allocator)
 	hm.dynamic_init(&_pipelines, _global_allocator)
+	hm.dynamic_init(&_resource_sets, _global_allocator)
 
 	when TARGET_API == .Vulkan {
 		res = vk_init()
@@ -162,6 +164,11 @@ fini :: proc() {
 		vk_pre_fini()
 	} else when TARGET_API == .Metal_3 {
 		m3_pre_fini()
+	}
+
+	resource_set_it := hm.dynamic_iterator_make(&_resource_sets)
+	for _, resource_set in hm.iterate(&resource_set_it) {
+		destroy_resource_set(resource_set)
 	}
 
 	pipelines_it := hm.dynamic_iterator_make(&_pipelines)
@@ -469,6 +476,7 @@ _metadata_of :: proc {
 	_pipeline_metadata_of,
 	_queue_metadata_of,
 	_command_buffer_metadata_of,
+	_resource_set_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {

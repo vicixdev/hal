@@ -244,6 +244,8 @@ vk_pre_fini :: proc() {
 }
 
 vk_fini :: proc() {
+	vk.DestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, nil)
+	vk.DestroyDescriptorPool(vk_device, vk_descriptor_pool, nil)
 	vk.DestroyPipelineLayout(vk_device, vk_compute_pipeline_layout, nil)
 	vk.DestroyPipelineLayout(vk_device, vk_render_pipeline_layout, nil)
 	vk.DestroyPipelineCache(vk_device, vk_pipeline_cache, nil)

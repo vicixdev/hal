@@ -76,7 +76,7 @@ m3_texture_descriptor_to_mtl :: proc(descriptor: Texture_Descriptor) -> ^MTL.Tex
 	mtl_desc->setMipmapLevelCount(cast(NS.UInteger)descriptor.mip_count)
 	mtl_desc->setSampleCount(cast(NS.UInteger)descriptor.sample_count)
 	mtl_desc->setPixelFormat(m3_PIXEL_FORMAT_TO_MTL[descriptor.format])
-	mtl_desc->setUsage(m3_TEXTURE_USAGE_TO_MTL[descriptor.usage])
+	mtl_desc->setUsage(m3_texture_usages_to_mtl(descriptor.usage))
 
 	if descriptor.type == .Cube || descriptor.type == .Cube_Array {
 		mtl_desc->setArrayLength(cast(NS.UInteger)descriptor.layer_count / 6)
@@ -121,6 +121,14 @@ m3_label_view :: proc(metadata: ^_View_Metadata, label: string) -> Result {
 	return nil
 }
 
+m3_texture_usages_to_mtl :: proc(usages: Texture_Usages) -> (mtl: MTL.TextureUsage) {
+	for usage in usages {
+		mtl += m3_TEXTURE_USAGE_TO_MTL[usage]
+	}
+
+	return
+}
+
 @(rodata)
 m3_TEXTURE_TYPE_TO_MTL := [Texture_Type]MTL.TextureType {
 	.D1		= .Type1D,
@@ -162,7 +170,7 @@ m3_PIXEL_FORMAT_TO_MTL := [Pixel_Format]MTL.PixelFormat {
 m3_TEXTURE_USAGE_TO_MTL := [Texture_Usage]MTL.TextureUsage {
 	.Sampled			= { .PixelFormatView, .ShaderRead },
 	.Storage			= { .PixelFormatView, .ShaderRead, .ShaderWrite },
-	.Color_attachment		= { .PixelFormatView, .RenderTarget, .ShaderRead, .ShaderWrite },
-	.Depth_stencil_attachment	= { .PixelFormatView, .RenderTarget, .ShaderRead, .ShaderWrite },
+	.Color_attachment		= { .PixelFormatView, .RenderTarget, },
+	.Depth_stencil_attachment	= { .PixelFormatView, .RenderTarget, },
 }
 

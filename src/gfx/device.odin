@@ -47,6 +47,7 @@ _available_devices:	[]Device_Info
 _device_info:		^Device_Info
 _selected_device:	Device_Id
 _is_device_selected:	bool
+_device_is_being_initialized:	bool
 
 enumerate_devices :: proc(
 	location := #caller_location,
@@ -84,6 +85,9 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 		location=location,
 	) or_return
 
+	_device_is_being_initialized = true
+	defer _device_is_being_initialized = false
+
 	when TARGET_API == .Vulkan {
 		res = vk_select_device(device)
 		_check_generic_backend_error(res, location) or_return
@@ -94,7 +98,7 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 	}
 
 	_device_info = &_available_devices[device]
-	ensure(_setup_queues() == nil, "If the device got selected, then the queue setup should not fail.")
+	ensure(_init_queues() == nil, "If the device got selected, then the queue setup should not fail.")
 
 	_is_device_selected = true
 
@@ -104,7 +108,7 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 _check_device_selected :: proc(location: runtime.Source_Code_Location) -> Result {
 	_check_initialized(location) or_return
 	_check_condition(
-		_is_device_selected,
+		_is_device_selected || _device_is_being_initialized,
 		.Device_Not_Selected,
 		.Error,
 		"Device not selected",

@@ -173,6 +173,29 @@ mem_copy :: proc(
 		location=location,
 	) or_return
 
+	_check_condition(
+		source_metadata.memory_type != .Readback,
+		.Incompatible_Memory_Type,
+		.Error,
+		"Incorrect source memory type",
+		"The source buffer (at 0x%x) is of memory type `.Readback`. `.Readback` buffers can only be used as " +
+		"destination. To upload data consider using `.Default` buffers for small memory sizes or `.Staging` " +
+		"for bigger ones.",
+		source.address,
+		location=location,
+	) or_return
+	_check_condition(
+		destination_metadata.memory_type != .Staging,
+		.Incompatible_Memory_Type,
+		.Error,
+		"Incorrect destination memory type",
+		"The destination buffer (at 0x%x) is of memory type `.Staging`. `.Staging` buffers can only be used " +
+		"as source. To download data consider using `.Default` buffers for small memory sizes or `.Readback` " +
+		"for bigger ones.",
+		destination.address,
+		location=location,
+	) or_return
+
 	when TARGET_API == .Vulkan {
 		res = vk_mem_copy(
 			metadata,
