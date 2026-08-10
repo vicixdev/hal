@@ -240,9 +240,12 @@ vk_pre_fini :: proc() {
 	}
 	
 	if _is_device_selected {
-		for queue in _queues {
-			vk.QueueWaitIdle(queue.vk.queue)
-			vk.DestroyCommandPool(vk_device, queue.vk.command_pool, nil)
+		vk.QueueWaitIdle(_queues[.Default].vk.queue)
+		vk.DestroyCommandPool(vk_device, _queues[.Default].vk.command_pool, nil)
+
+		if _device_info.properties.transfer_queue {
+			vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
+			vk.DestroyCommandPool(vk_device, _queues[.Transfer].vk.command_pool, nil)
 		}
 	}
 }

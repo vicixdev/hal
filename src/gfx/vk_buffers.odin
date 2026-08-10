@@ -41,6 +41,8 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: 
 		queue_family_indices = { vk_device_info.default_queue_family }
 	}
 
+	sharing_mode := len(queue_family_indices) > 1 ? vk.SharingMode.CONCURRENT : vk.SharingMode.EXCLUSIVE
+
 	buffer_info := vk.BufferCreateInfo {
 		sType	= .BUFFER_CREATE_INFO,
 		size	= cast(vk.DeviceSize)size,
@@ -51,7 +53,7 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: 
 			.INDIRECT_BUFFER,
 			.SHADER_DEVICE_ADDRESS_KHR,
 		},
-		sharingMode		= .CONCURRENT,
+		sharingMode		= sharing_mode,
 		queueFamilyIndexCount	= cast(u32)len(queue_family_indices),
 		pQueueFamilyIndices	= raw_data(queue_family_indices),
 	}
