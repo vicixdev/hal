@@ -69,9 +69,9 @@ vk_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Texture_Type
 	return nil
 }
 
-vk_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Texture_Type) -> Result {
-	textures_infos := make([]vk.DescriptorImageInfo, len(metadata.texture_sets[type]), _temp_allocator) or_return
-	for view, i in metadata.texture_sets[type] {
+vk_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Storage_Texture_Type) -> Result {
+	textures_infos := make([]vk.DescriptorImageInfo, len(metadata.storage_texture_sets[type]), _temp_allocator) or_return
+	for view, i in metadata.storage_texture_sets[type] {
 		view_metadata := _metadata_of(view) or_return
 
 		textures_infos[i] = {

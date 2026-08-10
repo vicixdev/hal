@@ -21,9 +21,9 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
-TARGET_API_STRING :: #config(GFX_TARGET_API, "")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
 } else when TARGET_API_STRING == "Metal_3" {
@@ -45,7 +45,7 @@ when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
 	)
 }
 
-ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, true)
+ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
 ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, false)
 
 Error :: enum {

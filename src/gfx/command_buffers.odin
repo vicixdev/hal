@@ -79,6 +79,9 @@ begin_command_encoding :: proc(
 
 	metadata.in_use = true
 
+	setup_res := use_resources(handle, _default_resource_set)
+	ensure(setup_res == nil, "Could not setup the default resource set. Broken implementation?")
+
 	return handle, nil
 }
 

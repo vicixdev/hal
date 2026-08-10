@@ -28,6 +28,35 @@ vk_begin_command_encoding :: proc(metadata: ^_Command_Buffer_Metadata, queue_met
 	return nil
 }
 
+vk_use_resources :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	resource_set_metadata: ^_Resource_Set_Metadata,
+) -> Result {
+
+	vk.CmdBindDescriptorSets(
+		metadata.vk.command_buffer,
+		.COMPUTE,
+		vk_compute_pipeline_layout,
+		0,
+		1,
+		&resource_set_metadata.vk.descriptor_set,
+		0,
+		nil,
+	)
+	vk.CmdBindDescriptorSets(
+		metadata.vk.command_buffer,
+		.GRAPHICS,
+		vk_compute_pipeline_layout,
+		0,
+		1,
+		&resource_set_metadata.vk.descriptor_set,
+		0,
+		nil,
+	)
+	
+	return nil
+}
+
 vk_mem_copy :: proc(
 	metadata:		^_Command_Buffer_Metadata,
 	destination_metadata:	^_Buffer_Metadata,
@@ -70,21 +99,6 @@ vk_dispatch :: proc(
 
 	push_constant_buffer = {}
 	copy(push_constant_buffer[:], argument)
-
-	if metadata.resource_set != {} {
-		resource_set_metadata := _metadata_of(metadata.resource_set) or_return
-
-		vk.CmdBindDescriptorSets(
-			metadata.vk.command_buffer,
-			.COMPUTE,
-			vk_compute_pipeline_layout,
-			0,
-			1,
-			&resource_set_metadata.vk.descriptor_set,
-			0,
-			nil,
-		)
-	}
 
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
