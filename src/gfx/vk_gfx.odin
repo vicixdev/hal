@@ -239,20 +239,24 @@ vk_pre_fini :: proc() {
 		m3_end_tracing()
 	}
 	
-	for queue in _queues {
-		vk.QueueWaitIdle(queue.vk.queue)
-		vk.DestroyCommandPool(vk_device, queue.vk.command_pool, nil)
+	if _is_device_selected {
+		for queue in _queues {
+			vk.QueueWaitIdle(queue.vk.queue)
+			vk.DestroyCommandPool(vk_device, queue.vk.command_pool, nil)
+		}
 	}
 }
 
 vk_fini :: proc() {
-	vk.DestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, nil)
-	vk.DestroyDescriptorPool(vk_device, vk_descriptor_pool, nil)
-	vk.DestroyPipelineLayout(vk_device, vk_compute_pipeline_layout, nil)
-	vk.DestroyPipelineLayout(vk_device, vk_render_pipeline_layout, nil)
-	vk.DestroyPipelineCache(vk_device, vk_pipeline_cache, nil)
+	if _is_device_selected {
+		vk.DestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, nil)
+		vk.DestroyDescriptorPool(vk_device, vk_descriptor_pool, nil)
+		vk.DestroyPipelineLayout(vk_device, vk_compute_pipeline_layout, nil)
+		vk.DestroyPipelineLayout(vk_device, vk_render_pipeline_layout, nil)
+		vk.DestroyPipelineCache(vk_device, vk_pipeline_cache, nil)
 
-	vk.DestroyDevice(vk_device, nil)
+		vk.DestroyDevice(vk_device, nil)
+	}
 
 	if vk_has_validation {
 		vk.DestroyDebugUtilsMessengerEXT(vk_instance, vk_debug_messenger, nil)

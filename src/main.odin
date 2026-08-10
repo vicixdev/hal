@@ -3,7 +3,6 @@ package main
 import "core:log"
 import "gfx"
 import "core:mem"
-import "core:time"
 import "core:debug/trace"
 
 main :: proc() {
@@ -162,6 +161,9 @@ big_mult :: proc() -> gfx.Result {
 		res:	uintptr,
 	}
 
+	on_work_done := gfx.create_semaphore() or_return
+	defer gfx.destroy_semaphore(on_work_done)
+
 	a := gfx.alloc(.Default, 16 * mem.Kilobyte) or_return
 	b := gfx.alloc(.Default, 16 * mem.Kilobyte) or_return
 	res := gfx.alloc(.Private, 16 * mem.Kilobyte) or_return
@@ -194,9 +196,9 @@ big_mult :: proc() -> gfx.Result {
 	)
 	gfx.barrier(cb, { .Compute }, { .Transfer })
 	gfx.mem_copy(cb, c, res, 128 * size_of(f32))
-	gfx.submit(cb)
+	gfx.submit_and_signal(cb, on_work_done, 1)
 
-	time.sleep(1 * 1000 * 1000 * 1000)
+	gfx.wait_semaphore(on_work_done, 1)
 	for i in 0..<128 {
 		log.info(i, (cast([^]f32)c.contents)[i])
 	}

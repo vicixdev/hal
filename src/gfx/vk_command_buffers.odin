@@ -149,6 +149,36 @@ vk_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_M
 	return nil
 }
 
+vk_submit_and_signal :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	queue_metadata:		^_Queue_Metadata,
+	semaphore_metadata:	^_Semaphore_Metadata,
+	value: int,
+) -> Result {
+	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
+
+	signal_info := vk.SemaphoreSubmitInfo {
+		sType		= .SEMAPHORE_SUBMIT_INFO,
+		semaphore	= semaphore_metadata.vk.semaphore,
+		value		= cast(u64)value,
+		stageMask	= { .ALL_COMMANDS },
+	}
+	command_buffer_submit_info := vk.CommandBufferSubmitInfo {
+		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
+		commandBuffer	= metadata.vk.command_buffer,
+	}
+	submit_info := vk.SubmitInfo2 {
+		sType				= .SUBMIT_INFO_2,
+		commandBufferInfoCount		= 1,
+		pCommandBufferInfos		= &command_buffer_submit_info,
+		signalSemaphoreInfoCount	= 1,
+		pSignalSemaphoreInfos		= &signal_info,
+	}
+	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+
+	return nil
+}
+
 vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {
 	for stage in stages {
 		flags += vk_STAGE_TO_VK[stage]

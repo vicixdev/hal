@@ -21,9 +21,9 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
 } else when TARGET_API_STRING == "Metal_3" {
@@ -75,6 +75,7 @@ Error :: enum {
 	Invalid_Pipeline,
 	Invalid_Queue,
 	Invalid_Resource_Set,
+	Invalid_Semaphore,
 
 	Queue_Already_In_Use,
 	Incompatible_Pipeline,
@@ -143,6 +144,7 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	hm.dynamic_init(&_samplers, _global_allocator)
 	hm.dynamic_init(&_pipelines, _global_allocator)
 	hm.dynamic_init(&_resource_sets, _global_allocator)
+	hm.dynamic_init(&_semaphores, _global_allocator)
 
 	when TARGET_API == .Vulkan {
 		res = vk_init()
@@ -166,6 +168,11 @@ fini :: proc() {
 		vk_pre_fini()
 	} else when TARGET_API == .Metal_3 {
 		m3_pre_fini()
+	}
+
+	semaphore_it := hm.dynamic_iterator_make(&_semaphores)
+	for _, semaphore in hm.iterate(&semaphore_it) {
+		destroy_semaphore(semaphore)
 	}
 
 	resource_set_it := hm.dynamic_iterator_make(&_resource_sets)
@@ -476,6 +483,7 @@ _metadata_of :: proc {
 	_queue_metadata_of,
 	_command_buffer_metadata_of,
 	_resource_set_metadata_of,
+	_semaphore_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {

@@ -12,8 +12,9 @@ vk_Device_Info :: struct {
 
 	properties:		vk.PhysicalDeviceProperties2,
 	features:		vk.PhysicalDeviceFeatures2,
-	device_address_features:	vk.PhysicalDeviceBufferDeviceAddressFeatures,
-	descriptor_indexing_features:	vk.PhysicalDeviceDescriptorIndexingFeatures,
+	features_11:		vk.PhysicalDeviceVulkan11Features,
+	features_12:		vk.PhysicalDeviceVulkan12Features,
+	features_13:		vk.PhysicalDeviceVulkan13Features,
 
 	extensions:		[]vk.ExtensionProperties,
 
@@ -128,20 +129,12 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 			samplerAnisotropy	= true,
 		},
 	}
-	synchronization_features := vk.PhysicalDeviceSynchronization2Features {
-		sType			= .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
+	device_feature_12 := vk.PhysicalDeviceVulkan12Features {
+		sType			= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 		pNext			= &device_features,
-		synchronization2	= true,
-	}
-	buffer_features := vk.PhysicalDeviceBufferDeviceAddressFeatures {
-		sType			= .PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
-		pNext			= &synchronization_features,
+		timelineSemaphore	= true,
 		bufferDeviceAddress	= true,
-	}
-	descriptor_features := vk.PhysicalDeviceDescriptorIndexingFeatures {
-		sType			= .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
-		pNext			= &buffer_features,
-		runtimeDescriptorArray				= true,
+		runtimeDescriptorArray	= true,
 		descriptorBindingPartiallyBound			= true,
 		descriptorBindingStorageImageUpdateAfterBind	= true,
 		descriptorBindingSampledImageUpdateAfterBind	= true,
@@ -149,9 +142,14 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		shaderStorageImageArrayNonUniformIndexing	= true,
 		shaderSampledImageArrayNonUniformIndexing	= true,
 	}
+	device_features_13 := vk.PhysicalDeviceVulkan13Features {
+		sType			= .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+		pNext			= &device_feature_12,
+		synchronization2	= true,
+	}
 	descriptor := vk.DeviceCreateInfo {
 		sType			= .DEVICE_CREATE_INFO,
-		pNext			= &descriptor_features,
+		pNext			= &device_features_13,
 		queueCreateInfoCount	= cast(u32)len(queue_descriptors),
 		pQueueCreateInfos	= raw_data(queue_descriptors),
 		enabledExtensionCount	= cast(u32)len(vk_enabled_device_extensions),
@@ -343,13 +341,13 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res:
 	vk_info.properties.sType	= .PHYSICAL_DEVICE_PROPERTIES_2
 	vk.GetPhysicalDeviceProperties2(device, &vk_info.properties)
 
-	vk_info.features.sType = .PHYSICAL_DEVICE_FEATURES_2
-
-	vk_info.device_address_features.sType = .PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES
-	vk_link(&vk_info.features, &vk_info.device_address_features)
-
-	vk_info.descriptor_indexing_features.sType = .PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-	vk_link(&vk_info.features, &vk_info.descriptor_indexing_features)
+	vk_info.features.sType		= .PHYSICAL_DEVICE_FEATURES_2
+	vk_info.features.pNext		= &vk_info.features_11
+	vk_info.features_11.sType	= .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
+	vk_info.features_11.pNext	= &vk_info.features_12
+	vk_info.features_12.sType	= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
+	vk_info.features_12.pNext	= &vk_info.features_13
+	vk_info.features_13.sType	= .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES
 	vk.GetPhysicalDeviceFeatures2(device, &vk_info.features)
 
 	vk_find_memory_types(device, &info)
@@ -507,14 +505,15 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 		)
 	}
 
-	return vk_info.device_address_features.bufferDeviceAddress == true &&
-		vk_info.descriptor_indexing_features.runtimeDescriptorArray == true &&
-		vk_info.descriptor_indexing_features.descriptorBindingPartiallyBound == true &&
-		vk_info.descriptor_indexing_features.descriptorBindingStorageImageUpdateAfterBind == true &&
-		vk_info.descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind == true &&
-		vk_info.descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == true &&
-		vk_info.descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing == true &&
-		vk_info.descriptor_indexing_features.shaderStorageImageArrayNonUniformIndexing == true &&
+	return vk_info.features_12.bufferDeviceAddress == true &&
+		vk_info.features_12.runtimeDescriptorArray == true &&
+		vk_info.features_12.descriptorBindingPartiallyBound == true &&
+		vk_info.features_12.descriptorBindingStorageImageUpdateAfterBind == true &&
+		vk_info.features_12.descriptorBindingSampledImageUpdateAfterBind == true &&
+		vk_info.features_12.descriptorBindingUpdateUnusedWhilePending == true &&
+		vk_info.features_12.shaderSampledImageArrayNonUniformIndexing == true &&
+		vk_info.features_12.shaderStorageImageArrayNonUniformIndexing == true &&
+		vk_info.features_13.synchronization2 == true &&
 		vk_info.has_default_queue_family &&
 		vk_info.has_private_memory &&
 		vk_info.has_updown_memory &&

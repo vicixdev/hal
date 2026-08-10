@@ -10,4 +10,5 @@ m3_Pipeline_Metadata		:: struct {}
 m3_Queue_Metadata		:: struct {}
 m3_Command_Buffer_Metadata	:: struct {}
 m3_Resource_Set_Metadata	:: struct {}
+m3_Semaphore_Metadata		:: struct {}
 

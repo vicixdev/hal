@@ -5,7 +5,6 @@ import "core:mem"
 import vmem "core:mem/virtual"
 
 Command_Buffer	:: distinct Handle
-Semaphore	:: distinct Handle
 Fence		:: distinct Handle
 
 _Command_Buffer_Metadata :: struct {
@@ -316,7 +315,49 @@ submit :: proc(command_buffer: Command_Buffer, location := #caller_location) {
 	metadata.in_use = false
 }
 // value must be monotonically increasing.
-submit_and_signal :: proc(command_buffer: Command_Buffer, semaphore: Semaphore, value: int) {}
+submit_and_signal :: proc(
+	command_buffer: Command_Buffer,
+	semaphore: Semaphore,
+	value: int,
+	location := #caller_location,
+) {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location)
+	if metadata_res != nil do return
+	
+	queue_metadata, queue_res := _metadata_of(metadata.queue)
+	assert(queue_res == nil)
+	
+	semaphore_metadata, semaphore_res := _metadata_of(semaphore)
+	_check_semaphore_handle(semaphore_res, semaphore, location)
+	if semaphore_res != nil do return
+
+	if value <= semaphore_metadata.last_signaled_value {
+		_log_message(
+			.Invalid_Arguments,
+			.Error,
+			"Invalid signal value",
+			"The values signaled to a semaphore must be monotonically (always) increasing. The last " +
+			"signaled value on semaphore %v is %d, while a signaling of %d was requested.",
+			semaphore,
+			semaphore_metadata.last_signaled_value,
+			value,
+		)
+		return
+	}
+
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = vk_submit_and_signal(metadata, queue_metadata, semaphore_metadata, value)
+	} else {
+		res = m3_submit_and_signal(metadata, queue_metadata, semaphore_metadata, value)
+	}
+	
+	_check_generic_backend_error(res, location)
+
+	semaphore_metadata.last_signaled_value = value
+}
 
 // wait_semaphore :: proc(semaphore: Semaphore, value: int) {}
 

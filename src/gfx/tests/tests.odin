@@ -3,26 +3,25 @@ package gfx_tests
 
 import "core:testing"
 import gfx ".."
-import "core:time"
 
-// @(test)
-// init_fini :: proc(t: ^testing.T) {
-// 	init_res := gfx.init()
-// 	testing.expect(t, init_res == nil)
+@(test)
+init_fini :: proc(t: ^testing.T) {
+	init_res := gfx.init()
+	testing.expect(t, init_res == nil)
 
-// 	gfx.fini()
-// }
+	gfx.fini()
+}
 
-// @(test)
-// supports_multi_init :: proc(t: ^testing.T) {
-// 	init_res := gfx.init()
-// 	testing.expect(t, init_res == nil)
-// 	gfx.fini()
+@(test)
+supports_multi_init :: proc(t: ^testing.T) {
+	init_res := gfx.init()
+	testing.expect(t, init_res == nil)
+	gfx.fini()
 
-// 	init_res = gfx.init()
-// 	testing.expect(t, init_res == nil)
-// 	gfx.fini()
-// }
+	init_res = gfx.init()
+	testing.expect(t, init_res == nil)
+	gfx.fini()
+}
 
 @(test)
 generic_compute_test :: proc(t: ^testing.T) {
@@ -62,6 +61,9 @@ generic_compute_test :: proc(t: ^testing.T) {
 	}, { 128, 1, 1 })
 	testing.expect_value(t, add_pipeline_res, nil)
 
+	semaphore, semaphore_res := gfx.create_semaphore()
+	testing.expect_value(t, semaphore_res, nil)
+
 	memory: gfx.Arena
 	memory_res := gfx.create_arena(&memory, .Default, size_of(f32) * ARRAY_LENGTH * 3)
 	testing.expect_value(t, memory_res, nil)
@@ -91,10 +93,9 @@ generic_compute_test :: proc(t: ^testing.T) {
 		in_b	= gpu_b,
 		out	=  gpu_out,
 	}, { ARRAY_LENGTH / 128, 1, 1 })
-	gfx.submit(command_buffer)
+	gfx.submit_and_signal(command_buffer, semaphore, 1)
 
-	time.sleep(5 * 1000 *1000 * 1000)
-
+	gfx.wait_semaphore(semaphore, 1)
 	for i := 0; i < ARRAY_LENGTH; i += 1 {
 		testing.expect_value(t, floats_out[i], floats_a[i] + floats_b[i] * half)
 	}
