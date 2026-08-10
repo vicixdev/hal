@@ -137,8 +137,6 @@ init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res:
 
 	_generic_allocator = context.allocator
 
-	_init_messaging_system() or_return
-
 	hm.dynamic_init(&_buffers, _global_allocator)
 	hm.dynamic_init(&_textures, _global_allocator)
 	hm.dynamic_init(&_views, _global_allocator)
@@ -198,9 +196,6 @@ fini :: proc() {
 	} else when TARGET_API == .Metal_3 {
 		m3_fini()
 	}
-
-	print_messages()
-	_fini_messaging_system()
 
 	vmem.arena_destroy(&_global_arena)
 	mem.scratch_destroy(&_temp_scratch)

@@ -171,6 +171,10 @@ create_texture :: proc(
 
 	metadata.desc		= descriptor
 
+	view_metadata.mip_count		= metadata.mip_count
+	view_metadata.layer_count	= metadata.layer_count
+	view_metadata.type		= metadata.type
+
 	metadata.default_view	= view
 	view_metadata.next_view	= view
 	view_metadata.texture	= texture
@@ -286,7 +290,8 @@ create_view :: proc(
 
 	metadata.desc = descriptor
 
-	metadata.next_view = default_view_metadata.next_view
+	metadata.texture	= texture
+	metadata.next_view	= default_view_metadata.next_view
 	default_view_metadata.next_view = handle
 
 	when TARGET_API == .Vulkan {

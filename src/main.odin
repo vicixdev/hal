@@ -99,6 +99,9 @@ main :: proc() {
 	defer gfx.destroy_pipeline(pipeline)
 	log.info(pipeline, pipeline_res)
 
+	log.info(tex, v1, v2)
+	gfx.label(tex, "Texture texture")
+
 	resource_set, _ := gfx.create_resource_set()
 	defer gfx.destroy_resource_set(resource_set)
 

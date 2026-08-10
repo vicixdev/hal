@@ -71,9 +71,53 @@ set_texture_set :: proc(
 	_check_resource_set_handle(metadata_res, resource_set, location)
 	if metadata_res != nil do return
 
+	for view, i in textures {
+		view_metadata, view_metadata_res := _metadata_of(view)
+		_check_view_handle(view_metadata_res, view, location)
+		if view_metadata_res != nil do return
+
+		texture_metadata, texture_metatadata_res := _metadata_of(view_metadata.texture)
+		assert(
+			texture_metatadata_res == nil,
+			"If the view metadata exists, then the referenced texture metadata should also exist.",
+		)
+
+		if view_metadata.type != type {
+			_log_message(
+				.Invalid_Texture,
+				.Error,
+				"Invalid texture type",
+				"Only views with type %v are allowed in the texture set of type %v. The view %v " +
+				"(at index %d) is of type %v.",
+				type,
+				type,
+				view,
+				i,
+				view_metadata.type,
+				location=location,
+			)
+			return
+		}
+
+		if .Sampled not_in texture_metadata.usage {
+			_log_message(
+				.Invalid_Texture,
+				.Error,
+				"Invalid texture usage",
+				"A texture, in order to be used in a texture set should, be created with the `.Sampled` " +
+				"usage. The provided view %v (at index %i) references a texture with usage %v.",
+				view,
+				i,
+				texture_metadata.usage,
+				location=location,
+			)
+			return
+		}
+	}
+	
 	delete(metadata.texture_sets[type], _generic_allocator)
 	metadata.texture_sets[type] = slice.clone(textures, _generic_allocator)
-	
+
 	res: Result
 	when TARGET_API == .Vulkan {
 		res = vk_set_texture_set(metadata, type)
@@ -95,6 +139,51 @@ set_storage_texture_set :: proc(
 	_check_resource_set_handle(metadata_res, resource_set, location)
 	if metadata_res != nil do return
 
+	for view, i in textures {
+		view_metadata, view_metadata_res := _metadata_of(view)
+		_check_view_handle(view_metadata_res, view, location)
+		if view_metadata_res != nil do return
+
+		texture_metadata, texture_metatadata_res := _metadata_of(view_metadata.texture)
+		assert(
+			texture_metatadata_res == nil,
+			"If the view metadata exists, then the referenced texture metadata should also exist.",
+		)
+
+		if view_metadata.type != type {
+			_log_message(
+				.Invalid_Texture,
+				.Error,
+				"Invalid texture type",
+				"Only views with type %v are allowed in the texture set of type %v. The view %v " +
+				"(at index %d) is of type %v.",
+				type,
+				type,
+				view,
+				i,
+				view_metadata.type,
+				location=location,
+			)
+			return
+		}
+
+		if .Storage not_in texture_metadata.usage {
+			_log_message(
+				.Invalid_Texture,
+				.Error,
+				"Invalid texture usage",
+				"A texture, in order to be used in a texture set should, be created with the " +
+				"`.Storage` usage. The provided view %v (at index %d) references a texture with " +
+				"usage %v.",
+				view,
+				i,
+				texture_metadata.usage,
+				location=location,
+			)
+			return
+		}
+	}
+
 	delete(metadata.storage_texture_sets[type], _generic_allocator)
 	metadata.storage_texture_sets[type] = slice.clone(textures, _generic_allocator)
 	
@@ -112,6 +201,12 @@ set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, locatio
 	metadata, metadata_res := _metadata_of(resource_set)
 	_check_resource_set_handle(metadata_res, resource_set, location)
 	if metadata_res != nil do return
+
+	for sampler in samplers {
+		_, sampler_metadata_res := _metadata_of(sampler)
+		_check_sampler_handle(sampler_metadata_res, sampler, location)
+		if sampler_metadata_res != nil do return
+	}
 
 	delete(metadata.sampler_set, _generic_allocator)
 	metadata.sampler_set = slice.clone(samplers, _generic_allocator)

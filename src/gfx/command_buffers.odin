@@ -2,7 +2,6 @@ package gfx
 
 import "base:runtime"
 import "core:mem"
-import "core:slice"
 import vmem "core:mem/virtual"
 
 Command_Buffer	:: distinct Handle
@@ -10,17 +9,15 @@ Semaphore	:: distinct Handle
 Fence		:: distinct Handle
 
 _Command_Buffer_Metadata :: struct {
+	handle:		Command_Buffer,
+
 	arena:		vmem.Arena,
 	allocator:	runtime.Allocator,
 
-	handle:		Command_Buffer,
 	queue:		Queue,
 	in_use:		bool,
 
-	texture_heaps:		[Texture_Type][]View,
-	texture_heap_changed:	[Texture_Type]bool,
-	sampler_heap:		[]Sampler,
-	sampler_heap_changed:	bool,
+	resource_set:	Resource_Set,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -83,34 +80,17 @@ begin_command_encoding :: proc(
 	return handle, nil
 }
 
-set_texture_heap :: proc(
+set_resource_set :: proc(
 	command_buffer:	Command_Buffer,
-	type:		Texture_Type,
-	textures:	[]View,
-	location :=	#caller_location,
-) -> (res: Result) {
-
-	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
-
-	metadata.texture_heaps[type] = slice.clone(textures, metadata.allocator) or_return
-	metadata.texture_heap_changed[type] = true
-	
-	return nil
-}
-
-set_sampler_heap :: proc(
-	command_buffer:	Command_Buffer,
-	samplers:	[]Sampler,
+	resource_set:	Resource_Set,
 	location :=	#caller_location,
 ) -> (res: Result) {
 	
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
-	metadata.sampler_heap = slice.clone(samplers, metadata.allocator) or_return
-	metadata.sampler_heap_changed = true
-	
+	metadata.resource_set = resource_set
+
 	return nil
 }
 
@@ -267,11 +247,6 @@ dispatch_with_bytes_argument :: proc(
 	}
 
 	_check_generic_backend_error(res, location) or_return
-
-	metadata.sampler_heap_changed = false
-	for &heap in metadata.texture_heap_changed {
-		heap = false
-	}
 
 	return nil
 }

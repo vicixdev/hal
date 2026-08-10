@@ -48,7 +48,7 @@ get_slang () {
 	pull_github_release tools/slang shader-slang slang v2026.13 slang-2026.13-$slang_os-$slang_arch
 }
 
-pull_github_commit shared/back laytan back 9d4117268e49a710727de4eae1e65d7417fc1c2a
+# pull_github_commit shared/back laytan back 9d4117268e49a710727de4eae1e65d7417fc1c2a
 # get_slang
 
 rm -rf ./.tmp

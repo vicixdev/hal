@@ -71,6 +71,21 @@ vk_dispatch :: proc(
 	push_constant_buffer = {}
 	copy(push_constant_buffer[:], argument)
 
+	if metadata.resource_set != {} {
+		resource_set_metadata := _metadata_of(metadata.resource_set) or_return
+
+		vk.CmdBindDescriptorSets(
+			metadata.vk.command_buffer,
+			.COMPUTE,
+			vk_compute_pipeline_layout,
+			0,
+			1,
+			&resource_set_metadata.vk.descriptor_set,
+			0,
+			nil,
+		)
+	}
+
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_compute_pipeline_layout,

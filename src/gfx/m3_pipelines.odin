@@ -39,7 +39,7 @@ m3_create_compute_pipeline :: proc(
 
 	library, library_err := m3_device->newLibraryWithData(bytecode_data)
 	if library_err != nil {
-		_queue_generic_message(
+		_log_generic_message(
 			.Error,
 			"Shader compilation error",
 			"The metal library could not compile: %s -- %s",
@@ -56,7 +56,7 @@ m3_create_compute_pipeline :: proc(
 	if descriptor.constants == nil {
 		function = library->newFunctionWithName(function_name)
 		if function == nil {
-			_queue_generic_message(
+			_log_generic_message(
 				.Error,
 				"Shader compilation error",
 				"The metal function `%v` could not compile.",
@@ -79,7 +79,7 @@ m3_create_compute_pipeline :: proc(
 		function_err: ^NS.Error
 		function, function_err = library->newFunctionWithConstantValues(function_name, constants)
 		if function_err != nil {
-			_queue_generic_message(
+			_log_generic_message(
 				.Error,
 				"Shader compilation error",
 				"The metal function `%s` could not specialized: %s -- %s",
@@ -93,7 +93,7 @@ m3_create_compute_pipeline :: proc(
 
 	pipeline, pipeline_err := m3_device->newComputePipelineStateWithFunction(function)
 	if pipeline_err != nil {
-		_queue_generic_message(
+		_log_generic_message(
 			.Error,
 			"Shader compilation error",
 			"Could not create a compute pipeline from function `%s`: %s -- %s",

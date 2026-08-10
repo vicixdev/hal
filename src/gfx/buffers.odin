@@ -44,7 +44,7 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer:
 	_check_device_selected(location) or_return
 
 	if size < _device_info.limits.min_allocation_size {
-		_queue_generic_message(
+		_log_generic_message(
 			.Warning,
 			"Small GPU allocation",
 			"Small GPU allocation detected (%d bytes). The gfx::alloc procedure should be used to " +
@@ -61,7 +61,7 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer:
 	}
 
 	if !_is_aligned(cast(uintptr)size, _device_info.limits.allocation_alignment) {
-		_queue_generic_message(
+		_log_generic_message(
 			.Warning,
 			"Unaligned GPU allocation",
 			"Unaligned allocation detected (%d bytes). The gfx::alloc procedure should be used to " +
