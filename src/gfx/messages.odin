@@ -14,6 +14,14 @@ _log_message :: proc(
 	args:		..any,
 	location:	runtime.Source_Code_Location = {},
 ) -> Result {
+	location := location
+	if location == {} {
+		location.file_path	= "unknown"
+		location.procedure	= "unknown"
+		location.column		= 0
+		location.line		= 0
+	}
+
 	format: string
 	if result != nil {
 		format = fmt.aprintf(
@@ -32,20 +40,12 @@ _log_message :: proc(
 		)
 	}
 
-	if location == {} {
-		log.logf(
-			type,
-			format,
-			args=args,
-		)
-	} else {
-		log.logf(
-			type,
-			format,
-			args=args,
-			location=location,
-		)
-	}
+	log.logf(
+		type,
+		format,
+		args=args,
+		location=location,
+	)
 
 	return result
 }

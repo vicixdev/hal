@@ -49,6 +49,8 @@ _selected_device:	Device_Id
 _is_device_selected:	bool
 _device_is_being_initialized:	bool
 
+_default_resource_set:	Resource_Set
+
 enumerate_devices :: proc(
 	location := #caller_location,
 ) -> (available_devices: []Device_Info, res: Result) {
@@ -99,6 +101,10 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 
 	_device_info = &_available_devices[device]
 	ensure(_init_queues() == nil, "If the device got selected, then the queue setup should not fail.")
+
+	default_resource_set_res: Result
+	_default_resource_set, default_resource_set_res = create_resource_set()
+	ensure(default_resource_set_res == nil, "Could not create the default resource set. Broken implementation?")
 
 	_is_device_selected = true
 

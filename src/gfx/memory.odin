@@ -10,12 +10,16 @@ Arena :: struct {
 }
 
 create_arena :: proc(arena: ^Arena, memory_type: Memory, size: int, location := #caller_location) -> Result {
+	size := size
+	if !_is_aligned(cast(uintptr)size, _device_info.limits.allocation_alignment) {
+		size = mem.align_forward_int(size, _device_info.limits.allocation_alignment)
+	}
+
 	buffer := alloc(memory_type, size, location) or_return
 
 	arena.memory_type = memory_type
 	arena.base	= buffer
 	arena.size	= size
-	arena.size	= 0
 
 	return nil
 }
@@ -29,8 +33,14 @@ arena_free_all :: proc(arena: ^Arena) {
 }
 
 arena_alloc :: proc(arena: ^Arena, size: int, align := 1) -> (buffer: Buffer, res: Result) {
-	base_offset := mem.align_forward_int(arena.offset, align)
-	if base_offset + size >= arena.size {
+	base_offset: int
+	if !_is_aligned(cast(uintptr)arena.offset, align) {
+		base_offset = mem.align_forward_int(arena.offset, align)
+	} else {
+		base_offset = arena.offset
+	}
+
+	if base_offset + size > arena.size {
 		return {}, .Out_Of_Gpu_Memory
 	}
 

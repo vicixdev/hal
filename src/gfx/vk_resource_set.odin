@@ -81,19 +81,17 @@ vk_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Text
 	}
 
 	binding: vk_Descriptor_Binding
-	switch type {
+	#partial switch type {
 	case .D1:
 		binding = .Texture_1d_Storage_Image
 	case .D2:
 		binding = .Texture_2d_Storage_Image
 	case .D2_Array:
 		binding = .Texture_2d_Array_Storage_Image
-	case .Cube:
-		binding = .Texture_Cube_Storage_Image
-	case .Cube_Array:
-		binding = .Texture_Cube_Array_Storage_Image
 	case .D3:
 		binding = .Texture_3d_Storage_Image
+	case:
+		panic("Invalid binding type for storage textures (`.Cube` and `.Cube_Array` are disallowed).")
 	}
 	
 	updates := vk.WriteDescriptorSet {

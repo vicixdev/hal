@@ -17,6 +17,10 @@ m3_pre_fini :: proc() {
 }
 
 m3_fini :: proc() {
+	if _is_device_selected {
+		m3_resource_set_heap->release()
+	}
+
 	for device in _available_devices {
 		device._platform.m3.device->release()
 	}

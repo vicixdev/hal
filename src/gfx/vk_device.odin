@@ -48,19 +48,17 @@ vk_descriptor_set_layout:	vk.DescriptorSetLayout
 vk_descriptor_pool:		vk.DescriptorPool
 
 vk_Descriptor_Binding :: enum u32 {
-	Sampler,
-	Texture_1d_Sampled_Image,
-	Texture_1d_Storage_Image,
-	Texture_2d_Sampled_Image,
-	Texture_2d_Storage_Image,
-	Texture_2d_Array_Sampled_Image,
-	Texture_2d_Array_Storage_Image,
-	Texture_Cube_Sampled_Image,
-	Texture_Cube_Storage_Image,
-	Texture_Cube_Array_Sampled_Image,
-	Texture_Cube_Array_Storage_Image,
-	Texture_3d_Sampled_Image,
-	Texture_3d_Storage_Image,
+	Sampler					= 0,
+	Texture_1d_Sampled_Image		= 1,
+	Texture_1d_Storage_Image		= 2,
+	Texture_2d_Sampled_Image		= 3,
+	Texture_2d_Storage_Image		= 4,
+	Texture_2d_Array_Sampled_Image		= 5,
+	Texture_2d_Array_Storage_Image		= 6,
+	Texture_Cube_Sampled_Image		= 7,
+	Texture_Cube_Array_Sampled_Image	= 8,
+	Texture_3d_Sampled_Image		= 9,
+	Texture_3d_Storage_Image		= 10,
 }
 
 vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device_Info, res: Result) {
@@ -282,20 +280,8 @@ vk_setup_descriptor_pool :: proc() -> Result {
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
 		{
-			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Storage_Image,
-			descriptorType		= .STORAGE_IMAGE,
-			descriptorCount		= MAX_TEXTURES_PER_SET,
-			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
-		},
-		{
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Array_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
-			descriptorCount		= MAX_TEXTURES_PER_SET,
-			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
-		},
-		{
-			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Array_Storage_Image,
-			descriptorType		= .STORAGE_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
@@ -321,9 +307,7 @@ vk_setup_descriptor_pool :: proc() -> Result {
 		.Texture_2d_Array_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 		.Texture_2d_Array_Storage_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 		.Texture_Cube_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_Cube_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 		.Texture_Cube_Array_Sampled_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_Cube_Array_Storage_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 		.Texture_3d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 		.Texture_3d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 	}

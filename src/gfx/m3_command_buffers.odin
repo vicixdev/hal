@@ -19,6 +19,8 @@ m3_Command_Buffer_Metadata :: struct {
 	compute_encoder:	^MTL.ComputeCommandEncoder,
 	blit_encoder:		^MTL.BlitCommandEncoder,
 	render_encoder:		^MTL.RenderCommandEncoder,
+
+	is_resource_set_bound:	bool,
 }
 
 m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
@@ -28,6 +30,15 @@ m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metad
 m3_begin_command_encoding :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBufferWithUnretainedReferences()
 	metadata.m3.current_encoder = .None
+
+	return nil
+}
+
+m3_use_resources :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	resource_set_metadata: ^_Resource_Set_Metadata,
+) -> Result {
+	metadata.m3.is_resource_set_bound = false
 
 	return nil
 }
@@ -64,6 +75,7 @@ m3_dispatch :: proc(
 
 	group_size := pipeline_metadata.compute.group_size
 
+	m3_bind_resource_set(metadata) or_return
 	metadata.m3.compute_encoder->setBytes(argument, 0)
 	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
 	metadata.m3.compute_encoder->dispatchThreadgroups(
@@ -90,6 +102,31 @@ m3_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_M
 	m3_flush_encoder(metadata)
 
 	metadata.m3.command_buffer->commit()
+
+	return nil
+}
+
+m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
+	assert(metadata.m3.current_encoder != .Blit)
+	if metadata.m3.current_encoder == .None {
+		return nil
+	}
+	if metadata.m3.is_resource_set_bound {
+		return nil
+	}
+
+	resource_set_metadata := _metadata_of(metadata.resource_set) or_return
+
+	#partial switch metadata.m3.current_encoder {
+	case .Compute:
+		metadata.m3.compute_encoder->setBuffer(resource_set_metadata.m3.root_buffer, 0, 1)
+
+	case .Render:
+		metadata.m3.render_encoder->setVertexBuffer(resource_set_metadata.m3.root_buffer, 0, 1)
+		metadata.m3.render_encoder->setFragmentBuffer(resource_set_metadata.m3.root_buffer, 0, 1)
+	}
+
+	metadata.m3.is_resource_set_bound = true
 
 	return nil
 }
@@ -133,5 +170,6 @@ m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	}
 	
 	metadata.m3.current_encoder = .None
+	metadata.m3.is_resource_set_bound = false
 }
 

@@ -125,7 +125,7 @@ vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk
 	// TODO: Implement multisampling
 	info.samples		= { ._1 }
 
-	if descriptor.type == .Cube || descriptor.type == .Cube_Array {
+	if descriptor.type == .Cube || descriptor.type == .Cube_Array || descriptor.type == .D2_Array {
 		info.flags += { .CUBE_COMPATIBLE }
 	}
 	

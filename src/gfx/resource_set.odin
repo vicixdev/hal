@@ -6,11 +6,18 @@ import hm "core:container/handle_map"
 
 Resource_Set :: distinct Handle
 
+Storage_Texture_Type :: enum {
+	D1,
+	D2,
+	D2_Array,
+	D3,
+}
+
 _Resource_Set_Metadata :: struct {
 	handle:			Resource_Set,
 
 	texture_sets:		[Texture_Type][]View,
-	storage_texture_sets:	[Texture_Type][]View,
+	storage_texture_sets:	[Storage_Texture_Type][]View,
 	sampler_set:		[]Sampler,
 
 	using platform: struct #raw_union {
@@ -130,7 +137,7 @@ set_texture_set :: proc(
 
 set_storage_texture_set :: proc(
 	resource_set: Resource_Set,
-	type: Texture_Type,
+	type: Storage_Texture_Type,
 	textures: []View,
 	location := #caller_location,
 ) {
@@ -150,7 +157,7 @@ set_storage_texture_set :: proc(
 			"If the view metadata exists, then the referenced texture metadata should also exist.",
 		)
 
-		if view_metadata.type != type {
+		if view_metadata.type != _STORAGE_TEXTURE_TYPE_TO_TEXTURE_TYPE[type] {
 			_log_message(
 				.Invalid_Texture,
 				.Error,
@@ -251,5 +258,13 @@ _add_resource_set_metadata :: proc() -> (resource_set: Resource_Set, metadata: ^
 
 _remove_resource_set_metadata :: proc(resource_set: Resource_Set) {
 	hm.remove(&_resource_sets, resource_set)
+}
+
+@(rodata)
+_STORAGE_TEXTURE_TYPE_TO_TEXTURE_TYPE := [Storage_Texture_Type]Texture_Type {
+	.D1		= .D1,
+	.D2		= .D2,
+	.D2_Array	= .D2_Array,
+	.D3		= .D3,
 }
 

@@ -67,6 +67,8 @@ begin_command_encoding :: proc(
 
 	vmem.arena_free_all(&metadata.arena)
 
+	metadata.resource_set	= _default_resource_set
+
 	when TARGET_API == .Vulkan {
 		res = vk_begin_command_encoding(metadata, queue_metadata)
 	} else when TARGET_API == .Metal_3 {
@@ -80,7 +82,7 @@ begin_command_encoding :: proc(
 	return handle, nil
 }
 
-set_resource_set :: proc(
+use_resources :: proc(
 	command_buffer:	Command_Buffer,
 	resource_set:	Resource_Set,
 	location :=	#caller_location,
@@ -89,7 +91,17 @@ set_resource_set :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
+	resource_set_metadata, resource_set_res := _metadata_of(resource_set)
+	_check_resource_set_handle(resource_set_res, resource_set, location) or_return
+	
 	metadata.resource_set = resource_set
+
+	when TARGET_API == .Vulkan {
+		res = vk_use_resources(metadata, resource_set_metadata)
+	} else when TARGET_API == .Metal_3 {
+		res = m3_use_resources(metadata, resource_set_metadata)
+	}
+
 
 	return nil
 }

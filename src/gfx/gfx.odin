@@ -21,9 +21,9 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
 } else when TARGET_API_STRING == "Metal_3" {
@@ -61,6 +61,7 @@ Error :: enum {
 	Out_Of_Bounds,
 
 	Invalid_Descriptor,
+	Invalid_Arguments,
 	Invalid_Pipeline_Bytecode,
 	Invalid_Pipeline_Constants,
 
@@ -102,8 +103,6 @@ Stages :: bit_set[Stage]
 
 // Command_Buffer :: distinct Handle
 
-_initialized:	bool
-
 Vulkan_Shader_Format :: enum {
 	Spirv,
 	// When targeting MoltenVK on MacOS, it is possible to directly load Metallib shaders, instead of Spirv ones.
@@ -119,6 +118,7 @@ Init_Descriptor :: struct {
 }
 
 _settings:		Init_Descriptor
+_initialized:		bool
 
 _global_arena:		vmem.Arena
 _global_allocator:	runtime.Allocator
@@ -126,7 +126,7 @@ _temp_scratch:		mem.Scratch
 _temp_allocator:	runtime.Allocator
 _generic_allocator:	runtime.Allocator
 
-init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res: Result) {
+init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (res: Result) {
 	_settings = descriptor
 
 	vmem.arena_init_growing(&_global_arena) or_return
@@ -158,6 +158,10 @@ init :: proc(descriptor: Init_Descriptor, location := #caller_location) -> (res:
 }
 
 fini :: proc() {
+	if _is_device_selected {
+		destroy_resource_set(_default_resource_set)
+	}
+
 	when TARGET_API == .Vulkan {
 		vk_pre_fini()
 	} else when TARGET_API == .Metal_3 {

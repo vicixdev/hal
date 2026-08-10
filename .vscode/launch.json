@@ -19,6 +19,22 @@
             "program": "${workspaceFolder}/build/out",
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Tests (lldb)",
+            "program": "${workspaceFolder}/build/tests",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb-dap",
+            "request": "launch",
+            "name": "Tests (lldb-dap)",
+            "program": "${workspaceFolder}/build/tests",
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

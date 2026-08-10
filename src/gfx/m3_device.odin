@@ -18,11 +18,16 @@ m3_is_tracing:	bool
 m3_queue:	^MTL.CommandQueue
 m3_transfer_queue:	^MTL.CommandQueue
 
+m3_resource_set_heap:	^MTL.Heap
+
 m3_enumerate_devices :: proc(
 	allocator: runtime.Allocator,
 ) -> (available_devices: []Device_Info, res:Result) {
 
+	log.info(_initialized)
+
 	mtl_devices := MTL.CopyAllDevices()
+	log.info(_initialized)
 	defer mtl_devices->release()
 
 	devices := make([dynamic]Device_Info, 0, mtl_devices->count(), allocator=allocator) or_return
@@ -74,6 +79,8 @@ m3_select_device :: proc(device: Device_Id) -> Result {
 	when ENABLE_TRACING {
 		m3_begin_tracing()
 	}
+
+	m3_create_resource_set_heap() or_return
 
 	return nil
 }
@@ -137,5 +144,22 @@ m3_end_tracing :: proc() {
 
 	capture_manager := MTL.CaptureManager.sharedCaptureManager()
 	capture_manager->stopCapture()
+}
+
+m3_create_resource_set_heap :: proc() -> Result {
+	heap_desc := MTL.HeapDescriptor.alloc()->init()
+	defer heap_desc->release()
+
+	heap_desc->setResourceOptions({ .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked })
+	heap_desc->setSize(8 * mem.Megabyte)
+	heap_desc->setStorageMode(.Shared)
+	heap_desc->setType(.Automatic)
+
+	m3_resource_set_heap = m3_device->newHeap(heap_desc)
+	if m3_resource_set_heap == nil {
+		return .Out_Of_Gpu_Memory
+	}
+
+	return nil
 }
 
