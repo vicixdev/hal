@@ -1,3 +1,4 @@
+#+build darwin
 package gfx
 
 import NS "core:sys/darwin/Foundation"

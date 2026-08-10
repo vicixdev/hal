@@ -50,14 +50,14 @@ vk_descriptor_pool:		vk.DescriptorPool
 vk_Descriptor_Binding :: enum u32 {
 	Sampler					= 0,
 	Texture_1d_Sampled_Image		= 1,
-	Texture_1d_Storage_Image		= 2,
-	Texture_2d_Sampled_Image		= 3,
-	Texture_2d_Storage_Image		= 4,
-	Texture_2d_Array_Sampled_Image		= 5,
-	Texture_2d_Array_Storage_Image		= 6,
-	Texture_Cube_Sampled_Image		= 7,
-	Texture_Cube_Array_Sampled_Image	= 8,
-	Texture_3d_Sampled_Image		= 9,
+	Texture_2d_Sampled_Image		= 2,
+	Texture_2d_Array_Sampled_Image		= 3,
+	Texture_Cube_Sampled_Image		= 4,
+	Texture_Cube_Array_Sampled_Image	= 5,
+	Texture_3d_Sampled_Image		= 6,
+	Texture_1d_Storage_Image		= 7,
+	Texture_2d_Storage_Image		= 8,
+	Texture_2d_Array_Storage_Image		= 9,
 	Texture_3d_Storage_Image		= 10,
 }
 
@@ -176,9 +176,10 @@ vk_setup_pipeline_layouts :: proc() -> Result {
 	}
 	compute_layout_info := vk.PipelineLayoutCreateInfo {
 		sType			= .PIPELINE_LAYOUT_CREATE_INFO,
-		setLayoutCount		= 0,
 		pushConstantRangeCount	= 1,
 		pPushConstantRanges	= &compute_push_constant_range,
+		setLayoutCount		= 1,
+		pSetLayouts		= &vk_descriptor_set_layout,
 	}
 
 	render_push_constant_range := vk.PushConstantRange {
@@ -230,68 +231,68 @@ vk_setup_descriptor_pool :: proc() -> Result {
 	}
 	vk_call(vk.CreateDescriptorPool(vk_device, &descriptor_pool_info, nil, &vk_descriptor_pool)) or_return
 
-	descriptor_set_bindings := []vk.DescriptorSetLayoutBinding {
-		{
+	descriptor_set_bindings := [vk_Descriptor_Binding]vk.DescriptorSetLayoutBinding {
+		.Sampler = {
 			binding			= cast(u32)vk_Descriptor_Binding.Sampler,
 			descriptorType		= .SAMPLER,
 			descriptorCount		= MAX_SAMPLERS_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
+		.Texture_1d_Sampled_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_1d_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
-			binding			= cast(u32)vk_Descriptor_Binding.Texture_1d_Storage_Image,
-			descriptorType		= .STORAGE_IMAGE,
-			descriptorCount		= MAX_TEXTURES_PER_SET,
-			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
-		},
-		{
+		.Texture_2d_Sampled_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
-			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Storage_Image,
-			descriptorType		= .STORAGE_IMAGE,
-			descriptorCount		= MAX_TEXTURES_PER_SET,
-			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
-		},
-		{
+		.Texture_2d_Array_Sampled_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Array_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
-			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Array_Storage_Image,
-			descriptorType		= .STORAGE_IMAGE,
-			descriptorCount		= MAX_TEXTURES_PER_SET,
-			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
-		},
-		{
+		.Texture_Cube_Sampled_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
+		.Texture_Cube_Array_Sampled_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_Cube_Array_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
+		.Texture_3d_Sampled_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_3d_Sampled_Image,
 			descriptorType		= .SAMPLED_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
-		{
+		.Texture_1d_Storage_Image = {
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_1d_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= MAX_TEXTURES_PER_SET,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		.Texture_2d_Storage_Image = {
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= MAX_TEXTURES_PER_SET,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		.Texture_2d_Array_Storage_Image = {
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Array_Storage_Image,
+			descriptorType		= .STORAGE_IMAGE,
+			descriptorCount		= MAX_TEXTURES_PER_SET,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		.Texture_3d_Storage_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_3d_Storage_Image,
 			descriptorType		= .STORAGE_IMAGE,
 			descriptorCount		= MAX_TEXTURES_PER_SET,
@@ -312,7 +313,7 @@ vk_setup_descriptor_pool :: proc() -> Result {
 		.Texture_3d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 	}
 	descriptor_set_flags_info := vk.DescriptorSetLayoutBindingFlagsCreateInfo {
-		sType	= .DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+		sType		= .DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
 		bindingCount	= cast(u32)len(binding_flags),
 		pBindingFlags	= raw_data(slice.enumerated_array(&binding_flags)),
 	}
@@ -321,7 +322,7 @@ vk_setup_descriptor_pool :: proc() -> Result {
 		flags			= { .UPDATE_AFTER_BIND_POOL },
 		pNext			= &descriptor_set_flags_info,
 		bindingCount		= cast(u32)len(descriptor_set_bindings),
-		pBindings		= raw_data(descriptor_set_bindings),
+		pBindings		= raw_data(slice.enumerated_array(&descriptor_set_bindings)),
 	}
 	vk_call(
 		vk.CreateDescriptorSetLayout(vk_device, &descriptor_set_layout_info, nil, &vk_descriptor_set_layout),

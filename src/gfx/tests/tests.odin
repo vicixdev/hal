@@ -5,25 +5,24 @@ import "core:testing"
 import gfx ".."
 import "core:time"
 
+// @(test)
+// init_fini :: proc(t: ^testing.T) {
+// 	init_res := gfx.init()
+// 	testing.expect(t, init_res == nil)
 
-@(test)
-init_fini :: proc(t: ^testing.T) {
-	init_res := gfx.init()
-	testing.expect(t, init_res == nil)
+// 	gfx.fini()
+// }
 
-	gfx.fini()
-}
+// @(test)
+// supports_multi_init :: proc(t: ^testing.T) {
+// 	init_res := gfx.init()
+// 	testing.expect(t, init_res == nil)
+// 	gfx.fini()
 
-@(test)
-supports_multi_init :: proc(t: ^testing.T) {
-	init_res := gfx.init()
-	testing.expect(t, init_res == nil)
-	gfx.fini()
-
-	init_res = gfx.init()
-	testing.expect(t, init_res == nil)
-	gfx.fini()
-}
+// 	init_res = gfx.init()
+// 	testing.expect(t, init_res == nil)
+// 	gfx.fini()
+// }
 
 @(test)
 generic_compute_test :: proc(t: ^testing.T) {

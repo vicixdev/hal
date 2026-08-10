@@ -11,6 +11,8 @@ when ODIN_OS == .Linux {
 	vk_VULKAN_LOADER_PATH :: "/lib64/libvulkan.so"
 } else when ODIN_OS == .Darwin {
 	vk_VULKAN_LOADER_PATH :: "/opt/homebrew/lib/libvulkan.dylib"
+} else when ODIN_OS == .Windows {
+	vk_VULKAN_LOADER_PATH :: "C:/Windows/System32/vulkan-1.dll"
 } else {
 	#panic("Unsupported vulkan target.")
 }
