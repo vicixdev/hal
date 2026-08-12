@@ -106,6 +106,21 @@ m3_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_M
 	return nil
 }
 
+m3_submit_and_signal :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	queue_metadata:		^_Queue_Metadata,
+	semaphore_metadata:	^_Semaphore_Metadata,
+	value:			int,
+) -> Result {
+	
+	m3_flush_encoder(metadata)
+
+	metadata.m3.command_buffer->encodeSignalEvent(semaphore_metadata.m3.event, cast(u64)value)
+	metadata.m3.command_buffer->commit()
+
+	return nil
+}
+
 m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	assert(metadata.m3.current_encoder != .Blit)
 	if metadata.m3.current_encoder == .None {
