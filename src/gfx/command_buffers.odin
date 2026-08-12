@@ -5,7 +5,6 @@ import "core:mem"
 import vmem "core:mem/virtual"
 
 Command_Buffer	:: distinct Handle
-Fence		:: distinct Handle
 
 _Command_Buffer_Metadata :: struct {
 	handle:		Command_Buffer,
@@ -141,7 +140,7 @@ mem_copy :: proc(
 	source_offset := _offset_from_base(source, source_metadata)
 
 	_check_condition(
-		destination_metadata.size - cast(int)destination_offset > length,
+		destination_metadata.size - cast(int)destination_offset >= length,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
@@ -154,7 +153,7 @@ mem_copy :: proc(
 		location=location,
 	) or_return
 	_check_condition(
-		source_metadata.size - cast(int)source_offset > length,
+		source_metadata.size - cast(int)source_offset >= length,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
@@ -271,7 +270,6 @@ dispatch :: proc {
 }
 
 barrier	:: proc(command_buffer: Command_Buffer, after: Stages, before: Stages, location := #caller_location) {
-	
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location)
 	if metadata_res != nil {
@@ -288,10 +286,81 @@ barrier	:: proc(command_buffer: Command_Buffer, after: Stages, before: Stages, l
 	_check_generic_backend_error(res, location)
 }
 
-signal	:: proc(command_buffer: Command_Buffer, after: Stages) -> Fence {
-	return {}
+signal	:: proc(
+	command_buffer: Command_Buffer,
+	after: Stages,
+	location := #caller_location,
+) -> (fence: Fence, res: Result) {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location)
+	if metadata_res != nil {
+		return
+	}
+
+	fence, res = _create_managed_fence(location)
+	_check_result(
+		res,
+		.Error,
+		"Could not create fence",
+		"Could not create a managed fence while encoding a signal operation on the command buffer %v.",
+		command_buffer,
+	) or_return
+
+	fence_metadata, fence_metadata_res := _metadata_of(fence)
+	ensure(fence_metadata_res == nil, "Could not obtain the metadata of a managed fence.")
+
+	queue_metadata, queue_res := _queue_metadata_of(metadata.queue)
+	ensure(queue_res == nil)
+
+	when TARGET_API == .Vulkan {
+		res = vk_signal_fence(metadata, queue_metadata, fence_metadata, after, 1)
+	} else when TARGET_API == .Metal_3 {
+		res = m3_signal_fence(metadata, queue_metadata, fence_metadata, after, 1)
+	}
+
+	_check_generic_backend_error(res, location) or_return
+
+	fence_metadata.value += 1
+
+	return fence, nil
 }
-wait	:: proc(command_buffer: Command_Buffer, before: Stages, fence: Fence) {}
+
+wait :: proc(command_buffer: Command_Buffer, before: Stages, fence: Fence, location := #caller_location) {
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location)
+	if metadata_res != nil do return
+
+	fence_metadata, fence_res := _metadata_of(fence)
+	_check_fence_handle(fence_res, fence, location)
+	if fence_res != nil do return
+
+	queue_metadata, queue_res := _queue_metadata_of(metadata.queue)
+	ensure(queue_res == nil)
+
+	if fence_metadata.type != .Managed {
+		_log_message(
+			.Invalid_Arguments,
+			.Error,
+			"Invalid fence type",
+			"The `gfx::wait` procedure only works with automatically managed fences. The provided fence %v is " +
+			"manually managed.",
+			fence,
+		)
+		return
+	}
+
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = vk_wait_fence(metadata, queue_metadata, fence_metadata, before, 1)
+	} else {
+		res = m3_wait_fence(metadata, queue_metadata, fence_metadata, before, 1)
+	}
+
+	_check_generic_backend_error(res, location)
+
+	destroy_fence(fence)
+}
 
 submit :: proc(command_buffer: Command_Buffer, location := #caller_location) {
 	metadata, metadata_res := _metadata_of(command_buffer)
@@ -357,6 +426,8 @@ submit_and_signal :: proc(
 	_check_generic_backend_error(res, location)
 
 	semaphore_metadata.last_signaled_value = value
+
+	metadata.in_use = false
 }
 
 // wait_semaphore :: proc(semaphore: Semaphore, value: int) {}

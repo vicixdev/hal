@@ -111,6 +111,14 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 	return nil
 }
 
+selected_device_info :: proc() -> (info: ^Device_Info, res: Result) {
+	if !_is_device_selected {
+		return nil, .Device_Not_Selected
+	}
+
+	return _device_info, nil
+}
+
 _check_device_selected :: proc(location: runtime.Source_Code_Location) -> Result {
 	_check_initialized(location) or_return
 	_check_condition(

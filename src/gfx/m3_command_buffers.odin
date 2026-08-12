@@ -28,7 +28,7 @@ m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metad
 }
 
 m3_begin_command_encoding :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
-	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBufferWithUnretainedReferences()
+	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
 	metadata.m3.current_encoder = .None
 
 	return nil
@@ -95,6 +95,34 @@ m3_barrier :: proc(metadata: ^_Command_Buffer_Metadata, after: Stages, before: S
 		m3_flush_encoder(metadata)
 	}
 
+	return nil
+}
+
+m3_signal_fence :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	fence_metadata:	^_Fence_Metadata,
+	after:		Stages,
+	value:		int,
+) -> Result {
+
+	m3_flush_encoder(metadata)
+	metadata.m3.command_buffer->encodeSignalEvent(fence_metadata.m3.event, cast(u64)value)
+
+	return nil
+}
+
+m3_wait_fence :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	fence_metadata: ^_Fence_Metadata,
+	before: Stages,
+	value: int,
+) -> Result {
+
+	m3_flush_encoder(metadata)
+	metadata.m3.command_buffer->encodeWaitForEvent(fence_metadata.m3.event, cast(u64)value)
+	
 	return nil
 }
 

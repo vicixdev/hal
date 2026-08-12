@@ -132,6 +132,81 @@ vk_barrier :: proc(metadata: ^_Command_Buffer_Metadata, after: Stages, before: S
 	return nil
 }
 
+vk_signal_fence :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	fence_metadata: ^_Fence_Metadata,
+	after:		Stages,
+	value:		int,
+) -> Result {
+	
+	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
+
+	semaphore_submit_info := vk.SemaphoreSubmitInfo {
+		sType		= .SEMAPHORE_SUBMIT_INFO,
+		semaphore	= fence_metadata.vk.semaphore,
+		value		= cast(u64)value,
+		stageMask	= vk_stages_to_vk(after),
+	}
+	command_buffer_submit_info := vk.CommandBufferSubmitInfo {
+		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
+		commandBuffer	= metadata.vk.command_buffer,
+	}
+	submit_info := vk.SubmitInfo2 {
+		sType				= .SUBMIT_INFO_2,
+		commandBufferInfoCount		= 1,
+		pCommandBufferInfos		= &command_buffer_submit_info,
+		signalSemaphoreInfoCount	= 1,
+		pSignalSemaphoreInfos		= &semaphore_submit_info,
+	}
+	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+
+	begin_info := vk.CommandBufferBeginInfo {
+		sType	= .COMMAND_BUFFER_BEGIN_INFO,
+		flags	= { .ONE_TIME_SUBMIT },
+	}
+	vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
+
+	return nil
+}
+
+vk_wait_fence :: proc(
+	metadata: 	^_Command_Buffer_Metadata,
+	queue_metadata: ^_Queue_Metadata,
+	fence_metadata: ^_Fence_Metadata,
+	before:		Stages,
+	value:		int,
+) -> Result {
+	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
+
+	semaphore_wait_info := vk.SemaphoreSubmitInfo {
+		sType		= .SEMAPHORE_SUBMIT_INFO,
+		semaphore	= fence_metadata.vk.semaphore,
+		value		= cast(u64)value,
+		stageMask	= vk_stages_to_vk(before),
+	}
+	command_buffer_submit_info := vk.CommandBufferSubmitInfo {
+		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
+		commandBuffer	= metadata.vk.command_buffer,
+	}
+	submit_info := vk.SubmitInfo2 {
+		sType				= .SUBMIT_INFO_2,
+		commandBufferInfoCount		= 1,
+		pCommandBufferInfos		= &command_buffer_submit_info,
+		waitSemaphoreInfoCount		= 1,
+		pWaitSemaphoreInfos		= &semaphore_wait_info,
+	}
+	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+
+	begin_info := vk.CommandBufferBeginInfo {
+		sType	= .COMMAND_BUFFER_BEGIN_INFO,
+		flags	= { .ONE_TIME_SUBMIT },
+	}
+	vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
+
+	return nil
+}
+
 vk_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
 

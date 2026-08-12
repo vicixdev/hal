@@ -1,26 +1,103 @@
 #+private
 package gfx_tests
 
+import "base:runtime"
 import "core:testing"
 import gfx ".."
 
-@(test)
-init_fini :: proc(t: ^testing.T) {
-	init_res := gfx.init()
-	testing.expect(t, init_res == nil)
+@(init)
+init_gfx :: proc "contextless" () {
+	context = runtime.default_context()
 
+	init_res := gfx.init()
+	assert(init_res == nil, "Could not initialize gfx.")
+
+	devices, devices_res := gfx.enumerate_devices()
+	assert(devices_res == nil, "No suitable devices found.")
+
+	device_info := &devices[0]
+	device := device_info.id
+	device_res := gfx.select_device(device)
+	assert(device_res == nil, "Could not select a device.")
+}
+
+@(fini)
+fini_gfx :: proc "contextless" () {
+	context = runtime.default_context()
 	gfx.fini()
 }
 
 @(test)
-supports_multi_init :: proc(t: ^testing.T) {
-	init_res := gfx.init()
-	testing.expect(t, init_res == nil)
-	gfx.fini()
+memory_transfers_with_barriers :: proc(t: ^testing.T) {
+	device_info, _ := gfx.selected_device_info()
 
-	init_res = gfx.init()
-	testing.expect(t, init_res == nil)
-	gfx.fini()
+	upload, upload_res := gfx.alloc(.Staging, device_info.limits.min_allocation_size)
+	gpu, gpu_res := gfx.alloc(.Private, device_info.limits.min_allocation_size)
+	download, download_res := gfx.alloc(.Readback, device_info.limits.min_allocation_size)
+	testing.expect(t, upload_res == nil && gpu_res == nil && download_res == nil)
+
+	upload_i64 := cast([^]i64)upload.contents
+	gpu_i64 := cast([^]i64)upload.contents
+	download_i64 := cast([^]i64)upload.contents
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		upload_i64[i] = cast(i64)i
+	}
+
+	sema, sema_res := gfx.create_semaphore()
+	testing.expect_value(t, sema_res, nil)
+
+	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
+	testing.expect_value(t, command_buffer_res, nil)
+
+	gfx.mem_copy(command_buffer, gpu, upload, device_info.limits.min_allocation_size)
+	gfx.barrier(command_buffer, { .Transfer }, { .Transfer })
+	gfx.mem_copy(command_buffer, download, gpu, device_info.limits.min_allocation_size)
+	gfx.submit_and_signal(command_buffer, sema, 1)
+
+	gfx.wait_semaphore(sema, 1)
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		testing.expect_value(t, download_i64[i], cast(i64)i)
+	}
+}
+
+@(test)
+memory_transfers_with_fences :: proc(t: ^testing.T) {
+	device_info, _ := gfx.selected_device_info()
+
+	upload, upload_res := gfx.alloc(.Staging, device_info.limits.min_allocation_size)
+	gpu, gpu_res := gfx.alloc(.Private, device_info.limits.min_allocation_size)
+	download, download_res := gfx.alloc(.Readback, device_info.limits.min_allocation_size)
+	testing.expect(t, upload_res == nil && gpu_res == nil && download_res == nil)
+
+	upload_i64 := cast([^]i64)upload.contents
+	gpu_i64 := cast([^]i64)upload.contents
+	download_i64 := cast([^]i64)upload.contents
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		upload_i64[i] = cast(i64)i
+	}
+
+	sema, sema_res := gfx.create_semaphore()
+	testing.expect_value(t, sema_res, nil)
+
+	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
+	testing.expect_value(t, command_buffer_res, nil)
+
+	gfx.mem_copy(command_buffer, gpu, upload, device_info.limits.min_allocation_size)
+	fence, fence_res := gfx.signal(command_buffer, { .Transfer })
+	testing.expect_value(t, fence_res, nil)
+
+	gfx.wait(command_buffer, { .Transfer }, fence)
+	gfx.mem_copy(command_buffer, download, gpu, device_info.limits.min_allocation_size)
+	gfx.submit_and_signal(command_buffer, sema, 1)
+
+	gfx.wait_semaphore(sema, 1)
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		testing.expect_value(t, download_i64[i], cast(i64)i)
+	}
 }
 
 @(test)
@@ -38,18 +115,6 @@ generic_compute_test :: proc(t: ^testing.T) {
 		in_b:	uintptr,
 		out:	uintptr,
 	}
-
-	init_res := gfx.init()
-	testing.expect_value(t, init_res, nil)
-	defer gfx.fini()
-
-	devices, devices_res := gfx.enumerate_devices()
-	testing.expect(t, len(devices) > 0, "No devices found?")
-
-	device_info := &devices[0]
-	device := device_info.id
-	device_res := gfx.select_device(device)
-	testing.expect_value(t, device_res, nil)
 
 	half: f32 = 0.5
 	add_pipeline, add_pipeline_res := gfx.create_compute_pipeline({
