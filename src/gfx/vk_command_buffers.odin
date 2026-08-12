@@ -66,22 +66,17 @@ vk_mem_copy :: proc(
 	length:			int,
 ) -> Result {
 	
-	copy_region := vk.BufferCopy2 {
-		sType		= .BUFFER_COPY_2,
+	region := vk.BufferCopy {
 		srcOffset	= cast(vk.DeviceSize)source_offset,
 		dstOffset	= cast(vk.DeviceSize)destination_offset,
 		size		= cast(vk.DeviceSize)length,
 	}
-	copy_info := vk.CopyBufferInfo2 {
-		sType		= .COPY_BUFFER_INFO_2,
-		srcBuffer	= source_metadata.vk.buffer,
-		dstBuffer	= destination_metadata.vk.buffer,
-		regionCount	= 1,
-		pRegions	= &copy_region,
-	}
-	vk.CmdCopyBuffer2(
+	vk.CmdCopyBuffer(
 		metadata.vk.command_buffer,
-		&copy_info,
+		source_metadata.vk.buffer,
+		destination_metadata.vk.buffer,
+		1,
+		&region,
 	)
 
 	return nil
@@ -127,7 +122,7 @@ vk_barrier :: proc(metadata: ^_Command_Buffer_Metadata, after: Stages, before: S
 		memoryBarrierCount	= 1,
 		pMemoryBarriers		= &memory_barrier,
 	}
-	vk.CmdPipelineBarrier2(metadata.vk.command_buffer, &barrier_info)
+	vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &barrier_info)
 	
 	return nil
 }
@@ -159,7 +154,7 @@ vk_signal_fence :: proc(
 		signalSemaphoreInfoCount	= 1,
 		pSignalSemaphoreInfos		= &semaphore_submit_info,
 	}
-	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType	= .COMMAND_BUFFER_BEGIN_INFO,
@@ -196,7 +191,7 @@ vk_wait_fence :: proc(
 		waitSemaphoreInfoCount		= 1,
 		pWaitSemaphoreInfos		= &semaphore_wait_info,
 	}
-	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType	= .COMMAND_BUFFER_BEGIN_INFO,
@@ -219,7 +214,7 @@ vk_submit :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_M
 		commandBufferInfoCount	= 1,
 		pCommandBufferInfos	= &command_buffer_submit_info,
 	}
-	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
 
 	return nil
 }
@@ -249,7 +244,7 @@ vk_submit_and_signal :: proc(
 		signalSemaphoreInfoCount	= 1,
 		pSignalSemaphoreInfos		= &signal_info,
 	}
-	vk_call(vk.QueueSubmit2(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
+	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, {})) or_return
 
 	return nil
 }

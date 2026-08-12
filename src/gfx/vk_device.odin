@@ -14,7 +14,8 @@ vk_Device_Info :: struct {
 	features:		vk.PhysicalDeviceFeatures2,
 	features_11:		vk.PhysicalDeviceVulkan11Features,
 	features_12:		vk.PhysicalDeviceVulkan12Features,
-	features_13:		vk.PhysicalDeviceVulkan13Features,
+	synchronization2_features:	vk.PhysicalDeviceSynchronization2Features,
+	dynamic_rendering_features:	vk.PhysicalDeviceDynamicRenderingFeaturesKHR,
 
 	extensions:		[]vk.ExtensionProperties,
 
@@ -97,6 +98,8 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		append(&vk_enabled_device_extensions, "VK_KHR_portability_subset")
 		append(&vk_enabled_device_extensions, "VK_EXT_metal_objects")
 	}
+	append(&vk_enabled_device_extensions, "VK_KHR_dynamic_rendering")
+	append(&vk_enabled_device_extensions, "VK_KHR_synchronization2")
 
 	queue_descriptors: []vk.DeviceQueueCreateInfo
 
@@ -142,14 +145,19 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		shaderStorageImageArrayNonUniformIndexing	= true,
 		shaderSampledImageArrayNonUniformIndexing	= true,
 	}
-	device_features_13 := vk.PhysicalDeviceVulkan13Features {
-		sType			= .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+	dynamic_rendering_features := vk.PhysicalDeviceDynamicRenderingFeaturesKHR {
+		sType			= .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
 		pNext			= &device_feature_12,
+		dynamicRendering	= true,
+	}
+	synchronization2_features := vk.PhysicalDeviceSynchronization2FeaturesKHR {
+		sType			= .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+		pNext			= &dynamic_rendering_features,
 		synchronization2	= true,
 	}
 	descriptor := vk.DeviceCreateInfo {
 		sType			= .DEVICE_CREATE_INFO,
-		pNext			= &device_features_13,
+		pNext			= &synchronization2_features,
 		queueCreateInfoCount	= cast(u32)len(queue_descriptors),
 		pQueueCreateInfos	= raw_data(queue_descriptors),
 		enabledExtensionCount	= cast(u32)len(vk_enabled_device_extensions),
@@ -346,8 +354,10 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res:
 	vk_info.features_11.sType	= .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
 	vk_info.features_11.pNext	= &vk_info.features_12
 	vk_info.features_12.sType	= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
-	vk_info.features_12.pNext	= &vk_info.features_13
-	vk_info.features_13.sType	= .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES
+	vk_info.features_12.pNext	= &vk_info.dynamic_rendering_features
+	vk_info.dynamic_rendering_features.sType	= .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR
+	vk_info.dynamic_rendering_features.pNext	= &vk_info.synchronization2_features
+	vk_info.synchronization2_features.sType		= .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
 	vk.GetPhysicalDeviceFeatures2(device, &vk_info.features)
 
 	vk_find_memory_types(device, &info)
@@ -505,7 +515,8 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 		)
 	}
 
-	return vk_info.features_12.bufferDeviceAddress == true &&
+	return vk_device_has_extension(info, "VK_KHR_dynamic_rendering") &&
+		vk_info.features_12.bufferDeviceAddress == true &&
 		vk_info.features_12.runtimeDescriptorArray == true &&
 		vk_info.features_12.descriptorBindingPartiallyBound == true &&
 		vk_info.features_12.descriptorBindingStorageImageUpdateAfterBind == true &&
@@ -513,7 +524,8 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 		vk_info.features_12.descriptorBindingUpdateUnusedWhilePending == true &&
 		vk_info.features_12.shaderSampledImageArrayNonUniformIndexing == true &&
 		vk_info.features_12.shaderStorageImageArrayNonUniformIndexing == true &&
-		vk_info.features_13.synchronization2 == true &&
+		vk_info.synchronization2_features.synchronization2 == true &&
+		vk_info.dynamic_rendering_features.dynamicRendering == true &&
 		vk_info.has_default_queue_family &&
 		vk_info.has_private_memory &&
 		vk_info.has_updown_memory &&

@@ -141,7 +141,7 @@ vk_init_instance :: proc() -> Result {
 			pApplicationName	= "Hal Application",
 			pEngineName		= "Hal",
 			engineVersion		= vk.MAKE_VERSION(0, 1, 0),
-			apiVersion		= vk.MAKE_VERSION(1, 3, 0),
+			apiVersion		= vk.MAKE_VERSION(1, 2, 0),
 		},
 	}
 	if has_debug_utils {
@@ -164,7 +164,7 @@ vk_init_instance :: proc() -> Result {
 
 	version: u32
 	vk.EnumerateInstanceVersion(&version)
-	log.debugf("Using Vulkan 1.3.0 (available %d.%d.%d).", vk.VERSION_MAJOR(version), vk.VERSION_MINOR(version), vk.VERSION_PATCH(version))
+	log.debugf("Using Vulkan 1.2.0 (available %d.%d.%d).", vk.VERSION_MAJOR(version), vk.VERSION_MINOR(version), vk.VERSION_PATCH(version))
 
 	return nil
 }

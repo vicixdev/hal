@@ -14,18 +14,26 @@ vk_View_Metadata	:: struct {
 vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) {
 	image_info := vk_texture_descriptor_to_vk(descriptor)
 	
-	requirements_info := vk.DeviceImageMemoryRequirements {
-		sType		= .DEVICE_IMAGE_MEMORY_REQUIREMENTS,
-		pCreateInfo	= &image_info,
-		planeAspect	= {},
-	}
-	requirements := vk.MemoryRequirements2 {
-		sType		= .MEMORY_REQUIREMENTS_2,
-	}
-	vk.GetDeviceImageMemoryRequirements(vk_device, &requirements_info, &requirements)
+	image: vk.Image
+	vk.CreateImage(vk_device, &image_info, nil, &image)
+	defer vk.DestroyImage(vk_device, image, nil)
 
-	size	= cast(int)requirements.memoryRequirements.size
-	align	= cast(int)requirements.memoryRequirements.alignment
+	requirements: vk.MemoryRequirements
+	vk.GetImageMemoryRequirements(vk_device, image, &requirements)
+
+	// TODO: check if maintenance4 is available
+	// requirements_info := vk.DeviceImageMemoryRequirements {
+	// 	sType		= .DEVICE_IMAGE_MEMORY_REQUIREMENTS,
+	// 	pCreateInfo	= &image_info,
+	// 	planeAspect	= {},
+	// }
+	// requirements := vk.MemoryRequirements2 {
+	// 	sType		= .MEMORY_REQUIREMENTS_2,
+	// }
+	// vk.GetDeviceImageMemoryRequirements(vk_device, &requirements_info, &requirements)
+
+	size	= cast(int)requirements.size
+	align	= cast(int)requirements.alignment
 	res	= nil
 	return
 }
