@@ -2,9 +2,20 @@ package gfx
 
 import "base:runtime"
 import "core:mem"
+import "core:slice"
 import vmem "core:mem/virtual"
 
 Command_Buffer	:: distinct Handle
+
+Semaphore_Wait :: struct {
+	semaphore:	Semaphore,
+	value:		int,
+}
+
+Semaphore_Signal :: struct {
+	semaphore:	Semaphore,
+	value:		int,
+}
 
 _Command_Buffer_Metadata :: struct {
 	handle:		Command_Buffer,
@@ -16,11 +27,51 @@ _Command_Buffer_Metadata :: struct {
 	in_use:		bool,
 
 	resource_set:	Resource_Set,
+	commands:	[dynamic]_Command,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
 		m3:	m3_Command_Buffer_Metadata,
 	},
+}
+
+_Command :: union {
+	_Command_Mem_Copy,
+	_Command_Dispatch,
+	_Command_Barrier,
+	_Command_Signal,
+	_Command_Wait,
+}
+
+_Command_Mem_Copy :: struct {
+	source:		Buffer,
+	destination:	Buffer,
+	size:		int,
+}
+
+_Command_Barrier :: struct {
+	after:		Stages,
+	before:		Stages,
+}
+
+_Command_Dispatch :: struct {
+	pipeline:	Pipeline,
+	resource_set:	Resource_Set,
+	argument:	[]byte,
+	group_count:	[3]int,
+}
+
+_Command_Signal :: struct {
+	signals:	[]Fence,
+}
+
+_Command_Wait :: struct {
+	waits:		[]Fence,
+}
+
+_Command_Signal_Semaphore :: struct {
+	semaphore:	Semaphore,
+	value:		int,
 }
 
 _command_buffers: [Queue]_Command_Buffer_Metadata
@@ -34,6 +85,8 @@ _setup_command_buffer_of :: proc(queue: Queue) -> Result {
 
 	vmem.arena_init_growing(&metadata.arena) or_return
 	metadata.allocator = vmem.arena_allocator(&metadata.arena)
+
+	metadata.commands	= make([dynamic]_Command, metadata.allocator) or_return
 
 	when TARGET_API == .Vulkan {
 		vk_setup_command_buffer(metadata, queue_metadata) or_return
@@ -50,7 +103,6 @@ begin_command_encoding :: proc(
 ) -> (command_buffer: Command_Buffer, res: Result) {
 
 	_check_queue_validity(queue, location)
-	queue_metadata, _ := _metadata_of(queue)
 	
 	handle, metadata, add_res := _add_command_buffer(queue)
 	_check_result(
@@ -66,21 +118,21 @@ begin_command_encoding :: proc(
 	vmem.arena_free_all(&metadata.arena)
 
 	metadata.resource_set	= _default_resource_set
-
-	when TARGET_API == .Vulkan {
-		res = vk_begin_command_encoding(metadata, queue_metadata)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_begin_command_encoding(metadata, queue_metadata)
-	}
-
-	_check_generic_backend_error(res, location) or_return
-
 	metadata.in_use = true
 
-	setup_res := use_resources(handle, _default_resource_set)
-	ensure(setup_res == nil, "Could not setup the default resource set. Broken implementation?")
-
 	return handle, nil
+}
+
+wait_semaphores :: proc(
+	command_buffer: Command_Buffer,
+	waits: ..Semaphore_Wait,
+	location := #caller_location,
+) -> Result {
+
+	// TODO:
+	//	- check that the cb does not have any other command encoded
+
+	return nil
 }
 
 use_resources :: proc(
@@ -92,17 +144,10 @@ use_resources :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
-	resource_set_metadata, resource_set_res := _metadata_of(resource_set)
+	_, resource_set_res := _metadata_of(resource_set)
 	_check_resource_set_handle(resource_set_res, resource_set, location) or_return
 	
 	metadata.resource_set = resource_set
-
-	when TARGET_API == .Vulkan {
-		res = vk_use_resources(metadata, resource_set_metadata)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_use_resources(metadata, resource_set_metadata)
-	}
-
 
 	return nil
 }
@@ -111,7 +156,7 @@ mem_copy :: proc(
 	command_buffer:	Command_Buffer,
 	destination:	Buffer,
 	source:		Buffer,
-	length:		int,
+	size:		int,
 	location :=	#caller_location,
 ) -> (res: Result) {
 	metadata, metadata_res := _metadata_of(command_buffer)
@@ -140,26 +185,26 @@ mem_copy :: proc(
 	source_offset := _offset_from_base(source, source_metadata)
 
 	_check_condition(
-		destination_metadata.size - cast(int)destination_offset >= length,
+		destination_metadata.size - cast(int)destination_offset >= size,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
 		"The requested memory copy operation would result in out of bounds accesses. The user specified a " +
 		"copy lenth of %d, but the destination buffer (at 0x%x) has only %d bytes remaining at offset %d.",
-		length,
+		size,
 		destination.address,
 		destination_metadata.size - cast(int)destination_offset,
 		destination_offset,
 		location=location,
 	) or_return
 	_check_condition(
-		source_metadata.size - cast(int)source_offset >= length,
+		source_metadata.size - cast(int)source_offset >= size,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
 		"The requested memory copy operation would result in out of bounds accesses. The user specified a " +
 		"copy lenth of %d, but the source buffer (at 0x%x) has only %d bytes remaining at offset %d.",
-		length,
+		size,
 		source.address,
 		source_metadata.size - cast(int)source_offset,
 		source_offset,
@@ -189,27 +234,12 @@ mem_copy :: proc(
 		location=location,
 	) or_return
 
-	when TARGET_API == .Vulkan {
-		res = vk_mem_copy(
-			metadata,
-			destination_metadata,
-			destination_offset,
-			source_metadata,
-			source_offset,
-			length,
-		)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_mem_copy(
-			metadata,
-			destination_metadata,
-			destination_offset,
-			source_metadata,
-			source_offset,
-			length,
-		)
+	command := _Command_Mem_Copy {
+		source		= source,
+		destination	= destination,
+		size		= size,
 	}
-
-	_check_generic_backend_error(res, location) or_return
+	append(&metadata.commands, command)
 
 	return nil
 }
@@ -253,13 +283,24 @@ dispatch_with_bytes_argument :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(compute_pipeline)
 	_check_pipeline_handle(pipeline_res, compute_pipeline, location) or_return
 
-	when TARGET_API == .Vulkan {
-		res = vk_dispatch(metadata, pipeline_metadata, argument, group_count)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_dispatch(metadata, pipeline_metadata, argument, group_count)
-	}
+	_check_condition(
+		pipeline_metadata.type == .Compute,
+		.Invalid_Pipeline,
+		.Error,
+		"Invalid pipeline type",
+		"A dispatch requires a compute pipeline. The provided pipeline %v is of type %v.",
+		compute_pipeline,
+		pipeline_metadata.type,
+		location=location,
+	)
 
-	_check_generic_backend_error(res, location) or_return
+	command :=  _Command_Dispatch {
+		pipeline	= compute_pipeline,
+		resource_set	= metadata.resource_set,
+		argument	= slice.clone(argument, metadata.allocator) or_return,
+		group_count	= group_count,
+	}
+	append(&metadata.commands, command) or_return
 
 	return nil
 }
@@ -269,168 +310,271 @@ dispatch :: proc {
 	dispatch_with_any_argument,
 }
 
-barrier	:: proc(command_buffer: Command_Buffer, after: Stages, before: Stages, location := #caller_location) {
-	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location)
-	if metadata_res != nil {
-		return
-	}
-
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_barrier(metadata, after, before)
-	} else {
-		res = m3_barrier(metadata, after, before)
-	}
-
-	_check_generic_backend_error(res, location)
-}
-
-signal	:: proc(
+// Emplaces a synchronization barrier in the command buffer.
+//
+// A memory dependency is emplaced between `after` (producing) and `before` (consuming).
+barrier	:: proc(
 	command_buffer: Command_Buffer,
-	after: Stages,
+	after:		Stages,
+	before:		Stages,
 	location := #caller_location,
-) -> (fence: Fence, res: Result) {
-
+) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location)
-	if metadata_res != nil {
-		return
-	}
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
-	fence, res = _create_managed_fence(location)
-	_check_result(
-		res,
+	_check_condition(
+		after != {} && before != {},
+		.Invalid_Arguments,
 		.Error,
-		"Could not create fence",
-		"Could not create a managed fence while encoding a signal operation on the command buffer %v.",
-		command_buffer,
+		"Invalid `before` and `after` stages",
+		"Both `after` and `before` stages must not be empty ({}).",
+		location=location,
 	) or_return
 
-	fence_metadata, fence_metadata_res := _metadata_of(fence)
-	ensure(fence_metadata_res == nil, "Could not obtain the metadata of a managed fence.")
-
-	queue_metadata, queue_res := _queue_metadata_of(metadata.queue)
-	ensure(queue_res == nil)
-
-	when TARGET_API == .Vulkan {
-		res = vk_signal_fence(metadata, queue_metadata, fence_metadata, after, 1)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_signal_fence(metadata, queue_metadata, fence_metadata, after, 1)
+	command := _Command_Barrier {
+		after	= after,
+		before	= before,
 	}
+	append(&metadata.commands, command) or_return
 
-	_check_generic_backend_error(res, location) or_return
-
-	fence_metadata.value += 1
-
-	return fence, nil
+	return nil
 }
 
-wait :: proc(command_buffer: Command_Buffer, before: Stages, fence: Fence, location := #caller_location) {
+signal :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #caller_location) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location)
-	if metadata_res != nil do return
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
-	fence_metadata, fence_res := _metadata_of(fence)
-	_check_fence_handle(fence_res, fence, location)
-	if fence_res != nil do return
-
-	queue_metadata, queue_res := _queue_metadata_of(metadata.queue)
-	ensure(queue_res == nil)
-
-	if fence_metadata.type != .Managed {
-		_log_message(
-			.Invalid_Arguments,
-			.Error,
-			"Invalid fence type",
-			"The `gfx::wait` procedure only works with automatically managed fences. The provided fence %v is " +
-			"manually managed.",
-			fence,
-		)
-		return
+	for fence in fences {
+		_, fence_res := _metadata_of(fence)
+		_check_fence_handle(fence_res, fence, location) or_return
 	}
 
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_wait_fence(metadata, queue_metadata, fence_metadata, before, 1)
-	} else {
-		res = m3_wait_fence(metadata, queue_metadata, fence_metadata, before, 1)
+	command := _Command_Signal {
+		signals = slice.clone(fences, metadata.allocator) or_return,
 	}
+	append(&metadata.commands, command) or_return
 
-	_check_generic_backend_error(res, location)
-
-	destroy_fence(fence)
+	return nil
 }
 
-submit :: proc(command_buffer: Command_Buffer, location := #caller_location) {
+wait :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #caller_location) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location)
-	if metadata_res != nil {
-		return
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	for fence in fences {
+		_, fence_res := _metadata_of(fence)
+		_check_fence_handle(fence_res, fence, location) or_return
 	}
 
-	queue_metadata, queue_res := _metadata_of(metadata.queue)
-	assert(queue_res == nil)
+	command := _Command_Wait {
+		waits = slice.clone(fences, metadata.allocator) or_return,
+	}
+	append(&metadata.commands, command) or_return
+
+	return nil
 	
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_submit(metadata, queue_metadata)
-	} else {
-		res = m3_submit(metadata, queue_metadata)
-	}
-
-	_check_generic_backend_error(res, location)
-
-	metadata.in_use = false
 }
-// value must be monotonically increasing.
-submit_and_signal :: proc(
-	command_buffer: Command_Buffer,
-	semaphore: Semaphore,
-	value: int,
+
+submit :: proc(
+	queue: Queue,
+	command_buffers: []Command_Buffer,
+	signals: ..Semaphore_Signal,
 	location := #caller_location,
-) {
-
-	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location)
-	if metadata_res != nil do return
+) -> (res: Result) {
 	
-	queue_metadata, queue_res := _metadata_of(metadata.queue)
-	assert(queue_res == nil)
-	
-	semaphore_metadata, semaphore_res := _metadata_of(semaphore)
-	_check_semaphore_handle(semaphore_res, semaphore, location)
-	if semaphore_res != nil do return
+	_check_queue_validity(queue) or_return
+	queue_metadata, _ := _metadata_of(queue)
 
-	if value <= semaphore_metadata.last_signaled_value {
-		_log_message(
+	for command_buffer in command_buffers {
+		command_buffer_metadata, command_buffer_res := _metadata_of(command_buffer)
+		_check_command_buffer_handle(command_buffer_res, command_buffer, location) or_return
+
+		_check_condition(
+			command_buffer_metadata.queue == queue,
+			.Invalid_Command_Buffer,
+			.Error,
+			"Invalid command buffer",
+			"The command buffer %v is not related to the queue %v. It is related to the queue %v.",
+			command_buffer,
+			queue,
+			command_buffer_metadata.queue,
+		) or_return
+	}
+
+	for signal in signals {
+		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
+		_check_semaphore_handle(semaphore_res, signal.semaphore, location) or_return
+
+		_check_condition(
+			signal.value > semaphore_metadata.last_signaled_value,
 			.Invalid_Arguments,
 			.Error,
 			"Invalid signal value",
 			"The values signaled to a semaphore must be monotonically (always) increasing. The last " +
 			"signaled value on semaphore %v is %d, while a signaling of %d was requested.",
-			semaphore,
+			signal.semaphore,
 			semaphore_metadata.last_signaled_value,
-			value,
-		)
-		return
+			signal.value,
+			location=location,
+		) or_return
 	}
 
-	res: Result
+	_check_fence_correctness(command_buffers, location) or_return
+
 	when TARGET_API == .Vulkan {
-		res = vk_submit_and_signal(metadata, queue_metadata, semaphore_metadata, value)
+		res = vk_submit(queue_metadata, command_buffers, signals)
 	} else {
-		res = m3_submit_and_signal(metadata, queue_metadata, semaphore_metadata, value)
+		res = m3_submit(queue_metadata, command_buffers, signals)
 	}
-	
+
 	_check_generic_backend_error(res, location)
 
-	semaphore_metadata.last_signaled_value = value
+	for signal in signals {
+		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
+		_check_semaphore_handle(semaphore_res, signal.semaphore, location) or_return
 
-	metadata.in_use = false
+		semaphore_metadata.last_signaled_value = signal.value
+	}
+
+	for command_buffer in command_buffers {
+		command_buffer_metadata, command_buffer_res := _metadata_of(command_buffer)
+		_check_command_buffer_handle(command_buffer_res, command_buffer, location) or_return
+
+		command_buffer_metadata.in_use = false
+	}
+
+	return res
 }
 
-// wait_semaphore :: proc(semaphore: Semaphore, value: int) {}
+_check_fence_correctness :: proc(command_buffers: []Command_Buffer, location: runtime.Source_Code_Location) -> Result {
+
+	signaled_fences := make(map[Fence]bool, _temp_allocator)
+	for command_buffer in command_buffers {
+		metadata, metadata_res := _metadata_of(command_buffer)
+		_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+		for command in metadata.commands {
+			#partial switch v in command {
+			case _Command_Signal:
+				for fence in v.signals {
+					signaled_fences[fence] = false
+				}
+
+			case _Command_Wait:
+				for fence in v.waits {
+					_, is_present := signaled_fences[fence]
+					_check_condition(
+						is_present,
+						.Invalid_Argument,
+						.Error,
+						"Invalid command submission order",
+						"In each submission, the command buffer signaling fences must be submitted " +
+						"before the one consuming them. Please note that different command buffers " +
+						"working on the same set of fences must be submitted in the same call to " +
+						"`gfx::submit`. Fence %v in command buffer %v was waited on before its " +
+						"signaling operation.",
+						command_buffer,
+						fence,
+						location=location,
+					) or_return
+
+					signaled_fences[fence] = true
+				}
+			}
+		}
+	}
+
+	for fence, waited_on in signaled_fences {
+		_check_generic_condition(
+			waited_on,
+			.Warning,
+			"Fence signaled but not waited",
+			"The fence %v got signaled but never waited on.",
+			fence,
+			location=location,
+		)
+	}
+
+	return nil
+}
+
+// submit :: proc(command_buffer: Command_Buffer, location := #caller_location) {
+// 	metadata, metadata_res := _metadata_of(command_buffer)
+// 	_check_command_buffer_handle(metadata_res, command_buffer, location)
+// 	if metadata_res != nil {
+// 		return
+// 	}
+
+// 	queue_metadata, queue_res := _metadata_of(metadata.queue)
+// 	assert(queue_res == nil)
+	
+// 	res: Result
+// 	when TARGET_API == .Vulkan {
+// 		res = vk_emit_commands(metadata, queue_metadata)
+// 	} else {
+// 		res = m3_emit_commands(metadata, queue_metadata)
+// 	}
+
+// 	_check_generic_backend_error(res, location)
+
+// 	metadata.in_use = false
+// }
+// // value must be monotonically increasing.
+// submit_and_signal :: proc(
+// 	command_buffer: Command_Buffer,
+// 	semaphore: Semaphore,
+// 	value: int,
+// 	location := #caller_location,
+// ) {
+
+// 	metadata, metadata_res := _metadata_of(command_buffer)
+// 	_check_command_buffer_handle(metadata_res, command_buffer, location)
+// 	if metadata_res != nil do return
+	
+// 	queue_metadata, queue_res := _metadata_of(metadata.queue)
+// 	assert(queue_res == nil)
+	
+// 	semaphore_metadata, semaphore_res := _metadata_of(semaphore)
+// 	_check_semaphore_handle(semaphore_res, semaphore, location)
+// 	if semaphore_res != nil do return
+
+// 	if value <= semaphore_metadata.last_signaled_value {
+// 		_log_message(
+// 			.Invalid_Arguments,
+// 			.Error,
+// 			"Invalid signal value",
+// 			"The values signaled toxx a semaphore must be monotonically (always) increasing. The last " +
+// 			"signaled value on semaphore %v is %d, while a signaling of %d was requested.",
+// 			semaphore,
+// 			semaphore_metadata.last_signaled_value,
+// 			value,
+// 		)
+// 		return
+// 	}
+
+// 	command := _Command_Signal_Semaphore {
+// 		semaphore	= semaphore,
+// 		value		= value,
+// 	}
+// 	append(&metadata.commands, command)
+
+// 	res: Result
+// 	when TARGET_API == .Vulkan {
+// 		res = vk_emit_commands(metadata, queue_metadata)
+// 	} else {
+// 		res = m3_emit_commands(metadata, queue_metadata)
+// 	}
+	
+// 	_check_generic_backend_error(res, location)
+
+// 	for fence in metadata.fences {
+// 		destroy_fence(fence)
+// 	}
+
+// 	semaphore_metadata.last_signaled_value = value
+
+// 	metadata.in_use = false
+// }
 
 _check_command_buffer_in_use :: proc(command_buffer: Command_Buffer, location: runtime.Source_Code_Location) -> Result {
 	return nil

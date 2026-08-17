@@ -44,7 +44,7 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 		upload_i64[i] = cast(i64)i
 	}
 
-	sema, sema_res := gfx.create_semaphore()
+	sema, sema_res := gfx.create_semaphore(.Cpu_Waitable)
 	testing.expect_value(t, sema_res, nil)
 
 	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
@@ -53,7 +53,7 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 	gfx.mem_copy(command_buffer, gpu, upload, device_info.limits.min_allocation_size)
 	gfx.barrier(command_buffer, { .Transfer }, { .Transfer })
 	gfx.mem_copy(command_buffer, download, gpu, device_info.limits.min_allocation_size)
-	gfx.submit_and_signal(command_buffer, sema, 1)
+	gfx.submit(.Default, { command_buffer }, { sema, 1 })
 
 	gfx.wait_semaphore(sema, 1)
 
@@ -65,6 +65,9 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 @(test)
 memory_transfers_with_fences :: proc(t: ^testing.T) {
 	device_info, _ := gfx.selected_device_info()
+
+	fence, fence_res := gfx.create_fence()
+	testing.expect_value(t, fence_res, nil)
 
 	upload, upload_res := gfx.alloc(.Staging, device_info.limits.min_allocation_size)
 	gpu, gpu_res := gfx.alloc(.Private, device_info.limits.min_allocation_size)
@@ -79,19 +82,19 @@ memory_transfers_with_fences :: proc(t: ^testing.T) {
 		upload_i64[i] = cast(i64)i
 	}
 
-	sema, sema_res := gfx.create_semaphore()
+	sema, sema_res := gfx.create_semaphore(.Cpu_Waitable)
 	testing.expect_value(t, sema_res, nil)
 
 	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
 	testing.expect_value(t, command_buffer_res, nil)
 
 	gfx.mem_copy(command_buffer, gpu, upload, device_info.limits.min_allocation_size)
-	fence, fence_res := gfx.signal(command_buffer, { .Transfer })
+	gfx.signal(command_buffer, fence)
 	testing.expect_value(t, fence_res, nil)
 
-	gfx.wait(command_buffer, { .Transfer }, fence)
+	gfx.wait(command_buffer, fence)
 	gfx.mem_copy(command_buffer, download, gpu, device_info.limits.min_allocation_size)
-	gfx.submit_and_signal(command_buffer, sema, 1)
+	gfx.submit(.Default, {command_buffer}, {sema, 1})
 
 	gfx.wait_semaphore(sema, 1)
 
@@ -126,7 +129,7 @@ generic_compute_test :: proc(t: ^testing.T) {
 	}, { 128, 1, 1 })
 	testing.expect_value(t, add_pipeline_res, nil)
 
-	semaphore, semaphore_res := gfx.create_semaphore()
+	semaphore, semaphore_res := gfx.create_semaphore(.Cpu_Waitable)
 	testing.expect_value(t, semaphore_res, nil)
 
 	memory: gfx.Arena
@@ -158,7 +161,7 @@ generic_compute_test :: proc(t: ^testing.T) {
 		in_b	= gpu_b,
 		out	=  gpu_out,
 	}, { ARRAY_LENGTH / 128, 1, 1 })
-	gfx.submit_and_signal(command_buffer, semaphore, 1)
+	gfx.submit(.Default, {command_buffer}, {semaphore, 1})
 
 	gfx.wait_semaphore(semaphore, 1)
 	for i := 0; i < ARRAY_LENGTH; i += 1 {

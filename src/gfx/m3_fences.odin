@@ -4,22 +4,22 @@ package gfx
 import MTL "vendor:darwin/Metal"
 
 m3_Fence_Metadata :: struct {
-	event:	^MTL.Event,
+	fence:	^MTL.Fence,
 }
 
 m3_create_fence :: proc(metadata: ^_Fence_Metadata) -> Result {
-	event := m3_device->newEvent()
-	if event == nil {
+	fence := m3_device->newFence()
+	if fence == nil {
 		return .Out_Of_Gpu_Memory
 	}
 
-	metadata.m3.event = event
+	metadata.m3.fence = fence
 
 	return nil
 }
 
 m3_destroy_fence :: proc(metadata: ^_Fence_Metadata) {
-	metadata.m3.event->release()
+	metadata.m3.fence->release()
 }
 
 

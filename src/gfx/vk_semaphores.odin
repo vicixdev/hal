@@ -6,7 +6,7 @@ vk_Semaphore_Metadata :: struct {
 	semaphore:	vk.Semaphore,
 }
 
-vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
+vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
 	semaphore_type_info := vk.SemaphoreTypeCreateInfo {
 		sType		= .SEMAPHORE_TYPE_CREATE_INFO,
 		semaphoreType	= .TIMELINE,

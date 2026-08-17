@@ -5,29 +5,52 @@ import MTL "vendor:darwin/Metal"
 import MTLe "shared:darwext/metal"
 
 m3_Semaphore_Metadata :: struct {
-	event:	^MTL.SharedEvent,
+	using _: struct #raw_union {
+		shared_event:	^MTL.SharedEvent,
+		event:		^MTL.Event,
+	},
 }
 
-m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
-	shared_event := m3_device->newSharedEvent()
-	if shared_event == nil {
-		return .Out_Of_Gpu_Memory
+m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
+	switch type {
+	case .Default:
+		event := m3_device->newEvent()
+		if event == nil {
+			return .Out_Of_Gpu_Memory
+		}
+
+		metadata.m3.event = event
+
+	case .Cpu_Waitable:
+		shared_event := m3_device->newSharedEvent()
+		if shared_event == nil {
+			return .Out_Of_Gpu_Memory
+		}
+
+		metadata.m3.shared_event = shared_event
+
 	}
 
-	metadata.m3.event = shared_event
 
 	return nil
 }
 
 m3_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
-	metadata.m3.event->release()
+	switch metadata.type {
+	case .Default:
+		metadata.m3.event->release()
+
+	case .Cpu_Waitable:
+		metadata.m3.shared_event->release()
+	}
 
 	return nil
 }
 
 m3_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result {
+	assert(metadata.type == .Cpu_Waitable)
 
-	MTLe.SharedEvent_waitUntilSignaledValue(auto_cast metadata.m3.event, cast(u64)value, max(u64))
+	MTLe.SharedEvent_waitUntilSignaledValue(auto_cast metadata.m3.shared_event, cast(u64)value, max(u64))
 
 	return nil
 }

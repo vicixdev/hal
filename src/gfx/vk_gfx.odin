@@ -241,11 +241,11 @@ vk_pre_fini :: proc() {
 	
 	if _is_device_selected {
 		vk.QueueWaitIdle(_queues[.Default].vk.queue)
-		vk.DestroyCommandPool(vk_device, _queues[.Default].vk.command_pool, nil)
+		vk_destroy_command_pool(_queues[.Default].vk.command_pool)
 
 		if _device_info.properties.transfer_queue {
 			vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
-			vk.DestroyCommandPool(vk_device, _queues[.Transfer].vk.command_pool, nil)
+			vk_destroy_command_pool(_queues[.Transfer].vk.command_pool)
 		}
 	}
 }

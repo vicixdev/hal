@@ -3,7 +3,8 @@ package gfx
 import vk "vendor:vulkan"
 
 vk_Fence_Metadata :: struct {
-	semaphore:	vk.Semaphore,
+	semaphore:		vk.Semaphore,
+	last_signaled_value:	u64,
 }
 
 vk_create_fence :: proc(metadata: ^_Fence_Metadata) -> Result {

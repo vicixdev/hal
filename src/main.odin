@@ -109,98 +109,69 @@ main :: proc() {
 	gfx.set_storage_texture_set(resource_set, .D2_Array, { v2 })
 	gfx.set_sampler_set(resource_set, { sampler })
 
-	// upload, _ := gfx.alloc(.Default, 128)
-	// private, _ := gfx.alloc(.Private, 128)
-	// download, _ := gfx.alloc(.Readback, 128)
+	for _ in 0..<1024 {
+		assert(generic_compute_test() == nil)
+	}
 
-	// for i in 0..<128 {
-	// 	(cast([^]byte)upload.contents)[i] = cast(byte)i
-	// }
-
-	// cb, cb_res := gfx.begin_command_encoding(.Default)
-	// log.info(cb_res)
-	// gfx.mem_copy(cb, private, upload, 128)
-	// gfx.barrier(cb, { .Transfer }, { .Transfer })
-	// gfx.mem_copy(cb, download, private, 128)
-	// gfx.submit(cb)
-
-	// time.sleep(1 * 1000 * 1000 * 1000)
-
-	// for i in 0..<128 {
-	// 	log.info(i, (cast([^]byte)download.contents)[i])
-	// }
-
-	big_mult()
-
-	// upload, _ := gfx.alloc(.Default, 128)
-	// private, _ := gfx.alloc(.Private, 128)
-	// download, _ := gfx.alloc(.Readback, 128)
-
-	// for i in 0..<128 {
-	// 	(cast([^]byte)upload.contents)[i] = cast(byte)i
-	// }
-
-	// cb, cb_res := gfx.begin_command_encoding(.Default)
-	// log.info(cb_res)
-	// gfx.mem_copy(cb, private, upload, 128)
-	// gfx.barrier(cb, { .Transfer }, { .Transfer })
-	// gfx.mem_copy(cb, download, private, 128)
-	// gfx.submit(cb)
-
-	// time.sleep(1 * 1000 * 1000 * 1000)
-
-	// for i in 0..<128 {
-	// 	log.info(i, (cast([^]byte)download.contents)[i])
-	// }
 }
 
-big_mult :: proc() -> gfx.Result {
-	Params :: struct {
-		a:	uintptr,
-		b:	uintptr,
-		res:	uintptr,
+@(test)
+generic_compute_test :: proc() -> gfx.Result {
+	ARRAY_LENGTH :: 4096
+
+	when gfx.TARGET_API == .Vulkan {
+		ADD_BYTECODE := #load("./gfx/tests/shaders/basic.spv")
+	} else when gfx.TARGET_API == .Metal_3 {
+		ADD_BYTECODE := #load("./gfx/tests/shaders/basic.metallib")
 	}
 
-	on_work_done := gfx.create_semaphore() or_return
-	defer gfx.destroy_semaphore(on_work_done)
-
-	a := gfx.alloc(.Default, 16 * mem.Kilobyte) or_return
-	b := gfx.alloc(.Default, 16 * mem.Kilobyte) or_return
-	res := gfx.alloc(.Private, 16 * mem.Kilobyte) or_return
-	c := gfx.alloc(.Readback, 16 * mem.Kilobyte) or_return
-	
-	for i in 0..<128 {
-		(cast([^]f32)a.contents)[i] = cast(f32)i
-		(cast([^]f32)b.contents)[i] = cast(f32)i / 4
+	Parameters :: struct {
+		in_a:	uintptr,
+		in_b:	uintptr,
+		out:	uintptr,
 	}
 
-	bytecode, _ := gfx.load_bytecode_of("basic", "build", context.temp_allocator)
-	pipeline := gfx.create_compute_pipeline(
-		{
-			entrypoint = "computeMain",
-			bytecode = bytecode,
+	half: f32 = 0.5
+	add_pipeline := gfx.create_compute_pipeline({
+		bytecode	= ADD_BYTECODE[:],
+		entrypoint	= "add",
+		constants	= {
+			{ type = .F32, value = &half },
 		},
-		{ 1, 1, 1 },
-	) or_return
+	}, { 128, 1, 1 }) or_return
 
-	cb := gfx.begin_command_encoding(.Default) or_return
-	gfx.dispatch(
-		cb,
-		pipeline,
-		Params {
-			a = gfx.gpu_address_of(a) or_return,
-			b = gfx.gpu_address_of(b) or_return,
-			res = gfx.gpu_address_of(res) or_return,
-		},
-		{ 128, 1, 1 },
-	)
-	gfx.barrier(cb, { .Compute }, { .Transfer })
-	gfx.mem_copy(cb, c, res, 128 * size_of(f32))
-	gfx.submit_and_signal(cb, on_work_done, 1)
+	semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
 
-	gfx.wait_semaphore(on_work_done, 1)
-	for i in 0..<128 {
-		log.info(i, (cast([^]f32)c.contents)[i])
+	memory: gfx.Arena
+	gfx.create_arena(&memory, .Default, size_of(f32) * ARRAY_LENGTH * 3) or_return
+
+	in_a := gfx.arena_alloc(&memory, size_of(f32) * ARRAY_LENGTH) or_return
+	in_b := gfx.arena_alloc(&memory, size_of(f32) * ARRAY_LENGTH) or_return
+	out := gfx.arena_alloc(&memory, size_of(f32) * ARRAY_LENGTH) or_return
+
+	floats_a := cast([^]f32)in_a.address
+	floats_b := cast([^]f32)in_b.address
+	floats_out := cast([^]f32)out.address
+	for i := 0; i < ARRAY_LENGTH; i += 1 {
+		floats_a[i] = cast(f32)i
+		floats_b[i] = cast(f32)i * 4
+	}
+
+	gpu_a := gfx.gpu_address_of(in_a) or_return
+	gpu_b := gfx.gpu_address_of(in_b) or_return
+	gpu_out := gfx.gpu_address_of(out) or_return
+
+	command_buffer := gfx.begin_command_encoding(.Default) or_return
+	gfx.dispatch(command_buffer, add_pipeline, Parameters {
+		in_a	= gpu_a,
+		in_b	= gpu_b,
+		out	=  gpu_out,
+	}, { ARRAY_LENGTH / 128, 1, 1 })
+	gfx.submit(.Default, {command_buffer}, {semaphore, 1})
+
+	gfx.wait_semaphore(semaphore, 1)
+	for i := 0; i < ARRAY_LENGTH; i += 1 {
+		assert(floats_out[i] == floats_a[i] + floats_b[i] * half)
 	}
 
 	return nil

@@ -46,6 +46,7 @@ when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
 }
 
 ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
+// ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, true)
 ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, false)
 
 Error :: enum {
@@ -80,6 +81,7 @@ Error :: enum {
 
 	Queue_Already_In_Use,
 	Incompatible_Pipeline,
+	Use_After_Free,
 }
 
 Result :: union #shared_nil {
@@ -134,7 +136,7 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	vmem.arena_init_growing(&_global_arena) or_return
 	_global_allocator = vmem.arena_allocator(&_global_arena)
 
-	mem.scratch_init(&_temp_scratch, 32 * mem.Megabyte) or_return
+	mem.scratch_init(&_temp_scratch, 128 * mem.Megabyte) or_return
 	_temp_allocator = mem.scratch_allocator(&_temp_scratch)
 
 	_generic_allocator = context.allocator

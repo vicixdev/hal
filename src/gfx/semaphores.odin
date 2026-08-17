@@ -5,8 +5,14 @@ import hm "core:container/handle_map"
 
 Semaphore	:: distinct Handle
 
+Semaphore_Type	:: enum {
+	Default,
+	Cpu_Waitable,
+}
+
 _Semaphore_Metadata :: struct {
 	handle:			Semaphore,
+	type:			Semaphore_Type,
 
 	last_signaled_value:	int,
 
@@ -18,14 +24,20 @@ _Semaphore_Metadata :: struct {
 
 _semaphores: hm.Dynamic_Handle_Map(_Semaphore_Metadata, Semaphore)
 
-create_semaphore :: proc(location := #caller_location) -> (semaphore: Semaphore, res: Result) {
+create_semaphore :: proc(
+	type := Semaphore_Type.Default,
+	location := #caller_location,
+) -> (semaphore: Semaphore, res: Result) {
+
 	handle, metadata := _add_semaphore_metadata() or_return
 	defer if res != nil do _remove_semaphore_metadata(handle)
 
+	metadata.type = type
+
 	when TARGET_API == .Vulkan {
-		res = vk_create_semaphore(metadata)
+		res = vk_create_semaphore(metadata, type)
 	} else {
-		res = m3_create_semaphore(metadata)
+		res = m3_create_semaphore(metadata, type)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -54,6 +66,20 @@ wait_semaphore :: proc(semaphore: Semaphore, value: int, location := #caller_loc
 	metadata, metadata_res := _metadata_of(semaphore)
 	_check_semaphore_handle(metadata_res, semaphore, location)
 	if metadata_res != nil do return
+
+	if metadata.type != .Cpu_Waitable {
+		_log_message(
+			.Invalid_Semaphore,
+			.Error,
+			"Invalid semaphore type",
+			"Only semaphores with type `.Cpu_Waitable` can be used for CPU-GPU synchronization. The " +
+			"semaphore %v is of type %v",
+			semaphore,
+			metadata.type,
+			location=location,
+		)
+		return
+	}
 
 	res: Result
 	when TARGET_API == .Vulkan {

@@ -5,17 +5,8 @@ import hm "core:container/handle_map"
 
 Fence :: distinct Handle
 
-_Fence_Type :: enum {
-	Manual,
-	Managed,
-}
-
 _Fence_Metadata :: struct {
 	handle:		Fence,
-	type:		_Fence_Type,
-
-	// Last signaled value
-	value:		int,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Fence_Metadata,
@@ -25,9 +16,8 @@ _Fence_Metadata :: struct {
 
 _fences: hm.Dynamic_Handle_Map(_Fence_Metadata, Fence)
 
-_create_managed_fence :: proc(location := #caller_location) -> (fence: Fence, res: Result) {
+create_fence :: proc(location := #caller_location) -> (fence: Fence, res: Result) {
 	handle, metadata := _add_fence_metadata() or_return
-	metadata.type = .Managed
 
 	when TARGET_API == .Vulkan {
 		res = vk_create_fence(metadata)
