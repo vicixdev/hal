@@ -85,7 +85,6 @@ _command_buffers: [Queue][16]_Command_Buffer_Metadata
 
 _setup_command_buffers_of :: proc(queue: Queue) -> Result {
 	queue_metadata := &_queues[queue]
-	metadata := &_command_buffers[queue]
 
 	for &metadata, i in _command_buffers[queue] {
 		_setup_command_buffer(&metadata, queue_metadata, i) or_return
@@ -379,7 +378,7 @@ signal :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #cal
 		"while no commands are present after the last signal, wait or barrier.",
 		fences,
 		command_buffer,
-		location=location
+		location=location,
 	) or_return
 
 	for fence in fences {
