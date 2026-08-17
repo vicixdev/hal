@@ -1,6 +1,5 @@
 package gfx
 
-import "core:slice"
 import vk "vendor:vulkan"
 
 vk_Fence_Signal :: struct {
@@ -19,7 +18,7 @@ vk_Command_Buffer_Metadata :: struct {
 
 	bound_resource_set:		Resource_Set,
 
-	should_wait_semaphore:		bool,
+	is_first_command_buffer:	bool,
 	pending_waits:			[]Fence,
 
 	semaphore:			vk.Semaphore,
@@ -183,57 +182,8 @@ vk_emit_signal :: proc(
 	vk.EndCommandBuffer(metadata.vk.command_buffer)
 	metadata.vk.command_buffer_valid = false
 
-	waits: []vk.SemaphoreSubmitInfo
-	if metadata.vk.should_wait_semaphore || len(metadata.vk.pending_waits) > 0 {
-		wait_count := len(metadata.vk.pending_waits)
-		if metadata.vk.should_wait_semaphore {
-			wait_count += 1
-		}
-		waits = make([]vk.SemaphoreSubmitInfo, wait_count, metadata.allocator) or_return
-
-		for fence, i in metadata.vk.pending_waits {
-			fence_metadata, fence_res := _metadata_of(fence)
-			if fence_res != nil do return .Use_After_Free
-
-			waits[i] = vk.SemaphoreSubmitInfo {
-				sType		= .SEMAPHORE_SUBMIT_INFO,
-				semaphore	= fence_metadata.vk.semaphore,
-				value		= fence_metadata.vk.last_signaled_value,
-				stageMask	= { .ALL_COMMANDS },
-			}
-		}
-
-		if metadata.vk.should_wait_semaphore {
-			waits[len(waits)-1] = vk.SemaphoreSubmitInfo {
-				sType		= .SEMAPHORE_SUBMIT_INFO,
-				semaphore	= metadata.vk.semaphore,
-				value		= metadata.vk.semaphore_value,
-				stageMask	= { .ALL_COMMANDS },
-			}
-		}
-	}
-
-	signals := make([]vk.SemaphoreSubmitInfo, len(command.signals) + 1, metadata.allocator) or_return
-
-	metadata.vk.semaphore_value += 1
-	slice.last_ptr(signals)^ = vk.SemaphoreSubmitInfo {
-		sType		= .SEMAPHORE_SUBMIT_INFO,
-		semaphore	= metadata.vk.semaphore,
-		value		= metadata.vk.semaphore_value,
-		stageMask	= { .ALL_COMMANDS },
-	}
-	for fence, i in command.signals {
-		fence_metadata, fence_res := _metadata_of(fence)
-		if fence_res != nil do return .Use_After_Free
-
-		fence_metadata.vk.last_signaled_value += 1
-		signals[i] = vk.SemaphoreSubmitInfo {
-			sType		= .SEMAPHORE_SUBMIT_INFO,
-			semaphore	= fence_metadata.vk.semaphore,
-			value		= fence_metadata.vk.last_signaled_value,
-			stageMask	= { .ALL_COMMANDS },
-		}
-	}
+	waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
+	signals := vk_prepare_signal_semaphore_submit_infos(metadata, command.signals) or_return
 
 	command_buffer_info := vk.CommandBufferSubmitInfo {
 		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
@@ -250,8 +200,9 @@ vk_emit_signal :: proc(
 	}
 	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
 
-	metadata.vk.should_wait_semaphore = true
+	metadata.vk.is_first_command_buffer = false
 	metadata.vk.pending_waits = {}
+	metadata.vk.semaphore_value += 1
 
 	return nil
 }
@@ -274,7 +225,7 @@ vk_emit_commands :: proc(
 
 	metadata.vk.bound_resource_set = {}
 	metadata.vk.command_buffer_valid = false
-	metadata.vk.should_wait_semaphore = false
+	metadata.vk.is_first_command_buffer = true
 	metadata.vk.pending_waits = {}
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata)
@@ -292,55 +243,26 @@ vk_emit_commands :: proc(
 	vk_ensure_command_buffer_valid(metadata, queue_metadata)
 	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
 
-	command_buffer_info	:= new(vk.CommandBufferSubmitInfo, metadata.allocator) or_return
-	wait_count := len(metadata.vk.pending_waits)
-	if metadata.vk.should_wait_semaphore {
-		wait_count += 1
-	}
-	waits := make([]vk.SemaphoreSubmitInfo, wait_count, metadata.allocator) or_return
-	for fence, i in metadata.vk.pending_waits {
-		fence_metadata, fence_res := _metadata_of(fence)
-		if fence_res != nil do return submit_info, .Use_After_Free
+	command_buffer_info := new(vk.CommandBufferSubmitInfo, metadata.allocator) or_return
+	waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
+	signals := vk_prepare_signal_semaphore_submit_infos(metadata, {}) or_return
 
-		waits[i] = vk.SemaphoreSubmitInfo {
-			sType		= .SEMAPHORE_SUBMIT_INFO,
-			semaphore	= fence_metadata.vk.semaphore,
-			value		= fence_metadata.vk.last_signaled_value,
-			stageMask	= { .ALL_COMMANDS },
-		}
-	}
-	if metadata.vk.should_wait_semaphore {
-		waits[len(waits)-1] = vk.SemaphoreSubmitInfo {
-			sType		= .SEMAPHORE_SUBMIT_INFO,
-			semaphore	= metadata.vk.semaphore,
-			value		= metadata.vk.semaphore_value,
-			stageMask	= { .ALL_COMMANDS },
-		}
-	}
-
-	signal_info := new(vk.SemaphoreSubmitInfo, metadata.allocator) or_return
 	command_buffer_info^ = vk.CommandBufferSubmitInfo {
 		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
 		commandBuffer	= metadata.vk.command_buffer,
 	}
-	signal_info^ = vk.SemaphoreSubmitInfo {
-		sType		= .SEMAPHORE_SUBMIT_INFO,
-		semaphore	= metadata.vk.semaphore,
-		value		= metadata.vk.semaphore_value + 1,
-		stageMask	= { .ALL_COMMANDS },
-	}
 	submit_info = vk.SubmitInfo2 {
 		sType				= .SUBMIT_INFO_2,
-		waitSemaphoreInfoCount		= cast(u32)len(waits),
-		pWaitSemaphoreInfos		= len(waits) > 0 ? raw_data(waits) : nil,
 		commandBufferInfoCount		= 1,
 		pCommandBufferInfos		= command_buffer_info,
-		signalSemaphoreInfoCount	= 1,
-		pSignalSemaphoreInfos		= signal_info,
+		waitSemaphoreInfoCount		= cast(u32)len(waits),
+		pWaitSemaphoreInfos		= raw_data(waits),
+		signalSemaphoreInfoCount	= cast(u32)len(signals),
+		pSignalSemaphoreInfos		= raw_data(signals),
 	}
 
 	metadata.vk.semaphore_value += 1
-	metadata.vk.should_wait_semaphore = true
+	metadata.vk.is_first_command_buffer = false
 	metadata.vk.pending_waits = {}
 	
 	return submit_info, nil
@@ -424,6 +346,87 @@ vk_ensure_command_buffer_valid :: proc(
 	metadata.vk.command_buffer_valid = true
 
 	return nil
+}
+
+vk_prepare_wait_semaphore_submit_infos :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+) -> (infos: []vk.SemaphoreSubmitInfo, res: Result) {
+
+	wait_count := len(metadata.vk.pending_waits)
+	if metadata.vk.is_first_command_buffer {
+		wait_count += len(metadata.semaphore_waits)
+	} else {
+		wait_count += 1
+		
+	}
+
+	waits := make([]vk.SemaphoreSubmitInfo, wait_count, metadata.allocator) or_return
+	for fence, i in metadata.vk.pending_waits {
+		fence_metadata, fence_res := _metadata_of(fence)
+		if fence_res != nil do return nil, .Use_After_Free
+
+		waits[i] = vk.SemaphoreSubmitInfo {
+			sType		= .SEMAPHORE_SUBMIT_INFO,
+			semaphore	= fence_metadata.vk.semaphore,
+			value		= fence_metadata.vk.last_signaled_value,
+			stageMask	= { .ALL_COMMANDS },
+		}
+	}
+
+	if metadata.vk.is_first_command_buffer {
+		base := len(metadata.vk.pending_waits)
+
+		for wait, i in metadata.semaphore_waits {
+			semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
+			if semaphore_res != nil do return nil, .Use_After_Free
+
+			waits[base + i] = vk.SemaphoreSubmitInfo {
+				sType		= .SEMAPHORE_SUBMIT_INFO,
+				semaphore	= semaphore_metadata.vk.semaphore,
+				value		= cast(u64)wait.value,
+				stageMask	= { .ALL_COMMANDS },
+			}
+		}
+	} else {
+		waits[len(waits)-1] = vk.SemaphoreSubmitInfo {
+			sType		= .SEMAPHORE_SUBMIT_INFO,
+			semaphore	= metadata.vk.semaphore,
+			value		= metadata.vk.semaphore_value,
+			stageMask	= { .ALL_COMMANDS },
+		}
+	}
+
+	return waits, nil
+}
+
+vk_prepare_signal_semaphore_submit_infos :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	fences:		[]Fence,
+) -> (infos: []vk.SemaphoreSubmitInfo, res: Result) {
+	
+	signals := make([]vk.SemaphoreSubmitInfo, len(fences) + 1, metadata.allocator) or_return
+
+	signals[len(signals) - 1] = vk.SemaphoreSubmitInfo {
+		sType		= .SEMAPHORE_SUBMIT_INFO,
+		semaphore	= metadata.vk.semaphore,
+		value		= metadata.vk.semaphore_value + 1,
+		stageMask	= { .ALL_COMMANDS },
+	}
+
+	for fence, i in fences {
+		fence_metadata, fence_res := _metadata_of(fence)
+		if fence_res != nil do return nil, .Use_After_Free
+
+		fence_metadata.vk.last_signaled_value += 1
+		signals[i] = vk.SemaphoreSubmitInfo {
+			sType		= .SEMAPHORE_SUBMIT_INFO,
+			semaphore	= fence_metadata.vk.semaphore,
+			value		= fence_metadata.vk.last_signaled_value,
+			stageMask	= { .ALL_COMMANDS },
+		}
+	}
+
+	return signals, nil
 }
 
 vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {

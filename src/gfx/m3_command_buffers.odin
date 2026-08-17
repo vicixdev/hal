@@ -162,6 +162,21 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
 
+	for wait in metadata.semaphore_waits {
+		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
+		if semaphore_res != nil do return .Use_After_Free
+
+		switch semaphore_metadata.type {
+		case .Default:
+			metadata.m3.command_buffer->encodeWaitForEvent(
+				semaphore_metadata.m3.event, cast(u64)wait.value)
+
+		case .Cpu_Waitable:
+			metadata.m3.command_buffer->encodeWaitForEvent(
+				semaphore_metadata.m3.shared_event, cast(u64)wait.value)
+		}
+	}
+
 	for command in metadata.commands {
 		switch v in command {
 		case _Command_Mem_Copy:	m3_emit_mem_copy(metadata, queue_metadata, v) or_return

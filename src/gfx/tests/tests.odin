@@ -104,6 +104,88 @@ memory_transfers_with_fences :: proc(t: ^testing.T) {
 }
 
 @(test)
+memory_transfers_with_multiple_command_buffers_and_fences :: proc(t: ^testing.T) {
+	device_info, _ := gfx.selected_device_info()
+
+	fence, fence_res := gfx.create_fence()
+	testing.expect_value(t, fence_res, nil)
+
+	upload, upload_res := gfx.alloc(.Staging, device_info.limits.min_allocation_size)
+	gpu, gpu_res := gfx.alloc(.Private, device_info.limits.min_allocation_size)
+	download, download_res := gfx.alloc(.Readback, device_info.limits.min_allocation_size)
+	testing.expect(t, upload_res == nil && gpu_res == nil && download_res == nil)
+
+	upload_i64 := cast([^]i64)upload.contents
+	gpu_i64 := cast([^]i64)upload.contents
+	download_i64 := cast([^]i64)upload.contents
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		upload_i64[i] = cast(i64)i
+	}
+
+	sema, sema_res := gfx.create_semaphore(.Cpu_Waitable)
+	testing.expect_value(t, sema_res, nil)
+
+	cb1, cb1_res := gfx.begin_command_encoding(.Default)
+	testing.expect_value(t, cb1_res, nil)
+	cb2, cb2_res := gfx.begin_command_encoding(.Default)
+	testing.expect_value(t, cb2_res, nil)
+
+	gfx.mem_copy(cb1, gpu, upload, device_info.limits.min_allocation_size)
+	gfx.signal(cb1, fence)
+
+	gfx.wait(cb2, fence)
+	gfx.mem_copy(cb2, download, gpu, device_info.limits.min_allocation_size)
+	gfx.submit(.Default, {cb1, cb2}, {sema, 1})
+
+	gfx.wait_semaphore(sema, 1)
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		testing.expect_value(t, download_i64[i], cast(i64)i)
+	}
+}
+
+@(test)
+memory_transfers_with_multiple_command_buffers_and_semaphores :: proc(t: ^testing.T) {
+	device_info, _ := gfx.selected_device_info()
+
+	upload, upload_res := gfx.alloc(.Staging, device_info.limits.min_allocation_size)
+	gpu, gpu_res := gfx.alloc(.Private, device_info.limits.min_allocation_size)
+	download, download_res := gfx.alloc(.Readback, device_info.limits.min_allocation_size)
+	testing.expect(t, upload_res == nil && gpu_res == nil && download_res == nil)
+
+	upload_i64 := cast([^]i64)upload.contents
+	gpu_i64 := cast([^]i64)upload.contents
+	download_i64 := cast([^]i64)upload.contents
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		upload_i64[i] = cast(i64)i
+	}
+
+	sema, sema_res := gfx.create_semaphore(.Cpu_Waitable)
+	testing.expect_value(t, sema_res, nil)
+
+	on_work_done, on_work_done_res := gfx.create_semaphore(.Cpu_Waitable)
+	testing.expect_value(t, on_work_done_res, nil)
+
+	cb1, cb1_res := gfx.begin_command_encoding(.Default)
+	testing.expect_value(t, cb1_res, nil)
+	gfx.mem_copy(cb1, gpu, upload, device_info.limits.min_allocation_size)
+	gfx.submit(.Default, { cb1 }, { sema, 1 })
+
+	cb2, cb2_res := gfx.begin_command_encoding(.Default, { sema, 1 })
+	gfx.mem_copy(cb2, download, gpu, device_info.limits.min_allocation_size)
+
+	gfx.submit(.Default, { cb2 }, { on_work_done, 1 })
+
+	gfx.wait_semaphore(on_work_done, 1)
+
+	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
+		testing.expect_value(t, download_i64[i], cast(i64)i)
+	}
+}
+
+@(test)
 generic_compute_test :: proc(t: ^testing.T) {
 	ARRAY_LENGTH :: 4096
 

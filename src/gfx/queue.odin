@@ -43,7 +43,7 @@ _setup_queue :: proc(queue: Queue) -> Result {
 	} else {
 		m3_setup_queue(metadata) or_return
 	}
-	_setup_command_buffer_of(queue)
+	_setup_command_buffers_of(queue)
 
 	return nil
 }

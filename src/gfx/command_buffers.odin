@@ -5,7 +5,11 @@ import "core:mem"
 import "core:slice"
 import vmem "core:mem/virtual"
 
-Command_Buffer	:: distinct Handle
+Command_Buffer :: bit_field u64 {
+	queue:		Queue	| 2,
+	index:		u32	| 30,
+	generation:	u32	| 32,
+}
 
 Semaphore_Wait :: struct {
 	semaphore:	Semaphore,
@@ -18,16 +22,19 @@ Semaphore_Signal :: struct {
 }
 
 _Command_Buffer_Metadata :: struct {
-	handle:		Command_Buffer,
+	handle:			Command_Buffer,
 
-	arena:		vmem.Arena,
-	allocator:	runtime.Allocator,
+	arena:			vmem.Arena,
+	allocator:		runtime.Allocator,
 
-	queue:		Queue,
-	in_use:		bool,
+	queue:			Queue,
+	in_use:			bool,
 
-	resource_set:	Resource_Set,
-	commands:	[dynamic]_Command,
+	resource_set:		Resource_Set,
+	semaphore_waits:	[]Semaphore_Wait,
+	commands:		[dynamic]_Command,
+
+	can_encode_signals:	bool,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -74,19 +81,33 @@ _Command_Signal_Semaphore :: struct {
 	value:		int,
 }
 
-_command_buffers: [Queue]_Command_Buffer_Metadata
+_command_buffers: [Queue][16]_Command_Buffer_Metadata
 
-_setup_command_buffer_of :: proc(queue: Queue) -> Result {
+_setup_command_buffers_of :: proc(queue: Queue) -> Result {
 	queue_metadata := &_queues[queue]
 	metadata := &_command_buffers[queue]
 
-	metadata.handle.idx = cast(u32)queue
-	metadata.queue = queue
+	for &metadata, i in _command_buffers[queue] {
+		_setup_command_buffer(&metadata, queue_metadata, i) or_return
+	}
+
+	return nil
+}
+
+_setup_command_buffer :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	queue_metadata: ^_Queue_Metadata,
+	index: int,
+) -> Result {
+	metadata.handle.queue = queue_metadata.type
+	metadata.handle.index = cast(u32)index
+
+	metadata.queue = queue_metadata.type
 
 	vmem.arena_init_growing(&metadata.arena) or_return
 	metadata.allocator = vmem.arena_allocator(&metadata.arena)
 
-	metadata.commands	= make([dynamic]_Command, metadata.allocator) or_return
+	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
 
 	when TARGET_API == .Vulkan {
 		vk_setup_command_buffer(metadata, queue_metadata) or_return
@@ -98,12 +119,18 @@ _setup_command_buffer_of :: proc(queue: Queue) -> Result {
 }
 
 begin_command_encoding :: proc(
-	queue: Queue,
-	location := #caller_location,
+	queue:		Queue,
+	waits:		..Semaphore_Wait,
+	location	:= #caller_location,
 ) -> (command_buffer: Command_Buffer, res: Result) {
 
 	_check_queue_validity(queue, location)
 	
+	for wait in waits {
+		_, semaphore_res := _metadata_of(wait.semaphore)
+		_check_semaphore_handle(semaphore_res, wait.semaphore, location) or_return
+	}
+
 	handle, metadata, add_res := _add_command_buffer(queue)
 	_check_result(
 		add_res,
@@ -119,20 +146,12 @@ begin_command_encoding :: proc(
 
 	metadata.resource_set	= _default_resource_set
 	metadata.in_use = true
+	metadata.can_encode_signals = false
+	resize(&metadata.commands, 0)
+
+	metadata.semaphore_waits = slice.clone(waits, metadata.allocator) or_return
 
 	return handle, nil
-}
-
-wait_semaphores :: proc(
-	command_buffer: Command_Buffer,
-	waits: ..Semaphore_Wait,
-	location := #caller_location,
-) -> Result {
-
-	// TODO:
-	//	- check that the cb does not have any other command encoded
-
-	return nil
 }
 
 use_resources :: proc(
@@ -241,6 +260,8 @@ mem_copy :: proc(
 	}
 	append(&metadata.commands, command)
 
+	metadata.can_encode_signals = true
+
 	return nil
 }
 
@@ -302,6 +323,8 @@ dispatch_with_bytes_argument :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
+	metadata.can_encode_signals = true
+
 	return nil
 }
 
@@ -337,12 +360,27 @@ barrier	:: proc(
 	}
 	append(&metadata.commands, command) or_return
 
+	metadata.can_encode_signals = false
+
 	return nil
 }
 
 signal :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #caller_location) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	_check_condition(
+		metadata.can_encode_signals,
+		.Invalid_Arguments,
+		.Error,
+		"Invalid signal operation",
+		"A signal operation can be issued only after other commands have been encoded in the command buffer " +
+		"after the last signal, wait and barrier. A signal to fences %v on command buffer %v has been issued " +
+		"while no commands are present after the last signal, wait or barrier.",
+		fences,
+		command_buffer,
+		location=location
+	) or_return
 
 	for fence in fences {
 		_, fence_res := _metadata_of(fence)
@@ -353,6 +391,8 @@ signal :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #cal
 		signals = slice.clone(fences, metadata.allocator) or_return,
 	}
 	append(&metadata.commands, command) or_return
+
+	metadata.can_encode_signals = false
 
 	return nil
 }
@@ -371,8 +411,9 @@ wait :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #calle
 	}
 	append(&metadata.commands, command) or_return
 
+	metadata.can_encode_signals = false
+
 	return nil
-	
 }
 
 submit :: proc(
@@ -457,6 +498,20 @@ _check_fence_correctness :: proc(command_buffers: []Command_Buffer, location: ru
 			#partial switch v in command {
 			case _Command_Signal:
 				for fence in v.signals {
+					_, is_present := signaled_fences[fence]
+					_check_condition(
+						!is_present,
+						.Invalid_Argument,
+						.Error,
+						"Invalid fence signaling",
+						"In each submission, a fence can only be signaled once. Fence %v in " +
+						"command buffer %v was waited on before its " +
+						"signaling operation.",
+						command_buffer,
+						fence,
+						location=location,
+					) or_return
+
 					signaled_fences[fence] = false
 				}
 
@@ -498,84 +553,6 @@ _check_fence_correctness :: proc(command_buffers: []Command_Buffer, location: ru
 	return nil
 }
 
-// submit :: proc(command_buffer: Command_Buffer, location := #caller_location) {
-// 	metadata, metadata_res := _metadata_of(command_buffer)
-// 	_check_command_buffer_handle(metadata_res, command_buffer, location)
-// 	if metadata_res != nil {
-// 		return
-// 	}
-
-// 	queue_metadata, queue_res := _metadata_of(metadata.queue)
-// 	assert(queue_res == nil)
-	
-// 	res: Result
-// 	when TARGET_API == .Vulkan {
-// 		res = vk_emit_commands(metadata, queue_metadata)
-// 	} else {
-// 		res = m3_emit_commands(metadata, queue_metadata)
-// 	}
-
-// 	_check_generic_backend_error(res, location)
-
-// 	metadata.in_use = false
-// }
-// // value must be monotonically increasing.
-// submit_and_signal :: proc(
-// 	command_buffer: Command_Buffer,
-// 	semaphore: Semaphore,
-// 	value: int,
-// 	location := #caller_location,
-// ) {
-
-// 	metadata, metadata_res := _metadata_of(command_buffer)
-// 	_check_command_buffer_handle(metadata_res, command_buffer, location)
-// 	if metadata_res != nil do return
-	
-// 	queue_metadata, queue_res := _metadata_of(metadata.queue)
-// 	assert(queue_res == nil)
-	
-// 	semaphore_metadata, semaphore_res := _metadata_of(semaphore)
-// 	_check_semaphore_handle(semaphore_res, semaphore, location)
-// 	if semaphore_res != nil do return
-
-// 	if value <= semaphore_metadata.last_signaled_value {
-// 		_log_message(
-// 			.Invalid_Arguments,
-// 			.Error,
-// 			"Invalid signal value",
-// 			"The values signaled toxx a semaphore must be monotonically (always) increasing. The last " +
-// 			"signaled value on semaphore %v is %d, while a signaling of %d was requested.",
-// 			semaphore,
-// 			semaphore_metadata.last_signaled_value,
-// 			value,
-// 		)
-// 		return
-// 	}
-
-// 	command := _Command_Signal_Semaphore {
-// 		semaphore	= semaphore,
-// 		value		= value,
-// 	}
-// 	append(&metadata.commands, command)
-
-// 	res: Result
-// 	when TARGET_API == .Vulkan {
-// 		res = vk_emit_commands(metadata, queue_metadata)
-// 	} else {
-// 		res = m3_emit_commands(metadata, queue_metadata)
-// 	}
-	
-// 	_check_generic_backend_error(res, location)
-
-// 	for fence in metadata.fences {
-// 		destroy_fence(fence)
-// 	}
-
-// 	semaphore_metadata.last_signaled_value = value
-
-// 	metadata.in_use = false
-// }
-
 _check_command_buffer_in_use :: proc(command_buffer: Command_Buffer, location: runtime.Source_Code_Location) -> Result {
 	return nil
 }
@@ -593,14 +570,13 @@ _check_command_buffer_handle :: proc(result: Result, command_buffer: Command_Buf
 }
 
 _command_buffer_metadata_of :: proc(command_buffer: Command_Buffer) -> (^_Command_Buffer_Metadata, Result) {
-	metadata: ^_Command_Buffer_Metadata
-	if command_buffer.idx == 0 {
-		metadata = &_command_buffers[.Default]
-	} else {
-		metadata = &_command_buffers[.Transfer]
+	if command_buffer.index >= len(_command_buffers[command_buffer.queue]) {
+		return nil, .Invalid_Command_Buffer
 	}
 
-	if !metadata.in_use || metadata.handle.gen != command_buffer.gen {
+	metadata := &_command_buffers[command_buffer.queue][command_buffer.index]
+
+	if !metadata.in_use || metadata.handle.generation != command_buffer.generation {
 		return nil, .Invalid_Command_Buffer
 	}
 
@@ -608,13 +584,28 @@ _command_buffer_metadata_of :: proc(command_buffer: Command_Buffer) -> (^_Comman
 }
 
 _add_command_buffer :: proc(queue: Queue) -> (handle: Command_Buffer, metadata: ^_Command_Buffer_Metadata, res: Result) {
-	metadata = &_command_buffers[queue]
+	metadatas := &_command_buffers[queue]
 
-	if metadata.in_use {
-		return {}, nil, .Queue_Already_In_Use
+	selected: int
+	found: bool
+	for metadata, i in metadatas {
+		if metadata.in_use {
+			continue
+		}
+
+		selected = i
+		found = true
+		break
 	}
 
-	metadata.handle.gen += 1
+	if !found {
+		return {}, nil, .No_Available_Command_Buffers
+	}
+
+	metadata = &metadatas[selected]
+	metadata.handle.generation += 1
+	metadata.in_use = true
+
 	handle = metadata.handle
 
 	return
