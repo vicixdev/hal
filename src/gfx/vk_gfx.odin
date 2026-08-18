@@ -238,16 +238,6 @@ vk_pre_fini :: proc() {
 	when ODIN_OS == .Darwin && ENABLE_TRACING {
 		m3_end_tracing()
 	}
-	
-	if _is_device_selected {
-		vk.QueueWaitIdle(_queues[.Default].vk.queue)
-		vk_destroy_command_pool(_queues[.Default].vk.command_pool)
-
-		if _device_info.properties.transfer_queue {
-			vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
-			vk_destroy_command_pool(_queues[.Transfer].vk.command_pool)
-		}
-	}
 }
 
 vk_fini :: proc() {

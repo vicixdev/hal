@@ -213,6 +213,10 @@ fini :: proc() {
 		})
 	}
 
+	if _is_device_selected {
+		_fini_queues()
+	}
+
 	when TARGET_API == .Vulkan {
 		vk_fini()
 	} else when TARGET_API == .Metal_3 {

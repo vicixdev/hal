@@ -6,7 +6,7 @@ vk_Queue_Metadata :: struct {
 	queue:		vk.Queue,
 	queue_family:	u32,
 
-	command_pool:			vk_Command_Pool,
+	command_pool:	vk_Command_Pool,
 }
 
 vk_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
@@ -35,5 +35,10 @@ vk_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 	metadata.vk.queue_family = queue_family
 
 	return nil
+}
+
+vk_destroy_queue :: proc(metadata: ^_Queue_Metadata) {
+	vk.QueueWaitIdle(metadata.vk.queue)
+	vk_destroy_command_pool(metadata.vk.command_pool)
 }
 

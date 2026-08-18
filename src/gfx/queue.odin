@@ -32,6 +32,13 @@ _init_queues :: proc() -> Result {
 	return nil
 }
 
+_fini_queues :: proc() {
+	_destroy_queue(.Default)
+	if _device_info.properties.transfer_queue {
+		_destroy_queue(.Transfer)
+	}
+}
+
 _setup_queue :: proc(queue: Queue) -> Result {
 	_queues[queue].type = queue
 
@@ -48,6 +55,18 @@ _setup_queue :: proc(queue: Queue) -> Result {
 	_setup_command_buffers_of(queue)
 
 	return nil
+}
+
+_destroy_queue :: proc(queue: Queue) {
+	metadata, metadata_res := _queue_metadata_of(queue)
+	assert(metadata_res == nil)
+
+	_destroy_command_buffers_of(queue)
+	when TARGET_API == .Vulkan {
+		vk_destroy_queue(metadata)
+	} else when TARGET_API == .Metal_3 {
+		m3_destroy_queue(metadata)
+	}
 }
 
 _queue_metadata_of :: proc(queue: Queue) -> (^_Queue_Metadata, Result) {

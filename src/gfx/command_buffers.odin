@@ -95,6 +95,14 @@ _setup_command_buffers_of :: proc(queue: Queue) -> Result {
 	return nil
 }
 
+_destroy_command_buffers_of :: proc(queue: Queue) {
+	queue_metadata := &_queues[queue]
+
+	for &metadata in _command_buffers[queue] {
+		_destroy_command_buffer(&metadata, queue_metadata)
+	}
+}
+
 _setup_command_buffer :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
@@ -117,6 +125,20 @@ _setup_command_buffer :: proc(
 	}
 
 	return nil
+}
+
+_destroy_command_buffer :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+) {
+	
+	vmem.arena_destroy(&metadata.arena)
+
+	when TARGET_API == .Vulkan {
+		vk_destroy_command_buffer(metadata, queue_metadata)
+	} else when TARGET_API == .Metal_3 {
+		m3_destroy_command_buffer(metadata, queue_metadata)
+	}
 }
 
 begin_command_encoding :: proc(

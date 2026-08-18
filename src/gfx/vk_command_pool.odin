@@ -62,7 +62,10 @@ vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
 				raw_data(command_buffers),
 			)
 		}
-		vk.DestroyFence(vk_device, fence, nil)
+
+		if fence != pool.current_fence {
+			vk.DestroyFence(vk_device, fence, nil)
+		}
 
 		delete(command_buffers, pool.allocator)
 	}
@@ -86,6 +89,7 @@ vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
 		)
 	}
 
+	vk.DestroyFence(vk_device, pool.current_fence, nil)
 	vk.DestroyCommandPool(vk_device, pool.command_pool, nil)
 
 	delete(pool.free_command_buffers)
@@ -108,7 +112,7 @@ vk_next_command_pool_fence :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, 
 	}
 
 	if len(pool.current_command_buffers) != 0 {
-		pool.pending_command_buffers[fence] = pool.current_command_buffers[:]
+		pool.pending_command_buffers[pool.current_fence] = pool.current_command_buffers[:]
 
 		pool.current_command_buffers = make([dynamic]vk.CommandBuffer, pool.allocator) or_return
 	}

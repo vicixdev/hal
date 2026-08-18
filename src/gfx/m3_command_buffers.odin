@@ -30,6 +30,8 @@ m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metad
 	return nil
 }
 
+m3_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {}
+
 m3_emit_mem_copy :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,

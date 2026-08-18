@@ -21,3 +21,6 @@ m3_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 	return nil
 }
 
+m3_destroy_queue :: proc(metadata: ^_Queue_Metadata) {
+	metadata.m3.queue->release()
+}

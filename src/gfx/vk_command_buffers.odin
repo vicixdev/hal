@@ -26,8 +26,6 @@ vk_Command_Buffer_Metadata :: struct {
 }
 
 vk_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
-	vk_create_command_pool(queue_metadata.vk.queue_family, _generic_allocator) or_return
-
 	semaphore_type_info := vk.SemaphoreTypeCreateInfo {
 		sType		= .SEMAPHORE_TYPE_CREATE_INFO,
 		semaphoreType	= .TIMELINE,
@@ -40,6 +38,10 @@ vk_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metad
 	vk_call(vk.CreateSemaphore(vk_device, &semaphore_info, nil, &metadata.vk.semaphore)) or_return
 
 	return nil
+}
+
+vk_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {
+	vk.DestroySemaphore(vk_device, metadata.vk.semaphore, nil)
 }
 
 vk_emit_mem_copy :: proc(
