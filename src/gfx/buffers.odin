@@ -2,6 +2,7 @@ package gfx
 
 import "base:runtime"
 import "core:mem"
+import "core:sync"
 import hm "core:container/handle_map"
 
 Memory :: enum {
@@ -36,7 +37,8 @@ _Buffer_Metadata :: struct {
 	},
 }
 
-_buffers: hm.Dynamic_Handle_Map(_Buffer_Metadata, Handle)
+_buffers:	hm.Dynamic_Handle_Map(_Buffer_Metadata, Handle)
+_buffers_mutex:	sync.RW_Mutex
 
 alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer: Buffer, res: Result) {
 	size := size
@@ -126,7 +128,7 @@ dealloc :: proc(buffer: Buffer, location := #caller_location) {
 		m3_dealloc(metadata)
 	}
 
-	hm.remove(&_buffers, buffer.handle)
+	_remove_buffer_metadata(buffer.handle)
 }
 
 gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address: uintptr, res: Result) {
@@ -175,6 +177,8 @@ _check_buffer_handle :: proc(result: Result, buffer: Buffer, location: runtime.S
 }
 
 _buffer_metadata_of :: proc(buffer: Buffer) -> (metadata: ^_Buffer_Metadata, res: Result) {
+	sync.shared_guard(&_buffers_mutex)
+
 	metadata_ok: bool
 	metadata, metadata_ok = hm.get(&_buffers, buffer.handle)
 	if !metadata_ok {
@@ -185,6 +189,8 @@ _buffer_metadata_of :: proc(buffer: Buffer) -> (metadata: ^_Buffer_Metadata, res
 }
 
 _add_buffer_metadata :: proc() -> (handle: Handle, metadata: ^_Buffer_Metadata, res: Result) {
+	sync.guard(&_buffers_mutex)
+
 	handle = hm.add(&_buffers, _Buffer_Metadata {}) or_return
 	metadata_ok: bool
 	metadata, metadata_ok = hm.get(&_buffers, handle)
@@ -194,6 +200,8 @@ _add_buffer_metadata :: proc() -> (handle: Handle, metadata: ^_Buffer_Metadata, 
 }
 
 _remove_buffer_metadata :: proc(handle: Handle) {
+	sync.guard(&_buffers_mutex)
+
 	hm.remove(&_buffers, handle)
 }
 

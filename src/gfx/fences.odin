@@ -1,6 +1,7 @@
 package gfx
 
 import "base:runtime"
+import "core:sync"
 import hm "core:container/handle_map"
 
 Fence :: distinct Handle
@@ -14,7 +15,8 @@ _Fence_Metadata :: struct {
 	},
 }
 
-_fences: hm.Dynamic_Handle_Map(_Fence_Metadata, Fence)
+_fences:	hm.Dynamic_Handle_Map(_Fence_Metadata, Fence)
+_fences_mutex:	sync.RW_Mutex
 
 create_fence :: proc(location := #caller_location) -> (fence: Fence, res: Result) {
 	handle, metadata := _add_fence_metadata() or_return
@@ -57,6 +59,8 @@ _check_fence_handle :: proc(result: Result, fence: Fence, location: runtime.Sour
 }
 
 _fence_metadata_of :: proc(fence: Fence) -> (^_Fence_Metadata, Result) {
+	sync.shared_guard(&_fences_mutex)
+
 	metadata, ok := hm.get(&_fences, fence)
 	if !ok {
 		return nil, .Invalid_Fence
@@ -66,6 +70,8 @@ _fence_metadata_of :: proc(fence: Fence) -> (^_Fence_Metadata, Result) {
 }
 
 _add_fence_metadata :: proc() -> (fence: Fence, metadata: ^_Fence_Metadata, res: Result) {
+	sync.guard(&_fences_mutex)
+
 	fence = hm.add(&_fences, _Fence_Metadata {}) or_return
 	metadata = hm.get(&_fences, fence)
 
@@ -73,6 +79,8 @@ _add_fence_metadata :: proc() -> (fence: Fence, metadata: ^_Fence_Metadata, res:
 }
 
 _remove_fence_metadata :: proc(fence: Fence) {
+	sync.guard(&_fences_mutex)
+
 	hm.remove(&_fences, fence)
 }
 

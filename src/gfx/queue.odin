@@ -1,5 +1,6 @@
 package gfx
 
+import "core:sync"
 import "core:mem"
 
 Queue :: enum {
@@ -11,6 +12,7 @@ _Queue_Metadata :: struct {
 	type:		Queue,
 
 	scratch:	Scratch,
+	emission_mutex:	sync.Mutex,
 
 	using platform: struct #raw_union {
 		vk:	vk_Queue_Metadata,

@@ -3,6 +3,7 @@ package gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
+import MTLe "shared:darwext/metal"
 
 m3_Current_Encoder :: enum {
 	None,
@@ -36,15 +37,15 @@ m3_emit_mem_copy :: proc(
 ) -> Result {
 	
 	source_metadata, source_res := _metadata_of(command.source)
-	if source_res != nil do return .Use_After_Free
+	_check_internal_emission_result(source_res) or_return
 
 	destination_metadata, destination_res := _metadata_of(command.destination)
-	if destination_res != nil do return .Use_After_Free
+	_check_internal_emission_result(destination_res) or_return
 
 	source_offset := _offset_from_base(command.source, source_metadata)
 	destination_offset := _offset_from_base(command.destination, destination_metadata)
 
-	m3_enable_blit_encoder(metadata)
+	m3_enable_blit_encoder(metadata) or_return
 	metadata.m3.blit_encoder->copyFromBuffer(
 		source_metadata.m3.buffer,
 		cast(NS.UInteger)source_offset,
@@ -62,13 +63,12 @@ m3_emit_dispatch :: proc(
 	command:	_Command_Dispatch,
 ) -> Result {
 
-	m3_enable_compute_encoder(metadata)
-
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
-	if pipeline_res != nil do return .Use_After_Free
+	_check_internal_emission_result(pipeline_res) or_return
 
 	group_size := pipeline_metadata.compute.group_size
 
+	m3_enable_compute_encoder(metadata) or_return
 	m3_bind_resource_set(metadata) or_return
 	metadata.m3.compute_encoder->setBytes(command.argument, 0)
 	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
@@ -112,7 +112,7 @@ m3_emit_signal :: proc(
 	case .Blit:
 		for fence in command.signals {
 			fence_metadata, fence_res := _metadata_of(fence)
-			if fence_res != nil do return .Use_After_Free
+			_check_internal_emission_result(fence_res) or_return
 			
 			metadata.m3.blit_encoder->updateFence(fence_metadata.m3.fence)
 		}
@@ -120,7 +120,7 @@ m3_emit_signal :: proc(
 	case .Compute:
 		for fence in command.signals {
 			fence_metadata, fence_res := _metadata_of(fence)
-			if fence_res != nil do return .Use_After_Free
+			_check_internal_emission_result(fence_res) or_return
 			
 			metadata.m3.compute_encoder->updateFence(fence_metadata.m3.fence)
 		}
@@ -139,7 +139,7 @@ m3_emit_signal :: proc(
 		m3_enable_blit_encoder(metadata)
 		for fence in command.signals {
 			fence_metadata, fence_res := _metadata_of(fence)
-			if fence_res != nil do return .Use_After_Free
+			_check_internal_emission_result(fence_res) or_return
 			
 			metadata.m3.blit_encoder->updateFence(fence_metadata.m3.fence)
 		}
@@ -160,11 +160,15 @@ m3_emit_wait :: proc(
 
 m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 
+	metadata.m3.wait_set = {}	
+	metadata.m3.is_resource_set_bound = false
+
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
+	MTLe.CommandBuffer_useResidencySet(auto_cast metadata.m3.command_buffer, m3_residency_set)
 
 	for wait in metadata.semaphore_waits {
 		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
-		if semaphore_res != nil do return .Use_After_Free
+		_check_internal_emission_result(semaphore_res) or_return
 
 		switch semaphore_metadata.type {
 		case .Default:
@@ -200,7 +204,7 @@ m3_submit :: proc(
 ) -> Result {
 	for command_buffer in command_buffers {
 		metadata, metadata_res := _metadata_of(command_buffer)
-		if metadata_res != nil do return .Use_After_Free
+		_check_internal_emission_result(metadata_res) or_return
 
 		m3_emit_commands(metadata, queue_metadata) or_return
 	}
@@ -210,7 +214,7 @@ m3_submit :: proc(
 
 		for signal in signals {
 			semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
-			if semaphore_res != nil do return .Use_After_Free
+			_check_internal_emission_result(semaphore_res) or_return
 
 			if semaphore_metadata.type == .Default {
 				command_buffer->encodeSignalEvent(semaphore_metadata.m3.event, cast(u64)signal.value)
@@ -237,7 +241,8 @@ m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 		return nil
 	}
 
-	resource_set_metadata := _metadata_of(metadata.resource_set) or_return
+	resource_set_metadata, resource_set_res := _metadata_of(metadata.resource_set)
+	_check_internal_emission_result(resource_set_res) or_return
 
 	#partial switch metadata.m3.current_encoder {
 	case .Compute:
@@ -253,9 +258,9 @@ m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	return nil
 }
 
-m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
+m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	if metadata.m3.current_encoder == .Blit {
-		return
+		return nil
 	}
 
 	m3_flush_encoder(metadata)
@@ -264,16 +269,19 @@ m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	metadata.m3.current_encoder = .Blit
 
 	for fence in metadata.m3.wait_set {
-		fence_metadata := _metadata_of(fence) or_continue
+		fence_metadata, fence_res := _metadata_of(fence)
+		_check_internal_emission_result(fence_res) or_return
 
 		metadata.m3.blit_encoder->waitForFence(fence_metadata.m3.fence)
 	}
 	metadata.m3.wait_set = {}
+
+	return nil
 }
 
-m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
+m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	if metadata.m3.current_encoder == .Compute {
-		return
+		return nil
 	}
 
 	m3_flush_encoder(metadata)
@@ -281,14 +289,15 @@ m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	metadata.m3.compute_encoder = metadata.m3.command_buffer->computeCommandEncoderWithDispatchType(.Concurrent)
 	metadata.m3.current_encoder = .Compute
 
-	metadata.m3.compute_encoder->useHeaps(m3_residency_set[:])
-
 	for fence in metadata.m3.wait_set {
-		fence_metadata := _metadata_of(fence) or_continue
+		fence_metadata, fence_res := _metadata_of(fence)
+		_check_internal_emission_result(fence_res) or_return
 
 		metadata.m3.compute_encoder->waitForFence(fence_metadata.m3.fence)
 	}
 	metadata.m3.wait_set = {}
+
+	return nil
 }
 
 m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {

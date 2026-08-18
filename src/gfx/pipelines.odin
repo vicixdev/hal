@@ -2,6 +2,7 @@ package gfx
 
 import "base:runtime"
 import "core:os"
+import "core:sync"
 import "core:strings"
 import hm "core:container/handle_map"
 
@@ -50,7 +51,8 @@ _Pipeline_Metadata :: struct {
 	},
 }
 
-_pipelines: hm.Dynamic_Handle_Map(_Pipeline_Metadata, Pipeline)
+_pipelines:		hm.Dynamic_Handle_Map(_Pipeline_Metadata, Pipeline)
+_pipelines_mutex:	sync.RW_Mutex
 
 create_compute_pipeline :: proc(
 	descriptor:	Shader_Stage_Descriptor,
@@ -169,6 +171,8 @@ _check_pipeline_handle :: proc(result: Result, pipeline: Pipeline, location: run
 }
 
 _pipeline_metadata_of :: proc(pipeline: Pipeline) -> (^_Pipeline_Metadata, Result) {
+	sync.shared_guard(&_pipelines_mutex)
+
 	metadata, ok := hm.get(&_pipelines, pipeline)
 	if !ok {
 		return nil, .Invalid_Pipeline
@@ -178,6 +182,8 @@ _pipeline_metadata_of :: proc(pipeline: Pipeline) -> (^_Pipeline_Metadata, Resul
 }
 
 _add_pipeline_metadata :: proc() -> (pipeline: Pipeline, metadata: ^_Pipeline_Metadata, res: Result) {
+	sync.guard(&_pipelines_mutex)
+
 	pipeline = hm.add(&_pipelines, _Pipeline_Metadata {}) or_return
 	metadata = hm.get(&_pipelines, pipeline)
 
@@ -185,6 +191,8 @@ _add_pipeline_metadata :: proc() -> (pipeline: Pipeline, metadata: ^_Pipeline_Me
 }
 
 _remove_pipeline_metadata :: proc(pipeline: Pipeline) {
+	sync.guard(&_pipelines_mutex)
+
 	hm.remove(&_pipelines, pipeline)
 }
 

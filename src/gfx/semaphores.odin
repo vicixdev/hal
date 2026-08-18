@@ -1,6 +1,7 @@
 package gfx
 
 import "base:runtime"
+import "core:sync"
 import hm "core:container/handle_map"
 
 Semaphore	:: distinct Handle
@@ -22,7 +23,8 @@ _Semaphore_Metadata :: struct {
 	},
 }
 
-_semaphores: hm.Dynamic_Handle_Map(_Semaphore_Metadata, Semaphore)
+_semaphores:		hm.Dynamic_Handle_Map(_Semaphore_Metadata, Semaphore)
+_semaphores_mutex:	sync.RW_Mutex
 
 create_semaphore :: proc(
 	type := Semaphore_Type.Default,
@@ -104,6 +106,8 @@ _check_semaphore_handle :: proc(result: Result, semaphore: Semaphore, location: 
 }
 
 _semaphore_metadata_of :: proc(semaphore: Semaphore) -> (^_Semaphore_Metadata, Result) {
+	sync.shared_guard(&_semaphores_mutex)
+
 	metadata, ok := hm.get(&_semaphores, semaphore)
 	if !ok {
 		return nil, .Invalid_Semaphore
@@ -113,6 +117,8 @@ _semaphore_metadata_of :: proc(semaphore: Semaphore) -> (^_Semaphore_Metadata, R
 }
 
 _add_semaphore_metadata :: proc() -> (semaphore: Semaphore, metadata: ^_Semaphore_Metadata, res: Result) {
+	sync.guard(&_semaphores_mutex)
+
 	semaphore = hm.add(&_semaphores, _Semaphore_Metadata {}) or_return
 	metadata = hm.get(&_semaphores, semaphore)
 
@@ -120,6 +126,8 @@ _add_semaphore_metadata :: proc() -> (semaphore: Semaphore, metadata: ^_Semaphor
 }
 
 _remove_semaphore_metadata :: proc(semaphore: Semaphore) {
+	sync.guard(&_semaphores_mutex)
+
 	hm.remove(&_semaphores, semaphore)
 }
 

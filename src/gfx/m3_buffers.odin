@@ -2,20 +2,19 @@
 package gfx
 
 import "core:fmt"
-import "core:slice"
+import "core:sync"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
+import MTLe "shared:darwext/Metal"
 
 m3_Buffer_Metadata :: struct {
 	heap:		^MTL.Heap,
 	// This buffer always points to the base of the allocation (offset 0).
 	buffer:		^MTL.Buffer,
-
-	index_in_residency_set:	int,
 }
 
-m3_residency_set:		[dynamic]^MTL.Heap
-m3_residency_set_handles:	[dynamic]Handle
+m3_residency_set:	^MTLe.ResidencySet
+m3_residency_set_mutex:	sync.Mutex
 
 m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result {
 	NS.scoped_autoreleasepool()
@@ -48,24 +47,22 @@ m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 	metadata.m3.heap	= heap
 	metadata.m3.buffer	= buffer
 
-	metadata.m3.index_in_residency_set = len(m3_residency_set)
-	append(&m3_residency_set, heap)
-	append(&m3_residency_set_handles, metadata.handle)
+	if sync.guard(&m3_residency_set_mutex) {
+		m3_residency_set->addAllocation(heap)
+		m3_residency_set->commit()
+	}
 
 	return nil
 }
 
 m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
+	if sync.guard(&m3_residency_set_mutex) {
+		m3_residency_set->removeAllocation(metadata.m3.heap)
+		m3_residency_set->commit()
+	}
+
 	metadata.m3.heap->release()
 	metadata.m3.buffer->release()
-
-	last_buffer_metadata, last_buffer_res := _metadata_of(Buffer { handle = slice.last(m3_residency_set_handles[:]) })
-	assert(last_buffer_res == nil)
-
-	last_buffer_metadata.m3.index_in_residency_set = metadata.m3.index_in_residency_set
-
-	unordered_remove(&m3_residency_set, metadata.m3.index_in_residency_set)
-	unordered_remove(&m3_residency_set_handles, metadata.m3.index_in_residency_set)
 }
 
 m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {

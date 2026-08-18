@@ -7,6 +7,7 @@ import "core:log"
 import "core:os"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
+import MTLe "shared:darwext/Metal"
 
 m3_Device_Info :: struct {
 	device:	^MTL.Device,
@@ -78,6 +79,15 @@ m3_select_device :: proc(device: Device_Id) -> Result {
 
 	when ENABLE_TRACING {
 		m3_begin_tracing()
+	}
+
+	residency_set_descriptor := MTLe.ResidencySetDescriptor.alloc()->init()
+	defer residency_set_descriptor->release()
+
+	residency_set_descriptor->setInitialCapacity(128)
+	m3_residency_set = MTLe.Device_newResidencySetWithDescriptor(auto_cast m3_device, residency_set_descriptor, nil)
+	if m3_residency_set == nil {
+		return .Generic_Backend_Error
 	}
 
 	m3_create_resource_set_heap() or_return

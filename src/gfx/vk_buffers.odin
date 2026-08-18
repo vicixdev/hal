@@ -84,6 +84,11 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: 
 }
 
 vk_dealloc :: proc(metadata: ^_Buffer_Metadata) {
+	// vk.QueueWaitIdle(_queues[.Default].vk.queue)
+	// if _device_info.properties.transfer_queue {
+	// 	vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
+	// }
+
 	if metadata.memory_type != .Private {
 		vk.UnmapMemory(vk_device, metadata.vk.device_memory)
 	}

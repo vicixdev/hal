@@ -21,9 +21,9 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
-TARGET_API_STRING :: #config(GFX_TARGET_API, "")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
 } else when TARGET_API_STRING == "Metal_3" {
@@ -45,8 +45,8 @@ when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
 	)
 }
 
-ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
-// ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, true)
+// ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
+ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, true)
 ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, false)
 
 Error :: enum {
@@ -127,6 +127,7 @@ _initialized:		bool
 _global_arena:		vmem.Arena
 _global_allocator:	runtime.Allocator
 _temp_scratch:		mem.Scratch
+_temp_scratch_mutex:	mem.Mutex_Allocator
 _temp_allocator:	runtime.Allocator
 _generic_allocator:	runtime.Allocator
 
@@ -137,7 +138,8 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	_global_allocator = vmem.arena_allocator(&_global_arena)
 
 	mem.scratch_init(&_temp_scratch, 128 * mem.Megabyte) or_return
-	_temp_allocator = mem.scratch_allocator(&_temp_scratch)
+	mem.mutex_allocator_init(&_temp_scratch_mutex, mem.scratch_allocator(&_temp_scratch))
+	_temp_allocator = mem.mutex_allocator(&_temp_scratch_mutex)
 
 	_generic_allocator = context.allocator
 

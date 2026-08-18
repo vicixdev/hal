@@ -49,10 +49,10 @@ vk_emit_mem_copy :: proc(
 ) -> Result {
 	
 	source_metadata, source_res := _metadata_of(command.source)
-	if source_res != nil do return .Use_After_Free
+	_check_internal_emission_result(source_res) or_return
 
 	destination_metadata, destination_res := _metadata_of(command.destination)
-	if destination_res != nil do return .Use_After_Free
+	_check_internal_emission_result(destination_res) or_return
 
 	source_offset := _offset_from_base(command.source, source_metadata)
 	destination_offset := _offset_from_base(command.destination, destination_metadata)
@@ -85,7 +85,7 @@ vk_use_resource_set :: proc(
 	}
 
 	resource_set_metadata, resource_set_res := _metadata_of(resource_set)
-	if resource_set_res != nil do return .Use_After_Free
+	_check_internal_emission_result(resource_set_res) or_return
 
 	vk.CmdBindDescriptorSets(
 		metadata.vk.command_buffer,
@@ -117,11 +117,10 @@ vk_emit_dispatch :: proc(
 	command:	_Command_Dispatch,
 ) -> Result {
 	
-	@(static)
 	push_constant_buffer: [64]byte
 
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
-	if pipeline_res != nil do return .Use_After_Free
+	_check_internal_emission_result(pipeline_res) or_return
 
 	push_constant_buffer = {}
 	copy(push_constant_buffer[:], command.argument)
@@ -279,7 +278,7 @@ vk_submit :: proc(
 	submit_infos := make([]vk.SubmitInfo2, len(command_buffers), _temp_allocator) or_return
 	for command_buffer, i in command_buffers {
 		metadata, metadata_res := _metadata_of(command_buffer)
-		if metadata_res != nil do return .Use_After_Free
+		_check_internal_emission_result(metadata_res) or_return
 
 		submit_infos[i] = vk_emit_commands(metadata, queue_metadata) or_return
 	}
@@ -292,7 +291,7 @@ vk_submit :: proc(
 	wait_infos := make([]vk.SemaphoreSubmitInfo, len(command_buffers), _temp_allocator) or_return
 	for command_buffer, i in command_buffers {
 		metadata, metadata_res := _metadata_of(command_buffer)
-		if metadata_res != nil do return .Use_After_Free
+		_check_internal_emission_result(metadata_res) or_return
 
 		wait_infos[i] = vk.SemaphoreSubmitInfo {
 			sType		= .SEMAPHORE_SUBMIT_INFO,
@@ -305,7 +304,7 @@ vk_submit :: proc(
 	signal_infos := make([]vk.SemaphoreSubmitInfo, len(signals), _temp_allocator) or_return
 	for signal, i in signals {
 		metadata, metadata_res := _metadata_of(signal.semaphore)
-		if metadata_res != nil do return .Use_After_Free
+		_check_internal_emission_result(metadata_res) or_return
 
 		signal_infos[i] = vk.SemaphoreSubmitInfo {
 			sType		= .SEMAPHORE_SUBMIT_INFO,
@@ -363,7 +362,7 @@ vk_prepare_wait_semaphore_submit_infos :: proc(
 	waits := make([]vk.SemaphoreSubmitInfo, wait_count, metadata.allocator) or_return
 	for fence, i in metadata.vk.pending_waits {
 		fence_metadata, fence_res := _metadata_of(fence)
-		if fence_res != nil do return nil, .Use_After_Free
+		_check_internal_emission_result(fence_res) or_return
 
 		waits[i] = vk.SemaphoreSubmitInfo {
 			sType		= .SEMAPHORE_SUBMIT_INFO,
@@ -378,7 +377,7 @@ vk_prepare_wait_semaphore_submit_infos :: proc(
 
 		for wait, i in metadata.semaphore_waits {
 			semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
-			if semaphore_res != nil do return nil, .Use_After_Free
+			_check_internal_emission_result(semaphore_res) or_return
 
 			waits[base + i] = vk.SemaphoreSubmitInfo {
 				sType		= .SEMAPHORE_SUBMIT_INFO,
@@ -415,7 +414,7 @@ vk_prepare_signal_semaphore_submit_infos :: proc(
 
 	for fence, i in fences {
 		fence_metadata, fence_res := _metadata_of(fence)
-		if fence_res != nil do return nil, .Use_After_Free
+		_check_internal_emission_result(fence_res) or_return
 
 		fence_metadata.vk.last_signaled_value += 1
 		signals[i] = vk.SemaphoreSubmitInfo {

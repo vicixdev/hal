@@ -1,6 +1,7 @@
 package gfx
 
 import "base:runtime"
+import "core:sync"
 import hm "core:container/handle_map"
 
 Sampler :: distinct Handle
@@ -50,7 +51,8 @@ _Sampler_Metadata :: struct {
 	},
 }
 
-_samplers: hm.Dynamic_Handle_Map(_Sampler_Metadata, Sampler)
+_samplers:		hm.Dynamic_Handle_Map(_Sampler_Metadata, Sampler)
+_samplers_mutex:	sync.RW_Mutex
 
 create_sampler :: proc(descriptor: Sampler_Descriptor, location := #caller_location) -> (sampler: Sampler, res: Result) {
 	_check_device_selected(location) or_return
@@ -121,6 +123,8 @@ _check_sampler_handle :: proc(result: Result, sampler: Sampler, location: runtim
 }
 
 _sampler_metadata_of :: proc(sampler: Sampler) -> (^_Sampler_Metadata, Result) {
+	sync.shared_guard(&_samplers_mutex)
+
 	metadata, ok := hm.get(&_samplers, sampler)
 	if !ok {
 		return nil, .Invalid_Sampler
@@ -130,6 +134,8 @@ _sampler_metadata_of :: proc(sampler: Sampler) -> (^_Sampler_Metadata, Result) {
 }
 
 _add_sampler_metadata :: proc() -> (sampler: Sampler, metadata: ^_Sampler_Metadata, res: Result) {
+	sync.guard(&_samplers_mutex)
+
 	sampler = hm.add(&_samplers, _Sampler_Metadata {}) or_return
 	metadata = hm.get(&_samplers, sampler)
 
@@ -137,6 +143,8 @@ _add_sampler_metadata :: proc() -> (sampler: Sampler, metadata: ^_Sampler_Metada
 }
 
 _remove_sampler_metadata :: proc(sampler: Sampler) {
+	sync.guard(&_samplers_mutex)
+
 	hm.remove(&_samplers, sampler)
 }
 

@@ -2,6 +2,7 @@ package gfx
 
 import "base:runtime"
 import "core:mem"
+import "core:sync"
 import "core:slice"
 import vmem "core:mem/virtual"
 
@@ -81,7 +82,8 @@ _Command_Signal_Semaphore :: struct {
 	value:		int,
 }
 
-_command_buffers: [Queue][16]_Command_Buffer_Metadata
+_command_buffers:	[Queue][16]_Command_Buffer_Metadata
+_command_buffers_mutex:	sync.RW_Mutex
 
 _setup_command_buffers_of :: proc(queue: Queue) -> Result {
 	queue_metadata := &_queues[queue]
@@ -144,11 +146,14 @@ begin_command_encoding :: proc(
 	vmem.arena_free_all(&metadata.arena)
 
 	metadata.resource_set	= _default_resource_set
-	metadata.in_use = true
 	metadata.can_encode_signals = false
-	resize(&metadata.commands, 0)
+	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
 
-	metadata.semaphore_waits = slice.clone(waits, metadata.allocator) or_return
+	if len(waits) > 0 {
+		metadata.semaphore_waits = slice.clone(waits, metadata.allocator) or_return
+	} else {
+		metadata.semaphore_waits = {}
+	}
 
 	return handle, nil
 }
@@ -461,10 +466,12 @@ submit :: proc(
 
 	_check_fence_correctness(command_buffers, location) or_return
 
-	when TARGET_API == .Vulkan {
-		res = vk_submit(queue_metadata, command_buffers, signals)
-	} else {
-		res = m3_submit(queue_metadata, command_buffers, signals)
+	if sync.guard(&queue_metadata.emission_mutex) {
+		when TARGET_API == .Vulkan {
+			res = vk_submit(queue_metadata, command_buffers, signals)
+		} else {
+			res = m3_submit(queue_metadata, command_buffers, signals)
+		}
 	}
 
 	_check_generic_backend_error(res, location)
@@ -477,10 +484,10 @@ submit :: proc(
 	}
 
 	for command_buffer in command_buffers {
-		command_buffer_metadata, command_buffer_res := _metadata_of(command_buffer)
+		_, command_buffer_res := _metadata_of(command_buffer)
 		_check_command_buffer_handle(command_buffer_res, command_buffer, location) or_return
 
-		command_buffer_metadata.in_use = false
+		_remove_command_buffer(command_buffer)
 	}
 
 	return res
@@ -552,8 +559,54 @@ _check_fence_correctness :: proc(command_buffers: []Command_Buffer, location: ru
 	return nil
 }
 
-_check_command_buffer_in_use :: proc(command_buffer: Command_Buffer, location: runtime.Source_Code_Location) -> Result {
-	return nil
+_check_internal_emission_result :: proc(result: Result, location := #caller_location) -> (res: Result) {
+	switch v in result {
+	case runtime.Allocator_Error:
+		_log_message(
+			result,
+			.Error,
+			"Allocator Error",
+			"The internal backend failed a memory operation with the error %v.",
+			v,
+			location=location,
+		)
+
+		return res
+	
+	case Error:
+		#partial switch v {
+		case .Invalid_Device, .Invalid_Buffer, .Invalid_Texture, .Invalid_View, .Invalid_Sampler,
+			.Invalid_Command_Buffer, .Invalid_Pipeline, .Invalid_Queue, .Invalid_Resource_Set,
+			.Invalid_Semaphore, .Invalid_Fence:
+
+			_log_message(
+				.Use_After_Free,
+				.Error,
+				"Use after free",
+				"A resource acquisition failed with error %v. This is likely caused by a free " +
+				"operation while the resource was still in use.",
+				v,
+				location=location,
+			) or_return
+		
+		case:
+			_log_message(
+				result,
+				.Error,
+				"Internal backend error",
+				"The internal backend failed an operation with the error %v.",
+				v,
+				location=location,
+			) or_return
+		}
+
+		return res
+
+	case nil:
+		return nil
+	}
+
+	unreachable()
 }
 
 _check_command_buffer_handle :: proc(result: Result, command_buffer: Command_Buffer, location: runtime.Source_Code_Location) -> Result {
@@ -569,6 +622,8 @@ _check_command_buffer_handle :: proc(result: Result, command_buffer: Command_Buf
 }
 
 _command_buffer_metadata_of :: proc(command_buffer: Command_Buffer) -> (^_Command_Buffer_Metadata, Result) {
+	sync.shared_guard(&_command_buffers_mutex)
+
 	if command_buffer.index >= len(_command_buffers[command_buffer.queue]) {
 		return nil, .Invalid_Command_Buffer
 	}
@@ -583,6 +638,8 @@ _command_buffer_metadata_of :: proc(command_buffer: Command_Buffer) -> (^_Comman
 }
 
 _add_command_buffer :: proc(queue: Queue) -> (handle: Command_Buffer, metadata: ^_Command_Buffer_Metadata, res: Result) {
+	sync.guard(&_command_buffers_mutex)
+
 	metadatas := &_command_buffers[queue]
 
 	selected: int
@@ -611,8 +668,15 @@ _add_command_buffer :: proc(queue: Queue) -> (handle: Command_Buffer, metadata: 
 }
 
 _remove_command_buffer :: proc(command_buffer: Command_Buffer) {
-	metadata, metadata_res := _command_buffer_metadata_of(command_buffer)
-	if metadata_res != nil {
+	sync.guard(&_command_buffers_mutex)
+
+	if command_buffer.index >= len(_command_buffers[command_buffer.queue]) {
+		return
+	}
+
+	metadata := &_command_buffers[command_buffer.queue][command_buffer.index]
+
+	if !metadata.in_use || metadata.handle.generation != command_buffer.generation {
 		return
 	}
 

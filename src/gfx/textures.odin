@@ -1,6 +1,7 @@
 package gfx
 
 import "base:runtime"
+import "core:sync"
 import hm "core:container/handle_map"
 
 Texture :: distinct Handle
@@ -92,8 +93,10 @@ _View_Metadata :: struct {
 	},
 }
 
-_textures:	hm.Dynamic_Handle_Map(_Texture_Metadata, Texture)
-_views:		hm.Dynamic_Handle_Map(_View_Metadata, View)
+_textures:		hm.Dynamic_Handle_Map(_Texture_Metadata, Texture)
+_textures_mutex:	sync.RW_Mutex
+_views:			hm.Dynamic_Handle_Map(_View_Metadata, View)
+_views_mutex:		sync.RW_Mutex
 
 size_align_of :: proc(
 	descriptor: Texture_Descriptor,
@@ -346,6 +349,8 @@ _check_texture_handle :: proc(result: Result, texture: Texture, location: runtim
 }
 
 _texture_metadata_of :: proc(texture: Texture) -> (^_Texture_Metadata, Result) {
+	sync.shared_guard(&_textures_mutex)
+
 	metadata, ok := hm.get(&_textures, texture)
 	if !ok {
 		return nil, .Invalid_Texture
@@ -589,6 +594,8 @@ _check_view_descriptor :: proc(
 }
 
 _add_texture_metadata :: proc() -> (texture: Texture, metadata: ^_Texture_Metadata, res: Result) {
+	sync.guard(&_textures_mutex)
+
 	texture = hm.add(&_textures, _Texture_Metadata {}) or_return
 	metadata = hm.get(&_textures, texture)
 
@@ -596,6 +603,8 @@ _add_texture_metadata :: proc() -> (texture: Texture, metadata: ^_Texture_Metada
 }
 
 _remove_texture_metadata :: proc(texture: Texture) {
+	sync.guard(&_textures_mutex)
+
 	hm.remove(&_textures, texture)
 }
 
@@ -612,6 +621,8 @@ _check_view_handle :: proc(result: Result, view: View, location: runtime.Source_
 }
 
 _view_metadata_of :: proc(view: View) -> (^_View_Metadata, Result) {
+	sync.shared_guard(&_views_mutex)
+
 	metadata, ok := hm.get(&_views, view)
 	if !ok {
 		return nil, .Invalid_View
@@ -621,6 +632,8 @@ _view_metadata_of :: proc(view: View) -> (^_View_Metadata, Result) {
 }
 
 _add_view_metadata :: proc() -> (view: View, metadata: ^_View_Metadata, res: Result) {
+	sync.guard(&_views_mutex)
+
 	view = hm.add(&_views, _View_Metadata {}) or_return
 	metadata = hm.get(&_views, view)
 
@@ -628,6 +641,8 @@ _add_view_metadata :: proc() -> (view: View, metadata: ^_View_Metadata, res: Res
 }
 
 _remove_view_metadata :: proc(view: View) {
+	sync.guard(&_views_mutex)
+
 	hm.remove(&_views, view)
 }
 

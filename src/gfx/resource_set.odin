@@ -2,6 +2,7 @@ package gfx
 
 import "base:runtime"
 import "core:slice"
+import "core:sync"
 import hm "core:container/handle_map"
 
 Resource_Set :: distinct Handle
@@ -26,7 +27,8 @@ _Resource_Set_Metadata :: struct {
 	},
 }
 
-_resource_sets: hm.Dynamic_Handle_Map(_Resource_Set_Metadata, Resource_Set)
+_resource_sets:		hm.Dynamic_Handle_Map(_Resource_Set_Metadata, Resource_Set)
+_resource_sets_mutex:	sync.RW_Mutex
 
 create_resource_set :: proc(location := #caller_location) -> (set: Resource_Set, res: Result) {
 	
@@ -241,6 +243,8 @@ _check_resource_set_handle :: proc(result: Result, resource_set: Resource_Set, l
 }
 
 _resource_set_metadata_of :: proc(resource_set: Resource_Set) -> (^_Resource_Set_Metadata, Result) {
+	sync.shared_guard(&_resource_sets_mutex)
+
 	metadata, ok := hm.get(&_resource_sets, resource_set)
 	if !ok {
 		return nil, .Invalid_Resource_Set
@@ -250,6 +254,8 @@ _resource_set_metadata_of :: proc(resource_set: Resource_Set) -> (^_Resource_Set
 }
 
 _add_resource_set_metadata :: proc() -> (resource_set: Resource_Set, metadata: ^_Resource_Set_Metadata, res: Result) {
+	sync.guard(&_resource_sets_mutex)
+
 	resource_set = hm.add(&_resource_sets, _Resource_Set_Metadata {}) or_return
 	metadata = hm.get(&_resource_sets, resource_set)
 
@@ -257,6 +263,8 @@ _add_resource_set_metadata :: proc() -> (resource_set: Resource_Set, metadata: ^
 }
 
 _remove_resource_set_metadata :: proc(resource_set: Resource_Set) {
+	sync.guard(&_resource_sets_mutex)
+
 	hm.remove(&_resource_sets, resource_set)
 }
 
