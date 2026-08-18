@@ -98,7 +98,9 @@ vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
 	delete(pool.pending_command_buffers)
 }
 
-vk_next_command_pool_fence :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, res: Result) {
+vk_begin_command_group :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, res: Result) {
+
+	assert(pool.current_fence == {}, "Previous command group not closed.")
 
 	vk_refresh_command_buffer_pool(pool) or_return
 
@@ -111,16 +113,25 @@ vk_next_command_pool_fence :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, 
 		vk_call(vk.CreateFence(vk_device, &fence_info, nil, &fence)) or_return
 	}
 
+	pool.current_fence = fence
+
+	return
+}
+
+vk_end_command_group :: proc(pool: ^vk_Command_Pool) {
+	
+	assert(pool.current_fence != {}, "Command group not opened.")
+
 	if len(pool.current_command_buffers) != 0 {
 		pool.pending_command_buffers[pool.current_fence] = pool.current_command_buffers[:]
 
-		pool.current_command_buffers = make([dynamic]vk.CommandBuffer, pool.allocator) or_return
+		pool.current_command_buffers = make([dynamic]vk.CommandBuffer, pool.allocator)
+	} else {
+		vk.ResetFences(vk_device, 1, &pool.current_fence)
+		append(&pool.free_fences, pool.current_fence)
 	}
-
-	pool.current_fence = fence
-
-
-	return
+	
+	pool.current_fence = {}
 }
 
 vk_acquire_command_buffer_from :: proc(

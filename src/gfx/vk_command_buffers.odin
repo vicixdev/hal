@@ -275,7 +275,8 @@ vk_submit :: proc(
 	signals: []Semaphore_Signal,
 ) -> Result {
 
-	fence := vk_next_command_pool_fence(&queue_metadata.vk.command_pool) or_return
+	fence := vk_begin_command_group(&queue_metadata.vk.command_pool) or_return
+	defer vk_end_command_group(&queue_metadata.vk.command_pool)
 
 	submit_infos := make([]vk.SubmitInfo2, len(command_buffers), _temp_allocator) or_return
 	for command_buffer, i in command_buffers {
