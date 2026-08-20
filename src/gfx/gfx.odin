@@ -47,7 +47,7 @@ when TARGET_API == .Metal_3 && ODIN_OS != .Darwin {
 
 // ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, false)
 ENABLE_VALIDATION	:: #config(GFX_ENABLE_VALIDATION, true)
-ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, false)
+ENABLE_TRACING		:: #config(GFX_ENABLE_TRACING, true)
 
 Error :: enum {
 	Not_Initialized,

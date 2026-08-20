@@ -1,7 +1,7 @@
 // NOTE: Gotta keep the LSPs happy :D
-// #if !defined(GFX_METAL) && !defined(GFX_VULKAN) && !defined(GFX_METAL_ON_VK)
-// 	#define GFX_VULKAN
-// #endif
+#if !defined(GFX_METAL) && !defined(GFX_VULKAN) && !defined(GFX_METAL_ON_VK)
+	#define GFX_VULKAN
+#endif
 
 #ifdef GFX_METAL
 
