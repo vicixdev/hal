@@ -77,6 +77,134 @@ vk_emit_mem_copy :: proc(
 	return nil
 }
 
+vk_emit_copy_texture_to_texture :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Copy_Texture_To_Texture,
+) -> Result {
+	source_metadata, source_res := _metadata_of(command.source)
+	_check_internal_emission_result(source_res) or_return
+
+	destination_metadata, destination_res := _metadata_of(command.destination)
+	_check_internal_emission_result(destination_res) or_return
+
+	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+
+	image_copy := vk.ImageCopy {
+		srcSubresource	= vk.ImageSubresourceLayers {
+			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[source_metadata.format],
+			mipLevel	= cast(u32)command.source_region.mip,
+			baseArrayLayer	= cast(u32)command.source_region.base_layer,
+			layerCount	= cast(u32)command.source_region.layer_count,
+		},
+		srcOffset	= vk_origin_to_vk_offset(command.source_region.origin),
+		dstSubresource	= vk.ImageSubresourceLayers {
+			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[destination_metadata.format],
+			mipLevel	= cast(u32)command.destination_region.mip,
+			baseArrayLayer	= cast(u32)command.destination_region.base_layer,
+			layerCount	= cast(u32)command.destination_region.layer_count,
+		},
+		dstOffset	= vk_origin_to_vk_offset(command.destination_region.origin),
+		extent		= vk_size_to_vk_extent(command.source_region.size),
+	}
+	vk.CmdCopyImage(
+		metadata.vk.command_buffer,
+		source_metadata.vk.image,
+		vk_texture_usages_to_vk_image_layout(source_metadata.usage),
+		destination_metadata.vk.image,
+		vk_texture_usages_to_vk_image_layout(destination_metadata.usage),
+		1,
+		&image_copy,
+	)
+
+	return nil
+}
+
+vk_emit_copy_buffer_to_texture :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Copy_Buffer_To_Texture,
+) -> Result {
+
+	source_metadata, source_res := _metadata_of(command.source)
+	_check_internal_emission_result(source_res) or_return
+	source_offset := _offset_from_base(command.source, source_metadata)
+
+	texture_metadata, texture_res := _metadata_of(command.texture)
+	_check_internal_emission_result(texture_res) or_return
+
+	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+	
+	region := vk.BufferImageCopy {
+		bufferOffset		= cast(vk.DeviceSize)source_offset,
+		bufferRowLength		= cast(u32)command.region.size.x,
+		bufferImageHeight	= cast(u32)command.region.size.y,
+		imageOffset		= vk_origin_to_vk_offset(command.region.origin),
+		imageExtent		= vk_size_to_vk_extent(command.region.size),
+		imageSubresource	= vk.ImageSubresourceLayers {
+			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+			mipLevel	= cast(u32)command.region.mip,
+			baseArrayLayer	= cast(u32)command.region.base_layer,
+			layerCount	= cast(u32)command.region.layer_count,
+		}
+	}
+	vk.CmdCopyBufferToImage(
+		metadata.vk.command_buffer,
+		source_metadata.vk.buffer,
+		texture_metadata.vk.image,
+		vk_texture_usages_to_vk_image_layout(texture_metadata.usage),
+		1,
+		&region,
+	)
+	
+	return nil
+}
+
+vk_emit_copy_texture_to_buffer :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Copy_Texture_To_Buffer,
+) -> Result {
+
+	destination_metadata, destination_res := _metadata_of(command.destination)
+	_check_internal_emission_result(destination_res) or_return
+	destination_offset := _offset_from_base(command.destination, destination_metadata)
+
+	texture_metadata, texture_res := _metadata_of(command.texture)
+	_check_internal_emission_result(texture_res) or_return
+
+	layer_size := _size_of_texture_region_layer(texture_metadata, command.region)
+	row_size := _size_of_texture_region_row(texture_metadata, command.region)
+	image_size := _size_of_texture_region_2d_image(texture_metadata, command.region)
+
+	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+	
+	region := vk.BufferImageCopy {
+		bufferOffset		= cast(vk.DeviceSize)destination_offset,
+		bufferRowLength		= cast(u32)command.region.size.x,
+		bufferImageHeight	= cast(u32)command.region.size.y,
+		imageOffset		= vk_origin_to_vk_offset(command.region.origin),
+		imageExtent		= vk_size_to_vk_extent(command.region.size),
+		imageSubresource	= vk.ImageSubresourceLayers {
+			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+			mipLevel	= cast(u32)command.region.mip,
+			baseArrayLayer	= cast(u32)command.region.base_layer,
+			layerCount	= cast(u32)command.region.layer_count,
+		}
+	}
+	vk.CmdCopyImageToBuffer(
+		metadata.vk.command_buffer,
+		texture_metadata.vk.image,
+		vk_texture_usages_to_vk_image_layout(texture_metadata.usage),
+		destination_metadata.vk.buffer,
+		1,
+		&region,
+	)
+	
+
+	return nil
+}
+
 vk_use_resource_set :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	resource_set:	Resource_Set,
@@ -233,11 +361,22 @@ vk_emit_commands :: proc(
 
 	for command in metadata.commands {
 		switch v in command {
-		case _Command_Mem_Copy:		vk_emit_mem_copy(metadata, queue_metadata, v) or_return
-		case _Command_Dispatch:		vk_emit_dispatch(metadata, queue_metadata, v) or_return
-		case _Command_Barrier:		vk_emit_barrier(metadata, queue_metadata, v) or_return
-		case _Command_Signal:		vk_emit_signal(metadata, queue_metadata, v) or_return
-		case _Command_Wait:		vk_emit_wait(metadata, queue_metadata, v) or_return
+		case _Command_Mem_Copy:
+			vk_emit_mem_copy(metadata, queue_metadata, v) or_return
+		case _Command_Copy_Texture_To_Texture:
+			vk_emit_copy_texture_to_texture(metadata, queue_metadata, v) or_return
+		case _Command_Copy_Buffer_To_Texture:
+			vk_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
+		case _Command_Copy_Texture_To_Buffer:
+			vk_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
+		case _Command_Dispatch:
+			vk_emit_dispatch(metadata, queue_metadata, v) or_return
+		case _Command_Barrier:
+			vk_emit_barrier(metadata, queue_metadata, v) or_return
+		case _Command_Signal:
+			vk_emit_signal(metadata, queue_metadata, v) or_return
+		case _Command_Wait:
+			vk_emit_wait(metadata, queue_metadata, v) or_return
 		}
 	}
 
@@ -437,6 +576,22 @@ vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {
 	}
 
 	return
+}
+
+vk_origin_to_vk_offset :: proc(origin: [3]int) -> vk.Offset3D {
+	return {
+		cast(i32)origin.x,
+		cast(i32)origin.y,
+		cast(i32)origin.z,
+	}
+}
+
+vk_size_to_vk_extent :: proc(size: [3]int) -> vk.Extent3D {
+	return {
+		cast(u32)size.x,
+		cast(u32)size.y,
+		cast(u32)size.z,
+	}
 }
 
 vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {

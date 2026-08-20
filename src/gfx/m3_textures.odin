@@ -69,7 +69,7 @@ m3_texture_descriptor_to_mtl :: proc(descriptor: Texture_Descriptor) -> ^MTL.Tex
 	mtl_desc := MTL.TextureDescriptor.alloc()->init()
 	mtl_desc->autorelease()
 
-	mtl_desc->setTextureType(m3_TEXTURE_TYPE_TO_MTL[descriptor.type])
+	mtl_desc->setTextureType(m3_texture_type_to_mtl(descriptor))
 	mtl_desc->setWidth(cast(NS.UInteger)descriptor.dimensions.x)
 	mtl_desc->setHeight(cast(NS.UInteger)descriptor.dimensions.y)
 	mtl_desc->setDepth(cast(NS.UInteger)descriptor.dimensions.z)
@@ -77,12 +77,7 @@ m3_texture_descriptor_to_mtl :: proc(descriptor: Texture_Descriptor) -> ^MTL.Tex
 	mtl_desc->setSampleCount(cast(NS.UInteger)descriptor.sample_count)
 	mtl_desc->setPixelFormat(m3_PIXEL_FORMAT_TO_MTL[descriptor.format])
 	mtl_desc->setUsage(m3_texture_usages_to_mtl(descriptor.usage))
-
-	if descriptor.type == .Cube || descriptor.type == .Cube_Array {
-		mtl_desc->setArrayLength(cast(NS.UInteger)descriptor.layer_count / 6)
-	} else {
-		mtl_desc->setArrayLength(cast(NS.UInteger)descriptor.layer_count)
-	}
+	mtl_desc->setArrayLength(cast(NS.UInteger)descriptor.layer_count)
 
 	return mtl_desc
 }
@@ -95,7 +90,7 @@ m3_create_view_with_descriptor :: proc(
 
 	view := texture_metadata.m3.texture->newTextureViewWithLevels(
 		m3_PIXEL_FORMAT_TO_MTL[texture_metadata.format],
-		m3_TEXTURE_TYPE_TO_MTL[descriptor.type],
+		m3_VIEW_TYPE_TO_MTL[descriptor.type],
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_mip, cast(NS.UInteger)descriptor.mip_count),
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_layer, cast(NS.UInteger)descriptor.layer_count),
 	)
@@ -129,8 +124,27 @@ m3_texture_usages_to_mtl :: proc(usages: Texture_Usages) -> (mtl: MTL.TextureUsa
 	return
 }
 
+m3_texture_type_to_mtl :: proc(descriptor: Texture_Descriptor) -> MTL.TextureType {
+	switch descriptor.type {
+	case .D1:
+		return .Type1D
+
+	case .D2_Array:
+		if descriptor.layer_count == 1 {
+			return .Type2D
+		} else {
+			return .Type2DArray
+		}
+
+	case .D3:
+		return .Type3D
+	}
+
+	return nil
+}
+
 @(rodata)
-m3_TEXTURE_TYPE_TO_MTL := [Texture_Type]MTL.TextureType {
+m3_VIEW_TYPE_TO_MTL := [View_Type]MTL.TextureType {
 	.D1		= .Type1D,
 	.D2		= .Type2D,
 	.D3		= .Type3D,
@@ -141,7 +155,7 @@ m3_TEXTURE_TYPE_TO_MTL := [Texture_Type]MTL.TextureType {
 
 @(rodata)
 m3_PIXEL_FORMAT_TO_MTL := [Pixel_Format]MTL.PixelFormat {
-	.NONE			= .Invalid,
+	.None			= .Invalid,
 	.R8_Unorm		= .R8Unorm,
 	.RG8_Unorm		= .RG8Unorm,
 	.RGBA8_Unorm		= .RGBA8Unorm,
@@ -170,7 +184,7 @@ m3_PIXEL_FORMAT_TO_MTL := [Pixel_Format]MTL.PixelFormat {
 m3_TEXTURE_USAGE_TO_MTL := [Texture_Usage]MTL.TextureUsage {
 	.Sampled			= { .PixelFormatView, .ShaderRead },
 	.Storage			= { .PixelFormatView, .ShaderRead, .ShaderWrite },
-	.Color_attachment		= { .PixelFormatView, .RenderTarget, },
-	.Depth_stencil_attachment	= { .PixelFormatView, .RenderTarget, },
+	.Color_Attachment		= { .PixelFormatView, .RenderTarget, },
+	.Depth_Stencil_Attachment	= { .PixelFormatView, .RenderTarget, },
 }
 

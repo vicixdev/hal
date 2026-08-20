@@ -133,7 +133,7 @@ vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk
 	// TODO: Implement multisampling
 	info.samples		= { ._1 }
 
-	if descriptor.type == .Cube || descriptor.type == .Cube_Array || descriptor.type == .D2_Array {
+	if _is_cube_compatible(descriptor) {
 		info.flags += { .CUBE_COMPATIBLE }
 	}
 	
@@ -148,7 +148,7 @@ vk_texture_descriptor_to_vk_view :: proc(
 	info.sType	= .IMAGE_VIEW_CREATE_INFO
 	info.image	= image
 
-	info.viewType	= vk_TEXTURE_TYPE_TO_VK_VIEW[descriptor.type]
+	info.viewType	= vk_VIEW_TYPE_TO_VK[_texture_type_to_view_type(descriptor)]
 	info.format	= vk_PIXEL_FORMAT_TO_VK[descriptor.format]
 
 	info.subresourceRange.aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[descriptor.format]
@@ -168,7 +168,7 @@ vk_view_descriptor_to_vk :: proc(
 	info.sType	= .IMAGE_VIEW_CREATE_INFO
 	info.image	= texture_metadata.vk.image
 
-	info.viewType	= vk_TEXTURE_TYPE_TO_VK_VIEW[descriptor.type]
+	info.viewType	= vk_VIEW_TYPE_TO_VK[descriptor.type]
 	info.format	= vk_PIXEL_FORMAT_TO_VK[texture_metadata.format]
 
 	info.subresourceRange.aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format]
@@ -188,18 +188,25 @@ vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsage
 	return
 }
 
-@(rodata)
-vk_TEXTURE_TYPE_TO_VK := [Texture_Type]vk.ImageType {
-	.D1		= .D1,
-	.D2		= .D2,
-	.D3		= .D3,
-	.Cube		= .D2,
-	.D2_Array	= .D2,
-	.Cube_Array	= .D2,
+vk_texture_usages_to_vk_image_layout :: proc(usages: Texture_Usages) -> (layout: vk.ImageLayout) {
+	if .Color_Attachment in usages {
+		return .COLOR_ATTACHMENT_OPTIMAL
+	} else if .Depth_Stencil_Attachment in usages {
+		return .DEPTH_ATTACHMENT_OPTIMAL
+	} else {
+		return .GENERAL
+	}
 }
 
 @(rodata)
-vk_TEXTURE_TYPE_TO_VK_VIEW := [Texture_Type]vk.ImageViewType {
+vk_TEXTURE_TYPE_TO_VK := [Texture_Type]vk.ImageType {
+	.D1		= .D1,
+	.D2_Array	= .D2,
+	.D3		= .D3,
+}
+
+@(rodata)
+vk_VIEW_TYPE_TO_VK := [View_Type]vk.ImageViewType {
 	.D1		= .D1,
 	.D2		= .D2,
 	.D3		= .D3,
@@ -210,7 +217,7 @@ vk_TEXTURE_TYPE_TO_VK_VIEW := [Texture_Type]vk.ImageViewType {
 
 @(rodata)
 vk_PIXEL_FORMAT_TO_VK := [Pixel_Format]vk.Format {
-	.NONE			= .UNDEFINED,
+	.None			= .UNDEFINED,
 	.R8_Unorm		= .R8_UNORM,
 	.RG8_Unorm		= .R8G8_UNORM,
 	.RGBA8_Unorm		= .R8G8B8A8_UNORM,
@@ -237,7 +244,7 @@ vk_PIXEL_FORMAT_TO_VK := [Pixel_Format]vk.Format {
 
 @(rodata)
 vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK := [Pixel_Format]vk.ImageAspectFlags {
-	.NONE			= {},
+	.None			= {},
 	.R8_Unorm		= { .COLOR },
 	.RG8_Unorm		= { .COLOR },
 	.RGBA8_Unorm		= { .COLOR },
@@ -266,7 +273,7 @@ vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK := [Pixel_Format]vk.ImageAspectFlags {
 vk_TEXTURE_USAGE_TO_VK := [Texture_Usage]vk.ImageUsageFlags {
 	.Sampled			= { .SAMPLED, .TRANSFER_SRC, .TRANSFER_DST },
 	.Storage			= { .STORAGE, .TRANSFER_SRC, .TRANSFER_DST },
-	.Color_attachment		= { .COLOR_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
-	.Depth_stencil_attachment	= { .DEPTH_STENCIL_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
+	.Color_Attachment		= { .COLOR_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
+	.Depth_Stencil_Attachment	= { .DEPTH_STENCIL_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
 }
 

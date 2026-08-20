@@ -2,6 +2,7 @@
 package gfx_tests
 
 import "base:runtime"
+import "core:mem"
 import "core:testing"
 import gfx ".."
 
@@ -209,6 +210,165 @@ memory_transfers_with_multiple_command_buffers_and_semaphores :: proc(t: ^testin
 
 	for i in 0..<device_info.limits.min_allocation_size / size_of(i64) {
 		testing.expect_value(t, download_i64[i], cast(i64)i)
+	}
+}
+
+@(test)
+texture_upload_download :: proc(t: ^testing.T) {
+
+	@(static, rodata)
+	TEXTURE_DATA := [?][4]u8 {
+		{ 0, 0, 0, 255 }, { 255, 0, 0, 255 },
+		{ 0, 255, 0, 255 }, { 0, 0, 255, 255 },
+	}
+
+	memory: gfx.Arena
+	memory_res := gfx.create_arena(&memory, .Default, 4096)
+	assert(memory_res == nil)
+	defer gfx.destroy_arena(memory)
+
+	private_memory: gfx.Arena
+	private_memory_res := gfx.create_arena(&private_memory, .Private, 4096)
+	assert(private_memory_res == nil)
+	defer gfx.destroy_arena(private_memory)
+
+	texture_desc := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		dimensions	= { 2, 2, 1 },
+		format		= .RGBA8_Unorm,
+		usage		= {},
+	}
+	texture_size, texture_align, size_align_res := gfx.size_align_of(texture_desc)
+	assert(size_align_res == nil)
+
+	texture_buffer, texture_buffer_res := gfx.arena_alloc(&private_memory, texture_size, texture_align)
+	assert(texture_buffer_res == nil)
+
+	texture, texture_res := gfx.create_texture(texture_buffer, texture_desc)
+	assert(texture_res == nil)
+	defer gfx.destroy_texture(texture)
+
+	upload_buffer, upload_buffer_res := gfx.arena_alloc(&memory, size_of(TEXTURE_DATA))
+	assert(upload_buffer_res == nil)
+	mem.copy(upload_buffer.contents, &TEXTURE_DATA[0], size_of(TEXTURE_DATA))
+
+	download_buffer, download_buffer_res := gfx.arena_alloc(&memory, size_of(TEXTURE_DATA))
+	assert(download_buffer_res == nil)
+
+	semaphore, semaphore_res := gfx.create_semaphore(.Cpu_Waitable)
+	assert(semaphore_res == nil)
+
+	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
+	assert(command_buffer_res == nil)
+
+	gfx.copy_buffer_to_texture(command_buffer, upload_buffer, texture, gfx.Texture_Region {
+		layer_count	= 1,
+		size		= { 2, 2, 1 },
+	})
+	gfx.barrier(command_buffer, { .Transfer }, { .Transfer })
+	gfx.copy_texture_to_buffer(command_buffer, texture, gfx.Texture_Region {
+		layer_count	= 1,
+		size		= { 2, 2, 1 },
+	}, download_buffer)
+
+	submit_res := gfx.submit(.Default, { command_buffer }, { semaphore, 1 })
+	assert(submit_res == nil)
+
+	gfx.wait_semaphore(semaphore, 1)
+
+	download_pixels := cast([^][4]u8)download_buffer.contents
+	for i in 0..<len(TEXTURE_DATA) {
+		testing.expect_value(t, download_pixels[i], TEXTURE_DATA[i])
+	}
+}
+
+@(test)
+memory_transfers_with_textures :: proc(t: ^testing.T) {
+
+	@(static, rodata)
+	TEXTURE_DATA := [?][4]u8 {
+		{ 0, 0, 0, 255 }, { 255, 0, 0, 255 },
+		{ 0, 255, 0, 255 }, { 0, 0, 255, 255 },
+	}
+
+	memory: gfx.Arena
+	memory_res := gfx.create_arena(&memory, .Default, 4096)
+	assert(memory_res == nil)
+	defer gfx.destroy_arena(memory)
+
+	private_memory: gfx.Arena
+	private_memory_res := gfx.create_arena(&private_memory, .Private, 4096)
+	assert(private_memory_res == nil)
+	defer gfx.destroy_arena(private_memory)
+
+	texture_desc := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		dimensions	= { 2, 2, 1 },
+		format		= .RGBA8_Unorm,
+		usage		= {},
+	}
+	texture_size, texture_align, size_align_res := gfx.size_align_of(texture_desc)
+	assert(size_align_res == nil)
+
+	texture_1_buffer, texture_1_buffer_res := gfx.arena_alloc(&private_memory, texture_size, texture_align)
+	assert(texture_1_buffer_res == nil)
+
+	texture_1, texture_1_res := gfx.create_texture(texture_1_buffer, texture_desc)
+	assert(texture_1_res == nil)
+	defer gfx.destroy_texture(texture_1)
+
+	texture_2_buffer, texture_2_buffer_res := gfx.arena_alloc(&private_memory, texture_size, texture_align)
+	assert(texture_2_buffer_res == nil)
+
+	texture_2, texture_2_res := gfx.create_texture(texture_2_buffer, texture_desc)
+	assert(texture_2_res == nil)
+	defer gfx.destroy_texture(texture_2)
+
+	upload_buffer, upload_buffer_res := gfx.arena_alloc(&memory, size_of(TEXTURE_DATA))
+	assert(upload_buffer_res == nil)
+	mem.copy(upload_buffer.contents, &TEXTURE_DATA[0], size_of(TEXTURE_DATA))
+
+	download_buffer, download_buffer_res := gfx.arena_alloc(&memory, size_of(TEXTURE_DATA))
+	assert(download_buffer_res == nil)
+
+	semaphore, semaphore_res := gfx.create_semaphore(.Cpu_Waitable)
+	assert(semaphore_res == nil)
+
+	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
+	assert(command_buffer_res == nil)
+
+	gfx.copy_buffer_to_texture(command_buffer, upload_buffer, texture_1, gfx.Texture_Region {
+		layer_count	= 1,
+		size		= { 2, 2, 1 },
+	})
+	gfx.barrier(command_buffer, { .Transfer }, { .Transfer })
+	gfx.copy_texture_to_texture(
+		command_buffer,
+		texture_1,
+		gfx.Texture_Region {
+			layer_count	= 1,
+			size		= { 2, 2, 1 },
+		},
+		texture_2,
+		gfx.Texture_Region {
+			layer_count	= 1,
+			size		= { 2, 2, 1 },
+		},
+	)
+	gfx.barrier(command_buffer, { .Transfer }, { .Transfer })
+	gfx.copy_texture_to_buffer(command_buffer, texture_2, gfx.Texture_Region {
+		layer_count	= 1,
+		size		= { 2, 2, 1 },
+	}, download_buffer)
+
+	submit_res := gfx.submit(.Default, { command_buffer }, { semaphore, 1 })
+	assert(submit_res == nil)
+
+	gfx.wait_semaphore(semaphore, 1)
+
+	download_pixels := cast([^][4]u8)download_buffer.contents
+	for i in 0..<len(TEXTURE_DATA) {
+		testing.expect_value(t, download_pixels[i], TEXTURE_DATA[i])
 	}
 }
 

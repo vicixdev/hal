@@ -7,7 +7,7 @@ import hm "core:container/handle_map"
 
 Resource_Set :: distinct Handle
 
-Storage_Texture_Type :: enum {
+Storage_View_Type :: enum {
 	D1,
 	D2,
 	D2_Array,
@@ -17,8 +17,8 @@ Storage_Texture_Type :: enum {
 _Resource_Set_Metadata :: struct {
 	handle:			Resource_Set,
 
-	texture_sets:		[Texture_Type][]View,
-	storage_texture_sets:	[Storage_Texture_Type][]View,
+	texture_sets:		[View_Type][]View,
+	storage_texture_sets:	[Storage_View_Type][]View,
 	sampler_set:		[]Sampler,
 
 	using platform: struct #raw_union {
@@ -70,9 +70,9 @@ destroy_resource_set :: proc(resource_set: Resource_Set, location := #caller_loc
 }
 
 set_texture_set :: proc(
-	resource_set: Resource_Set,
-	type: Texture_Type,
-	textures: []View,
+	resource_set:	Resource_Set,
+	type:		View_Type,
+	textures:	[]View,
 	location := #caller_location,
 ) {
 
@@ -139,7 +139,7 @@ set_texture_set :: proc(
 
 set_storage_texture_set :: proc(
 	resource_set: Resource_Set,
-	type: Storage_Texture_Type,
+	type: Storage_View_Type,
 	textures: []View,
 	location := #caller_location,
 ) {
@@ -159,7 +159,7 @@ set_storage_texture_set :: proc(
 			"If the view metadata exists, then the referenced texture metadata should also exist.",
 		)
 
-		if view_metadata.type != _STORAGE_TEXTURE_TYPE_TO_TEXTURE_TYPE[type] {
+		if view_metadata.type != _STORAGE_TEXTURE_TYPE_TO_VIEW_TYPE[type] {
 			_log_message(
 				.Invalid_Texture,
 				.Error,
@@ -269,7 +269,7 @@ _remove_resource_set_metadata :: proc(resource_set: Resource_Set) {
 }
 
 @(rodata)
-_STORAGE_TEXTURE_TYPE_TO_TEXTURE_TYPE := [Storage_Texture_Type]Texture_Type {
+_STORAGE_TEXTURE_TYPE_TO_VIEW_TYPE := [Storage_View_Type]View_Type {
 	.D1		= .D1,
 	.D2		= .D2,
 	.D2_Array	= .D2_Array,

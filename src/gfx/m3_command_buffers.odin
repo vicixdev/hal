@@ -59,6 +59,113 @@ m3_emit_mem_copy :: proc(
 	return nil
 }
 
+m3_emit_copy_texture_to_texture :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Copy_Texture_To_Texture,
+) -> Result {
+
+	source_metadata, source_res := _metadata_of(command.source)
+	_check_internal_emission_result(source_res) or_return
+
+	destination_metadata, destination_res := _metadata_of(command.destination)
+	_check_internal_emission_result(destination_res) or_return
+
+	m3_enable_blit_encoder(metadata) or_return
+	for i in 0..<command.source_region.layer_count {
+		source_layer := command.source_region.base_layer + i
+		destination_layer := command.destination_region.base_layer + i
+
+		metadata.m3.blit_encoder->copyFromTextureWithDestinationOrigin(
+			source_metadata.m3.texture,
+			cast(NS.UInteger)source_layer,
+			cast(NS.UInteger)command.source_region.mip,
+			m3_origin_to_mtl(command.source_region.origin),
+			m3_size_to_mtl(command.source_region.size),
+			destination_metadata.m3.texture,
+			cast(NS.UInteger)destination_layer,
+			cast(NS.UInteger)command.destination_region.mip,
+			m3_origin_to_mtl(command.destination_region.origin),
+		)
+	}
+	
+	return nil
+}
+
+m3_emit_copy_buffer_to_texture :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Copy_Buffer_To_Texture,
+) -> Result {
+
+	source_metadata, source_res := _metadata_of(command.source)
+	_check_internal_emission_result(source_res) or_return
+	source_offset := _offset_from_base(command.source, source_metadata)
+
+	texture_metadata, texture_res := _metadata_of(command.texture)
+	_check_internal_emission_result(texture_res) or_return
+
+	layer_size := _size_of_texture_region_layer(texture_metadata, command.region)
+	row_size := _size_of_texture_region_row(texture_metadata, command.region)
+	image_size := _size_of_texture_region_2d_image(texture_metadata, command.region)
+
+	m3_enable_blit_encoder(metadata) or_return
+	for i in 0..<command.region.layer_count {
+		texture_layer := command.region.base_layer + i
+		
+		metadata.m3.blit_encoder->copyFromBufferEx(
+			source_metadata.m3.buffer,
+			cast(NS.UInteger)(cast(int)source_offset + layer_size * i),
+			cast(NS.UInteger)row_size,
+			cast(NS.UInteger)(command.region.size.z == 1 ? 0 : image_size),
+			m3_size_to_mtl(command.region.size),
+			texture_metadata.m3.texture,
+			cast(NS.UInteger)(command.region.base_layer + i),
+			cast(NS.UInteger)command.region.mip,
+			m3_origin_to_mtl(command.region.origin),
+		)
+	}
+
+	return nil
+}
+
+m3_emit_copy_texture_to_buffer :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Copy_Texture_To_Buffer,
+) -> Result {
+
+	destination_metadata, destination_res := _metadata_of(command.destination)
+	_check_internal_emission_result(destination_res) or_return
+	destination_offset := _offset_from_base(command.destination, destination_metadata)
+
+	texture_metadata, texture_res := _metadata_of(command.texture)
+	_check_internal_emission_result(texture_res) or_return
+
+	layer_size := _size_of_texture_region_layer(texture_metadata, command.region)
+	row_size := _size_of_texture_region_row(texture_metadata, command.region)
+	image_size := _size_of_texture_region_2d_image(texture_metadata, command.region)
+
+	m3_enable_blit_encoder(metadata) or_return
+	for i in 0..<command.region.layer_count {
+		texture_layer := command.region.base_layer + i
+		
+		metadata.m3.blit_encoder->copyFromTextureEx(
+			texture_metadata.m3.texture,
+			cast(NS.UInteger)(command.region.base_layer + i),
+			cast(NS.UInteger)command.region.mip,
+			m3_origin_to_mtl(command.region.origin),
+			m3_size_to_mtl(command.region.size),
+			destination_metadata.m3.buffer,
+			cast(NS.UInteger)(cast(int)destination_offset + layer_size * i),
+			cast(NS.UInteger)row_size,
+			cast(NS.UInteger)(command.region.size.z == 1 ? 0 : image_size),
+		)
+	}
+
+	return nil
+}
+
 m3_emit_dispatch :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
@@ -185,11 +292,22 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 
 	for command in metadata.commands {
 		switch v in command {
-		case _Command_Mem_Copy:	m3_emit_mem_copy(metadata, queue_metadata, v) or_return
-		case _Command_Dispatch:	m3_emit_dispatch(metadata, queue_metadata, v) or_return
-		case _Command_Barrier:	m3_emit_barrier(metadata, queue_metadata, v) or_return
-		case _Command_Signal:	m3_emit_signal(metadata, queue_metadata, v) or_return
-		case _Command_Wait:	m3_emit_wait(metadata, queue_metadata, v) or_return
+		case _Command_Mem_Copy:
+			m3_emit_mem_copy(metadata, queue_metadata, v)or_return
+		case _Command_Copy_Texture_To_Texture:
+			m3_emit_copy_texture_to_texture(metadata, queue_metadata, v) or_return
+		case _Command_Copy_Buffer_To_Texture:
+			m3_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
+		case _Command_Copy_Texture_To_Buffer:
+			m3_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
+		case _Command_Dispatch:
+			m3_emit_dispatch(metadata, queue_metadata, v) or_return
+		case _Command_Barrier:
+			m3_emit_barrier(metadata, queue_metadata, v) or_return
+		case _Command_Signal:
+			m3_emit_signal(metadata, queue_metadata, v) or_return
+		case _Command_Wait:
+			m3_emit_wait(metadata, queue_metadata, v) or_return
 		}
 	}
 
@@ -318,5 +436,21 @@ m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	
 	metadata.m3.current_encoder = .None
 	metadata.m3.is_resource_set_bound = false
+}
+
+m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {
+	return {
+		cast(NS.Integer)size.x,
+		cast(NS.Integer)size.y,
+		cast(NS.Integer)size.z,
+	}
+}
+
+m3_origin_to_mtl :: proc(origin: [3]int) -> MTL.Origin {
+	return {
+		cast(NS.Integer)origin.x,
+		cast(NS.Integer)origin.y,
+		cast(NS.Integer)origin.z,
+	}
 }
 

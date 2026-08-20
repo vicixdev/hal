@@ -7,15 +7,15 @@ import MTL "vendor:darwin/Metal"
 // NOTE: Gpu repr
 m3_Resource_Set_Root :: struct #align(16) {
 	sampler_set:		u64,
-	texture_sets:		[Texture_Type]u64,
-	storage_texture_sets:	[Storage_Texture_Type]u64,
+	texture_sets:		[View_Type]u64,
+	storage_texture_sets:	[Storage_View_Type]u64,
 	_pad:			u64,
 }
 #assert(size_of(m3_Resource_Set_Root) == 96)
 
 m3_Resource_Set_Metadata :: struct {
-	texture_sets:		[Texture_Type]^MTL.Buffer,
-	storage_texture_sets:	[Storage_Texture_Type]^MTL.Buffer,
+	texture_sets:		[View_Type]^MTL.Buffer,
+	storage_texture_sets:	[Storage_View_Type]^MTL.Buffer,
 	sampler_set:		^MTL.Buffer,
 
 	root_buffer:		^MTL.Buffer,
@@ -57,7 +57,7 @@ m3_destroy_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	return nil
 }
 
-m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Texture_Type) -> Result {
+m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -> Result {
 	textures := metadata.texture_sets[type]
 
 	metadata.m3.texture_sets[type]->release()
@@ -82,7 +82,7 @@ m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Texture_Type
 	return nil
 }
 
-m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Storage_Texture_Type) -> Result {
+m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Storage_View_Type) -> Result {
 	textures := metadata.storage_texture_sets[type]
 
 	metadata.m3.storage_texture_sets[type]->release()

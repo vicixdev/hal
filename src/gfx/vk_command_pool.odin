@@ -5,14 +5,16 @@ import vk "vendor:vulkan"
 
 // Usage:
 //	pool := vk_create_command_pool() or_return
-//	fence := vk_next_command_pool_fence(&pool)
+//	fence := vk_begin_command_group(&pool)
 //	cb1 := vk_acquire_command_buffer_from(&pool)
 //	cb2 := vk_acquire_command_buffer_from(&pool)
 //	// both cb1 and cb2 are related with fence
+//	vk_end_command_group(&pool)
 //
-//	fence2 := vk_next_command_pool_fence(&pool)
+//	fence2 := vk_begin_command_group(&pool)
 //	cb3 := vk_acquire_command_buffer_from(&pool)
 //	// cb3 is related with fence2
+//	vk_end_command_group(&pool)
 //
 //	// submit cb1 and cb2 toghether signaling fence...
 //	// submit cb3 signaling fence2...
@@ -173,10 +175,11 @@ vk_refresh_command_buffer_pool :: proc(pool: ^vk_Command_Pool) -> Result {
 	for &fence in ok_fences {
 		_, command_buffers := delete_key(&pool.pending_command_buffers, fence)
 
+		vk.ResetFences(vk_device, 1, &fence)
+
 		append(&pool.free_command_buffers, ..command_buffers) or_return
 		append(&pool.free_fences, fence) or_return
 
-		vk.ResetFences(vk_device, 1, &fence)
 		delete(command_buffers, pool.allocator)
 	}
 

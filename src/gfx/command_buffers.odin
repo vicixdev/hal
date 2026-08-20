@@ -12,6 +12,8 @@ Command_Buffer :: bit_field u64 {
 	generation:	u32	| 32,
 }
 
+Render_Pass_Descriptor :: struct {}
+
 Semaphore_Wait :: struct {
 	semaphore:	Semaphore,
 	value:		int,
@@ -20,6 +22,16 @@ Semaphore_Wait :: struct {
 Semaphore_Signal :: struct {
 	semaphore:	Semaphore,
 	value:		int,
+}
+
+Render_Pass_Wait :: struct {
+	fences:		[]Fence,
+	before:		Stages,
+}
+
+Render_Pass_Signal :: struct {
+	fences:		[]Fence,
+	after:		Stages,
 }
 
 _Command_Buffer_Metadata :: struct {
@@ -45,6 +57,9 @@ _Command_Buffer_Metadata :: struct {
 
 _Command :: union {
 	_Command_Mem_Copy,
+	_Command_Copy_Texture_To_Texture,
+	_Command_Copy_Buffer_To_Texture,
+	_Command_Copy_Texture_To_Buffer,
 	_Command_Dispatch,
 	_Command_Barrier,
 	_Command_Signal,
@@ -55,6 +70,25 @@ _Command_Mem_Copy :: struct {
 	source:		Buffer,
 	destination:	Buffer,
 	size:		int,
+}
+
+_Command_Copy_Texture_To_Texture :: struct {
+	source:			Texture,
+	source_region:		Texture_Region,
+	destination:		Texture,
+	destination_region:	Texture_Region,
+}
+
+_Command_Copy_Buffer_To_Texture :: struct {
+	source:		Buffer,
+	texture:	Texture,
+	region:		Texture_Region,
+}
+
+_Command_Copy_Texture_To_Buffer :: struct {
+	texture:	Texture,
+	region:		Texture_Region,
+	destination:	Buffer,
 }
 
 _Command_Barrier :: struct {
@@ -204,29 +238,16 @@ mem_copy :: proc(
 	size:		int,
 	location :=	#caller_location,
 ) -> (res: Result) {
+
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
 	destination_metadata, destination_res := _metadata_of(destination)
-	_check_result(
-		destination_res,
-		.Error,
-		"Invalid resource handle",
-		"The destination buffer handle is invalid (0x%x - %v).",
-		destination.address,
-		destination.handle,
-	) or_return
+	_check_buffer_handle(destination_res, destination, location) or_return
 	destination_offset := _offset_from_base(destination, destination_metadata)
 
 	source_metadata, source_res := _metadata_of(source)
-	_check_result(
-		source_res,
-		.Error,
-		"Invalid resource handle",
-		"The source buffer handle is invalid (0x%x - %v).",
-		source.address,
-		source.handle,
-	) or_return
+	_check_buffer_handle(source_res, source, location) or_return
 	source_offset := _offset_from_base(source, source_metadata)
 
 	_check_condition(
@@ -287,6 +308,182 @@ mem_copy :: proc(
 	append(&metadata.commands, command)
 
 	metadata.can_encode_signals = true
+
+	return nil
+}
+
+copy_texture_to_texture :: proc(
+	command_buffer:		Command_Buffer,
+	source:			Texture,
+	source_region:		Texture_Region,
+	destination:		Texture,
+	destination_region:	Texture_Region,
+	location :=		#caller_location,
+) -> Result {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+	
+	source_metadata, source_res := _metadata_of(source)
+	_check_texture_handle(source_res, source, location) or_return
+
+	destination_metadata, destination_res := _metadata_of(destination)
+	_check_texture_handle(destination_res, destination, location) or_return
+
+	_check_texture_region(source_metadata, source_region, location) or_return
+	_check_texture_region(destination_metadata, destination_region, location) or_return
+
+	_check_condition(
+		source_region.size == destination_region.size,
+		.Invalid_Arguments,
+		.Error,
+		"Invalid copy sizes",
+		"The source and destination copy size must be the same. Got %v and %v.",
+		source_region.size,
+		destination_region.size,
+		location=location,
+	) or_return
+	_check_condition(
+		source_region.layer_count == destination_region.layer_count,
+		.Invalid_Arguments,
+		.Error,
+		"Invalid copy layer counts",
+		"The source and destination copy layer count must be the same. Got %v and %v.",
+		source_region.layer_count,
+		destination_region.layer_count,
+		location=location,
+	) or_return
+
+	_check_condition(
+		_COPY_TEXTURE_TO_TEXTURE_COMPATIBILITIES[source_metadata.format][source_metadata.format],
+		.Invalid_Arguments,
+		.Error,
+		"Incompatible texture formats",
+		"The formats %v (source) and %v (destination) are incompatible.",
+		source_metadata.format,
+		destination_metadata.format,
+		location=location,
+	) or_return
+
+	command := _Command_Copy_Texture_To_Texture {
+		source			= source,
+		source_region		= source_region,
+		destination		= destination,
+		destination_region	= destination_region,
+	}
+	append(&metadata.commands, command) or_return
+
+	metadata.can_encode_signals = true
+
+	return nil
+}
+
+copy_buffer_to_texture :: proc(
+	command_buffer:	Command_Buffer,
+	source:		Buffer,
+	texture:	Texture,
+	region:		Texture_Region,
+	location :=	#caller_location,
+) -> Result {
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+	
+	texture_metadata, texture_res := _metadata_of(texture)
+	_check_texture_handle(texture_res, texture, location) or_return
+
+	source_metadata, source_res := _metadata_of(source)
+	_check_buffer_handle(source_res, source, location) or_return
+	source_offset := _offset_from_base(source, source_metadata)
+
+	required_size := _size_of_texture_region(texture_metadata, region)
+
+	_check_condition(
+		source_metadata.memory_type != .Readback,
+		.Incompatible_Memory_Type,
+		.Error,
+		"Incorrect source memory type",
+		"The source buffer (at 0x%x) is of memory type `.Readback`. `.Readback` buffers can only be used as " +
+		"destination. To upload data consider using `.Default` buffers for small memory sizes or `.Staging` " +
+		"for bigger ones.",
+		source.address,
+		location=location,
+	) or_return
+	_check_condition(
+		source_metadata.size - cast(int)source_offset >= required_size,
+		.Out_Of_Bounds,
+		.Error,
+		"Out of bounds copy",
+		"The requested memory copy operation would result in out of bounds accesses. The texture copy wopuld " +
+		"require a length of %d, but the source buffer (at 0x%x) has only %d bytes remaining at offset " +
+		"%d.",
+		required_size,
+		source.address,
+		source_metadata.size - cast(int)source_offset,
+		source_offset,
+		location=location,
+	) or_return
+
+	command := _Command_Copy_Buffer_To_Texture {
+		source		= source,
+		texture		= texture,
+		region		= region,
+	}
+	append(&metadata.commands, command) or_return
+
+	return nil
+}
+
+copy_texture_to_buffer :: proc(
+	command_buffer:	Command_Buffer,
+	texture:	Texture,
+	region:		Texture_Region,
+	destination:	Buffer,
+	location :=	#caller_location,
+) -> Result {
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+	
+	texture_metadata, texture_res := _metadata_of(texture)
+	_check_texture_handle(texture_res, texture, location) or_return
+
+	destination_metadata, destination_res := _metadata_of(destination)
+	_check_buffer_handle(destination_res, destination, location) or_return
+	destination_offset := _offset_from_base(destination, destination_metadata)
+
+	required_size := _size_of_texture_region(texture_metadata, region)
+
+	_check_condition(
+		destination_metadata.memory_type != .Staging,
+		.Incompatible_Memory_Type,
+		.Error,
+		"Incorrect destination memory type",
+		"The destination buffer (at 0x%x) is of memory type `.Staging`. `.Staging` buffers can only be used " +
+		"as source. To download data consider using `.Default` buffers for small memory sizes or `.Readback` " +
+		"for bigger ones.",
+		destination.address,
+		location=location,
+	) or_return
+	_check_condition(
+		destination_metadata.size - cast(int)destination_offset >= required_size,
+		.Out_Of_Bounds,
+		.Error,
+		"Out of bounds copy",
+		"The requested memory copy operation would result in out of bounds accesses. The texture copy wopuld " +
+		"require a length of %d, but the destination buffer (at 0x%x) has only %d bytes remaining at offset " +
+		"%d.",
+		required_size,
+		destination.address,
+		destination_metadata.size - cast(int)destination_offset,
+		destination_offset,
+		location=location,
+	) or_return
+
+	command := _Command_Copy_Texture_To_Buffer {
+		texture		= texture,
+		region		= region,
+		destination	= destination,
+	}
+	append(&metadata.commands, command) or_return
 
 	return nil
 }
@@ -442,11 +639,25 @@ wait :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #calle
 	return nil
 }
 
+begin_render_pass :: proc(
+	command_buffer:	Command_Buffer,
+	descriptor:	Render_Pass_Descriptor,
+	signals:	[]Render_Pass_Signal	= {},
+	waits:		[]Render_Pass_Wait	= {},
+	location :=	#caller_location,
+) -> Result {
+	unimplemented()
+}
+
+end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_location) -> Result {
+	unimplemented()
+}
+
 submit :: proc(
-	queue: Queue,
-	command_buffers: []Command_Buffer,
-	signals: ..Semaphore_Signal,
-	location := #caller_location,
+	queue:			Queue,
+	command_buffers:	[]Command_Buffer,
+	signals:		..Semaphore_Signal,
+	location :=		#caller_location,
 ) -> (res: Result) {
 	
 	_check_queue_validity(queue) or_return

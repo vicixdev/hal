@@ -47,7 +47,7 @@ main :: proc() {
 	log.info(gpu, gpu2)
 
 	tex_desc := gfx.Texture_Descriptor {
-		type		= .Cube_Array,
+		type		= .D2_Array,
 		dimensions	= { 640, 640, 1 },
 		mip_count	= 1,
 		layer_count	= 6 * 5,
@@ -65,11 +65,11 @@ main :: proc() {
 	defer gfx.destroy_texture(tex)
 	v1, eview1 := gfx.default_view_of(tex)
 	v2, eview2 := gfx.create_view(tex, {
-		type		= .D2_Array,
+		type		= .Cube,
 		base_mip	= 0,
 		mip_count	= 1,
 		base_layer	= 4,
-		layer_count	= 5,
+		layer_count	= 6,
 	})
 
 	log.info(tex, v1, v2, etex, eview1, eview2)
@@ -104,9 +104,9 @@ main :: proc() {
 	resource_set, _ := gfx.create_resource_set()
 	defer gfx.destroy_resource_set(resource_set)
 
-	gfx.set_texture_set(resource_set, .Cube_Array, { v1 })
-	gfx.set_texture_set(resource_set, .D2_Array, { v2 })
-	gfx.set_storage_texture_set(resource_set, .D2_Array, { v2 })
+	gfx.set_texture_set(resource_set, .D2_Array, { v1 })
+	gfx.set_texture_set(resource_set, .Cube, { v2 })
+	gfx.set_storage_texture_set(resource_set, .D2_Array, { v1 })
 	gfx.set_sampler_set(resource_set, { sampler })
 
 	for _ in 0..<1024 {
