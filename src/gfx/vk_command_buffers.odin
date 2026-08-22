@@ -146,7 +146,7 @@ vk_emit_copy_buffer_to_texture :: proc(
 			mipLevel	= cast(u32)command.region.mip,
 			baseArrayLayer	= cast(u32)command.region.base_layer,
 			layerCount	= cast(u32)command.region.layer_count,
-		}
+		},
 	}
 	vk.CmdCopyBufferToImage(
 		metadata.vk.command_buffer,
@@ -173,10 +173,6 @@ vk_emit_copy_texture_to_buffer :: proc(
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
 
-	layer_size := _size_of_texture_region_layer(texture_metadata, command.region)
-	row_size := _size_of_texture_region_row(texture_metadata, command.region)
-	image_size := _size_of_texture_region_2d_image(texture_metadata, command.region)
-
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 	
 	region := vk.BufferImageCopy {
@@ -190,7 +186,7 @@ vk_emit_copy_texture_to_buffer :: proc(
 			mipLevel	= cast(u32)command.region.mip,
 			baseArrayLayer	= cast(u32)command.region.base_layer,
 			layerCount	= cast(u32)command.region.layer_count,
-		}
+		},
 	}
 	vk.CmdCopyImageToBuffer(
 		metadata.vk.command_buffer,
@@ -380,6 +376,8 @@ vk_emit_commands :: proc(
 		case _Command_Begin_Render_Pass:
 			unimplemented()
 		case _Command_End_Render_Pass:
+			unimplemented()
+		case _Command_Draw:
 			unimplemented()
 		}
 	}

@@ -26,10 +26,148 @@ m3_Pipeline_Metadata :: struct {
 
 m3_create_compute_pipeline :: proc(
 	metadata:	^_Pipeline_Metadata,
-	descriptor:	Shader_Stage_Descriptor,
-	group_size:	[3]int,
+	descriptor:	Compute_Pipeline_Descriptor,
 ) -> Result {
 
+	library, function := m3_compile_pipeline_stage(descriptor.stage) or_return
+
+	pipeline, pipeline_err := m3_device->newComputePipelineStateWithFunction(function)
+	if pipeline_err != nil {
+		_log_generic_message(
+			.Error,
+			"Shader compilation error",
+			"Could not create a compute pipeline from function `%s`: %s -- %s",
+			descriptor.entrypoint,
+			pipeline_err->localizedFailureReason()->odinString(),
+			pipeline_err->localizedDescription()->odinString(),
+		)
+		pipeline_err->release()
+		return .Generic_Backend_Error,
+	}
+
+	metadata.m3.compute.library = library
+	metadata.m3.compute.function = function
+	metadata.m3.compute.pipeline = pipeline
+
+	return nil
+}
+
+m3_create_graphics_pipeline :: proc(
+	metadata: ^_Pipeline_Metadata,
+	descriptor: Render_Pipeline_Descriptor,
+	blend_metadata: ^_Blend_State_Metadata,
+) -> Result {
+
+	vertex_library, vertex_function := m3_compile_pipeline_stage(descriptor.vertex_stage) or_return
+	fragment_library, fragment_function := m3_compile_pipeline_stage(descriptor.fragment_stage) or_return
+
+	pipeline_descriptor := m3_render_pipeline_descriptor_to_mtl(
+		descriptor,
+		blend_metadata,
+		vertex_function,
+		fragment_function,
+	)
+
+	pipeline, pipeline_err := m3_device->newRenderPipelineStateWithDescriptor(pipeline_descriptor)
+	if pipeline_err != nil {
+		_log_generic_message(
+			.Error,
+			"Shader compilation error",
+			"Could not create a render pipeline from functions `%s` and `%s`: %s -- %s",
+			descriptor.vertex_stage.entrypoint,
+			descriptor.fragment_stage.entrypoint,
+			pipeline_err->localizedFailureReason()->odinString(),
+			pipeline_err->localizedDescription()->odinString(),
+		)
+		pipeline_err->release()
+		return .Generic_Backend_Error,
+	}
+	
+	metadata.m3.render.fragment.library = fragment_library
+	metadata.m3.render.fragment.function = fragment_function
+	metadata.m3.render.vertex.library = vertex_library
+	metadata.m3.render.vertex.function = vertex_function
+	metadata.m3.render.pipeline = pipeline
+
+	return nil
+}
+
+m3_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
+	switch metadata.type {
+	case .Compute:
+		metadata.m3.compute.pipeline->release()
+		metadata.m3.compute.function->release()
+		metadata.m3.compute.library->release()
+
+	case .Render:
+		metadata.m3.render.pipeline->release()
+		metadata.m3.render.vertex.function->release()
+		metadata.m3.render.vertex.library->release()
+		metadata.m3.render.fragment.function->release()
+		metadata.m3.render.fragment.library->release()
+	}
+}
+
+m3_render_pipeline_descriptor_to_mtl :: proc(
+	descriptor:		Render_Pipeline_Descriptor,
+	blend_metadata:		^_Blend_State_Metadata,
+	vertex_function:	^MTL.Function,
+	fragment_function:	^MTL.Function,
+) -> (mtl: ^MTL.RenderPipelineDescriptor) {
+	
+	mtl = MTL.RenderPipelineDescriptor.alloc()->init()
+	mtl->autorelease()
+
+	mtl->setVertexFunction(vertex_function)
+	mtl->setFragmentFunction(fragment_function)
+
+	mtl->setInputPrimitiveTopology(.Triangle)
+	mtl->setAlphaToCoverageEnabled(descriptor.alpha_to_coverage)
+	mtl->setSampleCount(cast(NS.UInteger)descriptor.sample_count)
+	
+	for color_format, i in descriptor.color_formats {
+		if color_format == .None {
+			continue
+		}
+
+		color_attachment := MTL.RenderPipelineColorAttachmentDescriptor.alloc()->init()
+		defer color_attachment->release()
+
+		color_attachment->setPixelFormat(m3_PIXEL_FORMAT_TO_MTL[color_format])
+
+		mtl->colorAttachments()->setObject(color_attachment, cast(NS.UInteger)i)
+
+		if blend_metadata != nil {
+			color_attachment->setBlendingEnabled(true)
+			color_attachment->setRgbBlendOperation(m3_BLEND_OPERATION_TO_MTL[blend_metadata.color_op])
+			color_attachment->setSourceRGBBlendFactor(
+				m3_BLEND_FACTOR_TO_MTL[blend_metadata.source_color_factor])
+			color_attachment->setDestinationRGBBlendFactor(
+				m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_color_factor])
+			color_attachment->setAlphaBlendOperation(m3_BLEND_OPERATION_TO_MTL[blend_metadata.alpha_op])
+			color_attachment->setSourceAlphaBlendFactor(
+				m3_BLEND_FACTOR_TO_MTL[blend_metadata.source_alpha_factor])
+			color_attachment->setDestinationAlphaBlendFactor(
+				m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_alpha_factor])
+		}
+	}
+
+	if descriptor.depth_format != .None {
+		mtl->setDepthAttachmentPixelFormat(m3_PIXEL_FORMAT_TO_MTL[descriptor.depth_format])
+	}
+
+	if descriptor.stencil_format != .None {
+		mtl->setStencilAttachmentPixelFormat(m3_PIXEL_FORMAT_TO_MTL[descriptor.stencil_format])
+	}
+
+
+	return
+}
+
+m3_compile_pipeline_stage :: proc(
+	descriptor: Shader_Stage_Descriptor,
+) -> (^MTL.Library, ^MTL.Function, Result) {
+	
 	bytecode_data := dispatch.data_create(
 		raw_data(descriptor.bytecode),
 		cast(uintptr)len(descriptor.bytecode),
@@ -46,7 +184,7 @@ m3_create_compute_pipeline :: proc(
 			library_err->localizedFailureReason()->odinString(),
 			library_err->localizedDescription()->odinString(),
 		)
-		return .Invalid_Pipeline_Bytecode
+		return nil, nil, .Invalid_Pipeline_Bytecode
 	}
 
 	function_name := NS.String.alloc()->initWithOdinString(descriptor.entrypoint)
@@ -62,7 +200,7 @@ m3_create_compute_pipeline :: proc(
 				"The metal function `%v` could not compile.",
 				descriptor.entrypoint,
 			)
-			return .Invalid_Pipeline_Bytecode
+			return nil, nil, .Invalid_Pipeline_Bytecode
 		}
 	} else {
 		constants := MTL.FunctionConstantValues.alloc()->init()
@@ -82,161 +220,27 @@ m3_create_compute_pipeline :: proc(
 			_log_generic_message(
 				.Error,
 				"Shader compilation error",
-				"The metal function `%s` could not specialized: %s -- %s",
+				"The metal function `%s` could not be specialized: %s -- %s",
 				descriptor.entrypoint,
 				function_err->localizedFailureReason()->odinString(),
 				function_err->localizedDescription()->odinString(),
 			)
-			return .Invalid_Pipeline_Constants
+			return nil, nil, .Invalid_Pipeline_Constants
 		}
 	}
 
-	pipeline, pipeline_err := m3_device->newComputePipelineStateWithFunction(function)
-	if pipeline_err != nil {
-		_log_generic_message(
-			.Error,
-			"Shader compilation error",
-			"Could not create a compute pipeline from function `%s`: %s -- %s",
-			descriptor.entrypoint,
-			pipeline_err->localizedFailureReason()->odinString(),
-			pipeline_err->localizedDescription()->odinString(),
-		)
-		return .Generic_Backend_Error,
-	}
-
-	metadata.m3.compute.library = library
-	metadata.m3.compute.function = function
-	metadata.m3.compute.pipeline = pipeline
-
-	return nil
+	return library, function, nil
 }
-
-m3_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
-	switch metadata.type {
-	case .Compute:
-		metadata.m3.compute.pipeline->release()
-		metadata.m3.compute.function->release()
-		metadata.m3.compute.library->release()
-
-	case .Render:
-	}
-}
-
-
-// import hm "core:container/handle_map"
-// import NS "core:sys/darwin/Foundation"
-// import MTL "vendor:darwin/Metal"
-// import "shared:darwext/dispatch"
-
-// m3_Library_Metadata :: struct {
-// 	handle:		Library,
-// 	library:	^MTL.Library,
-// }
-
-// m3_Pipeline_Metadata :: struct {
-// 	handle:		Pipeline,
-
-// 	group_size: [3]int,
-
-// 	pipeline:	union {
-// 		^MTL.ComputePipelineState,
-// 		^MTL.RenderPipelineState,
-// 	},
-// }
-
-// m3_libraries: hm.Dynamic_Handle_Map(m3_Library_Metadata, Library)
-// m3_pipelines: hm.Dynamic_Handle_Map(m3_Pipeline_Metadata, Pipeline)
-
-// m3_create_library_from_bytes :: proc(bytes: []byte) -> (handle: Library, res: Result) {
-// 	queue := dispatch.get_main_queue()
-// 	defer queue->release()
-
-// 	data := dispatch.data_create(raw_data(bytes), cast(uintptr)len(bytes), queue, dispatch.DATA_DESTRUCTOR_DEFAULT)
-// 	defer data->release()
-
-// 	library, error := m3_device->newLibraryWithData(data)
-// 	if error != nil {
-// 		return {}, nil
-// 	}
-
-// 	handle = hm.add(&m3_libraries, m3_Library_Metadata {
-// 		library = library,
-// 	}) or_return
-
-// 	return handle, nil
-// }
-
-// m3_create_library_from_file :: proc(path: string) -> (handle: Library, res: Result) {
-// 	objc_path := NS.String.alloc()->initWithOdinString(path)
-// 	defer objc_path->release()
-
-// 	url := NS.URL.alloc()->initWithString(objc_path)
-// 	defer url->release()
-
-// 	library, error := m3_device->newLibraryWithURL(url)
-// 	if error != nil {
-// 		return {}, nil
-// 	}
-
-// 	handle = hm.add(&m3_libraries, m3_Library_Metadata {
-// 		library = library,
-// 	}) or_return
-	
-// 	return handle, nil
-// }
-
-// m3_create_compute_pipeline :: proc(
-// 	library: Library, name: string,
-// 	constants: []Constant,
-// 	group_size: [3]int,
-// ) -> (handle: Pipeline, res: Result) {
-	
-// 	library_metadata, library_ok := hm.get(&m3_libraries, library)
-// 	if !library_ok {
-// 		return {}, .Invalid_Library
-// 	}
-	
-// 	objc_name := NS.String.alloc()->initWithOdinString(name)
-// 	defer objc_name->release()
-
-// 	mtl_constants := m3_constants_to_mtl(constants) 
-// 	defer mtl_constants->release()
-
-// 	function, function_err := library_metadata.library->newFunctionWithConstantValues(objc_name, mtl_constants)
-// 	if function_err != nil {
-// 		return {}, nil
-// 	}
-
-// 	pipeline, pipeline_err := m3_device->newComputePipelineStateWithFunction(function)
-// 	if pipeline_err != nil {
-// 		return {}, nil
-// 	}
-
-// 	handle = hm.add(&m3_pipelines, m3_Pipeline_Metadata {
-// 		pipeline	= pipeline,
-// 		group_size	= group_size,
-// 	})
-
-// 	return handle, nil
-// }
-
-// m3_constants_to_mtl :: proc(constants: []Constant) -> ^MTL.FunctionConstantValues {
-// 	values := MTL.FunctionConstantValues.alloc()->init()
-
-// 	for constant in constants {
-// 		values->setConstantValue(
-// 			constant.value,
-// 			m3_CONSTANT_TYPE_TO_MTL[constant.type],
-// 			cast(NS.UInteger)constant.index,
-// 		)
-// 	}
-
-// 	return values
-// }
 
 @(rodata)
 m3_CONSTANT_TYPE_TO_MTL := [Constant_Type]MTL.DataType {
 	.U32 = .UInt,
 	.F32 = .Float,
+}
+
+@(rodata)
+m3_TOPOLOGY_TO_MTL := [Topology]MTL.PrimitiveType {
+	.Triangle_List	= .Triangle,
+	.Triangle_Strip	= .TriangleStrip,
 }
 

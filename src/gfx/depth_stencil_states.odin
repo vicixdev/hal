@@ -57,7 +57,7 @@ _Depth_Stencil_State_Metadata :: struct {
 	using platform:	struct #raw_union {
 		m3:	m3_Depth_Stencil_State_Metadata,
 		vk:	vk_Depth_Stencil_State_Metadata,
-	}
+	},
 }
 
 _depth_stencil_states:		hm.Dynamic_Handle_Map(_Depth_Stencil_State_Metadata, Depth_Stencil_State)

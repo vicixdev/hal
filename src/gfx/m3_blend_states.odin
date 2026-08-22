@@ -15,7 +15,7 @@ m3_create_blend_state :: proc(
 m3_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {}
 
 @(rodata)
-m3_BLEND_OP_TO_MTL := [Blend_Op]MTL.BlendOperation {
+m3_BLEND_OPERATION_TO_MTL := [Blend_Operation]MTL.BlendOperation {
 	.Add			= .Add,
 	.Subtract		= .Subtract,
 	.Reverse_Subtract	= .ReverseSubtract,

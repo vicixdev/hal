@@ -6,7 +6,7 @@ import hm "core:container/handle_map"
 
 Blend_State :: distinct Handle
 
-Blend_Op :: enum {
+Blend_Operation :: enum {
 	Add,
 	Subtract,
 	Reverse_Subtract,
@@ -32,10 +32,10 @@ Blend_Factor :: enum {
 }
 
 Blend_Descriptor :: struct {
-	color_op:			Blend_Op,
+	color_op:			Blend_Operation,
 	source_color_factor:		Blend_Factor,
 	destination_color_factor:	Blend_Factor,
-	alpha_op:			Blend_Op,
+	alpha_op:			Blend_Operation,
 	source_alpha_factor:		Blend_Factor,
 	destination_alpha_factor:	Blend_Factor,
 }
@@ -48,7 +48,7 @@ _Blend_State_Metadata :: struct {
 	using platform:	struct #raw_union {
 		m3:	m3_Blend_State_Metadata,
 		vk:	vk_Blend_State_Metadata,
-	}
+	},
 }
 
 _blend_states:		hm.Dynamic_Handle_Map(_Blend_State_Metadata, Blend_State)

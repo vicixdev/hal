@@ -25,7 +25,6 @@ vk_Pipeline_Metadata :: struct {
 vk_create_compute_pipeline :: proc(
 	metadata:	^_Pipeline_Metadata,
 	descriptor:	Shader_Stage_Descriptor,
-	group_size:	[3]int,
 ) -> Result {
 
 	shader_module_info := vk_shader_stage_descriptor_to_vk(descriptor)

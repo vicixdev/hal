@@ -121,8 +121,6 @@ m3_emit_copy_buffer_to_texture :: proc(
 
 	m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.region.layer_count {
-		texture_layer := command.region.base_layer + i
-		
 		metadata.m3.blit_encoder->copyFromBufferEx(
 			source_metadata.m3.buffer,
 			cast(NS.UInteger)(cast(int)source_offset + layer_size * i),
@@ -158,8 +156,6 @@ m3_emit_copy_texture_to_buffer :: proc(
 
 	m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.region.layer_count {
-		texture_layer := command.region.base_layer + i
-		
 		metadata.m3.blit_encoder->copyFromTextureEx(
 			texture_metadata.m3.texture,
 			cast(NS.UInteger)(command.region.base_layer + i),
@@ -201,7 +197,6 @@ m3_emit_dispatch :: proc(
 	)
 
 	return nil
-
 }
 
 m3_emit_barrier :: proc(
@@ -355,6 +350,31 @@ m3_emit_end_render_pass :: proc(
 	return nil
 }
 
+m3_emit_draw :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Draw,
+) -> Result {
+
+	assert(metadata.m3.current_encoder == .Render)
+
+	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	m3_bind_resource_set(metadata) or_return
+	metadata.m3.render_encoder->setVertexBytes(command.argument, 0)
+	metadata.m3.render_encoder->setFragmentBytes(command.argument, 0)
+	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
+	metadata.m3.render_encoder->drawPrimitivesWithInstanceCount(
+		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
+		cast(NS.UInteger)command.base_vertex,
+		cast(NS.UInteger)command.vertex_count,
+		cast(NS.UInteger)command.instance_count,
+	)
+
+	return nil
+}
+
 m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 
 	metadata.m3.wait_set = {}	
@@ -401,6 +421,8 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 			m3_emit_begin_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_End_Render_Pass:
 			m3_emit_end_render_pass(metadata, queue_metadata, v) or_return
+		case _Command_Draw:
+			m3_emit_draw(metadata, queue_metadata, v) or_return
 		}
 	}
 
