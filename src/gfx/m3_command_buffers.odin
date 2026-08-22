@@ -23,14 +23,24 @@ m3_Command_Buffer_Metadata :: struct {
 
 	is_resource_set_bound:	bool,
 
+	barrier_fence:		^MTL.Fence,
+	barrier_fence_pending:	bool,
+
 	wait_set:		[]Fence,
 }
 
 m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+	metadata.m3.barrier_fence = m3_device->newFence()
+	if metadata.m3.barrier_fence == nil {
+		return .Out_Of_Gpu_Memory
+	}
+
 	return nil
 }
 
-m3_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {}
+m3_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {
+	metadata.m3.barrier_fence->release()
+}
 
 m3_emit_mem_copy :: proc(
 	metadata:	^_Command_Buffer_Metadata,
@@ -200,12 +210,18 @@ m3_emit_barrier :: proc(
 	command: _Command_Barrier,
 ) -> Result {
 
-	// NOTE: In Metal 3, encoders are executed in encoding order. All operations encoded in render and blit
-	//	encoders are executed in encoding order.
-	//	The only encoder that would require synchronization is the compute one, since it si created with the
-	//	`.Concurrent` dispatch mode.
-	if .Compute in command.before && metadata.m3.current_encoder == .Compute {
+	if metadata.m3.current_encoder != .None {
+		switch metadata.m3.current_encoder {
+		case .None:
+		case .Blit:
+			metadata.m3.blit_encoder->updateFence(metadata.m3.barrier_fence)
+		case .Compute:
+			metadata.m3.compute_encoder->updateFence(metadata.m3.barrier_fence)
+		case .Render:
+			panic("Barriers are not allowed during render passes.")
+		}
 		m3_flush_encoder(metadata)
+		metadata.m3.barrier_fence_pending = true
 	}
 
 	return nil
@@ -235,14 +251,7 @@ m3_emit_signal :: proc(
 		}
 
 	case .Render:
-		// TODO: Make renderpass signals and waits have stages.
-
-		// for fence in command.signals {
-		// 	fence_metadata, fence_res := _metadata_of(fence)
-		// 	if fence_res != nil do return .Use_After_Free
-			
-		// 	metadata.m3.render_encoder->updateFence(fence_metadata.m3.fence, { .Fragment })
-		// }
+		panic("It is not possible to emit signals during render passes.")
 
 	case .None:
 		m3_enable_blit_encoder(metadata)
@@ -263,7 +272,86 @@ m3_emit_wait :: proc(
 	command:	_Command_Wait,
 ) -> Result {
 
+	assert(metadata.m3.current_encoder != .Render, "It is not possible to emit waits during render passes.")
+	
 	metadata.m3.wait_set	= command.waits
+	return nil
+}
+
+m3_emit_begin_render_pass :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	queue_metadata: ^_Queue_Metadata,
+	command: _Command_Begin_Render_Pass,
+) -> Result {
+
+	descriptor := MTL.RenderPassDescriptor.alloc()->init()
+	defer descriptor->release()
+
+	for color_attachment, i in command.color_attachments {
+		view_metadata, view_res := _metadata_of(color_attachment.view)
+		_check_internal_emission_result(view_res) or_return
+
+		mtl_color_attachment := MTL.RenderPassColorAttachmentDescriptor.alloc()->init()
+		defer mtl_color_attachment->release()
+
+		mtl_color_attachment->setClearColor(m3_clear_color_to_mtl(color_attachment.clear_value.([4]f64)))
+		mtl_color_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[color_attachment.load_operation])
+		mtl_color_attachment->setStoreAction(m3_STORE_OPERATION_TO_MTL[color_attachment.store_operation])
+		mtl_color_attachment->setTexture(view_metadata.m3.view)
+
+		descriptor->colorAttachments()->setObject(mtl_color_attachment, cast(NS.UInteger)i)
+	}
+
+	if depth_attachment, has_depth_attachment := command.depth_attachment.?; has_depth_attachment {
+		view_metadata, view_res := _metadata_of(depth_attachment.view)
+		_check_internal_emission_result(view_res) or_return
+
+		mtl_depth_attachment := MTL.RenderPassDepthAttachmentDescriptor.alloc()->init()
+		defer mtl_depth_attachment->release()
+
+		mtl_depth_attachment->setClearDepth(depth_attachment.clear_value.(f64))
+		mtl_depth_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[depth_attachment.load_operation])
+		mtl_depth_attachment->setStoreAction(m3_STORE_OPERATION_TO_MTL[depth_attachment.store_operation])
+		mtl_depth_attachment->setTexture(view_metadata.m3.view)
+
+		descriptor->setDepthAttachment(mtl_depth_attachment)
+	}
+
+	if stencil_attachment, has_stencil_attachment := command.stencil_attachment.?; has_stencil_attachment {
+		view_metadata, view_res := _metadata_of(stencil_attachment.view)
+		_check_internal_emission_result(view_res) or_return
+
+		mtl_stencil_attachment := MTL.RenderPassStencilAttachmentDescriptor.alloc()->init()
+		defer mtl_stencil_attachment->release()
+
+		mtl_stencil_attachment->setClearStencil(stencil_attachment.clear_value.(u32))
+		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setLoadAction(
+			m3_LOAD_OPERATION_TO_MTL[stencil_attachment.load_operation])
+		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setStoreAction(
+			m3_STORE_OPERATION_TO_MTL[stencil_attachment.store_operation])
+		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setTexture(view_metadata.m3.view)
+
+		descriptor->setStencilAttachment(mtl_stencil_attachment)
+	}
+
+	m3_enable_render_encoder(metadata, descriptor)
+
+	return nil
+}
+
+m3_emit_end_render_pass :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	queue_metadata: ^_Queue_Metadata,
+	command: _Command_End_Render_Pass,
+) -> Result {
+
+	assert(metadata.m3.current_encoder == .Render)
+	
+	metadata.m3.render_encoder->updateFence(metadata.m3.barrier_fence, { .Vertex, .Fragment })
+	metadata.m3.barrier_fence_pending = true
+	
+	m3_flush_encoder(metadata)
+
 	return nil
 }
 
@@ -271,6 +359,7 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 
 	metadata.m3.wait_set = {}	
 	metadata.m3.is_resource_set_bound = false
+	metadata.m3.barrier_fence_pending = false
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
 	MTLe.CommandBuffer_useResidencySet(auto_cast metadata.m3.command_buffer, m3_residency_set)
@@ -308,6 +397,10 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 			m3_emit_signal(metadata, queue_metadata, v) or_return
 		case _Command_Wait:
 			m3_emit_wait(metadata, queue_metadata, v) or_return
+		case _Command_Begin_Render_Pass:
+			m3_emit_begin_render_pass(metadata, queue_metadata, v) or_return
+		case _Command_End_Render_Pass:
+			m3_emit_end_render_pass(metadata, queue_metadata, v) or_return
 		}
 	}
 
@@ -395,6 +488,10 @@ m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 		metadata.m3.blit_encoder->waitForFence(fence_metadata.m3.fence)
 	}
 	metadata.m3.wait_set = {}
+	if metadata.m3.barrier_fence_pending {
+		metadata.m3.blit_encoder->waitForFence(metadata.m3.barrier_fence)
+		metadata.m3.barrier_fence_pending = false
+	}
 
 	return nil
 }
@@ -416,6 +513,31 @@ m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result
 		metadata.m3.compute_encoder->waitForFence(fence_metadata.m3.fence)
 	}
 	metadata.m3.wait_set = {}
+	if metadata.m3.barrier_fence_pending {
+		metadata.m3.compute_encoder->waitForFence(metadata.m3.barrier_fence)
+		metadata.m3.barrier_fence_pending = false
+	}
+
+	return nil
+}
+
+m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descriptor: ^MTL.RenderPassDescriptor) -> Result {
+	m3_flush_encoder(metadata)
+
+	metadata.m3.render_encoder = metadata.m3.command_buffer->renderCommandEncoderWithDescriptor(descriptor)
+	metadata.m3.current_encoder = .Render
+
+	for fence in metadata.m3.wait_set {
+		fence_metadata, fence_res := _metadata_of(fence)
+		_check_internal_emission_result(fence_res) or_return
+
+		metadata.m3.render_encoder->waitForFence(fence_metadata.m3.fence, { .Vertex })
+	}
+	metadata.m3.wait_set = {}
+	if metadata.m3.barrier_fence_pending {
+		metadata.m3.render_encoder->waitForFence(metadata.m3.barrier_fence, { .Vertex })
+		metadata.m3.barrier_fence_pending = false
+	}
 
 	return nil
 }
@@ -452,5 +574,24 @@ m3_origin_to_mtl :: proc(origin: [3]int) -> MTL.Origin {
 		cast(NS.Integer)origin.y,
 		cast(NS.Integer)origin.z,
 	}
+}
+
+m3_clear_color_to_mtl :: proc(clear_color: [4]f64) -> MTL.ClearColor {
+	return {
+		**clear_color,
+	}
+}
+
+@(rodata)
+m3_LOAD_OPERATION_TO_MTL := [Load_Operation]MTL.LoadAction {
+	.Clear		= .Clear,
+	.Load		= .Load,
+	.Dont_Care	= .DontCare,
+}
+
+@(rodata)
+m3_STORE_OPERATION_TO_MTL := [Store_Operation]MTL.StoreAction {
+	.Store		= .Store,
+	.Dont_Care	= .DontCare,
 }
 

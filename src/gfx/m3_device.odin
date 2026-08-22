@@ -170,6 +170,9 @@ m3_create_resource_set_heap :: proc() -> Result {
 		return .Out_Of_Gpu_Memory
 	}
 
+	m3_residency_set->addAllocation(m3_resource_set_heap)
+	m3_residency_set->commit()
+
 	return nil
 }
 

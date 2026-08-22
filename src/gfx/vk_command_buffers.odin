@@ -377,6 +377,10 @@ vk_emit_commands :: proc(
 			vk_emit_signal(metadata, queue_metadata, v) or_return
 		case _Command_Wait:
 			vk_emit_wait(metadata, queue_metadata, v) or_return
+		case _Command_Begin_Render_Pass:
+			unimplemented()
+		case _Command_End_Render_Pass:
+			unimplemented()
 		}
 	}
 
@@ -595,8 +599,11 @@ vk_size_to_vk_extent :: proc(size: [3]int) -> vk.Extent3D {
 }
 
 vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
-	.Transfer	= { .TRANSFER },
-	.Compute	= { .COMPUTE_SHADER },
-	.Raster		= { .COLOR_ATTACHMENT_OUTPUT },
+	.Transfer			= { .TRANSFER },
+	.Compute			= { .COMPUTE_SHADER },
+	.Vertex				= { .VERTEX_INPUT },
+	.Fragment			= { .FRAGMENT_SHADER },
+	.Color_Attachment		= { .COLOR_ATTACHMENT_OUTPUT },
+	.Depth_Stencil_Attachment	= { .EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS },
 }
 

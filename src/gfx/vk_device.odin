@@ -8,29 +8,29 @@ import "core:sync"
 import vk "vendor:vulkan"
 
 vk_Device_Info :: struct {
-	physical_device:	vk.PhysicalDevice,
+	physical_device:		vk.PhysicalDevice,
 
-	properties:		vk.PhysicalDeviceProperties2,
-	features:		vk.PhysicalDeviceFeatures2,
-	features_11:		vk.PhysicalDeviceVulkan11Features,
-	features_12:		vk.PhysicalDeviceVulkan12Features,
+	properties:			vk.PhysicalDeviceProperties2,
+	features:			vk.PhysicalDeviceFeatures2,
+	features_11:			vk.PhysicalDeviceVulkan11Features,
+	features_12:			vk.PhysicalDeviceVulkan12Features,
 	synchronization2_features:	vk.PhysicalDeviceSynchronization2Features,
 	dynamic_rendering_features:	vk.PhysicalDeviceDynamicRenderingFeaturesKHR,
 
-	extensions:		[]vk.ExtensionProperties,
+	extensions:			[]vk.ExtensionProperties,
 
-	memory_properties:	vk.PhysicalDeviceMemoryProperties2,
-	private_memory:		u32,
-	has_private_memory:	bool,
-	shared_memory:		u32,
-	has_shared_memory:	bool,
-	updown_memory:		u32,
-	has_updown_memory:	bool,
+	memory_properties:		vk.PhysicalDeviceMemoryProperties2,
+	private_memory:			u32,
+	has_private_memory:		bool,
+	shared_memory:			u32,
+	has_shared_memory:		bool,
+	updown_memory:			u32,
+	has_updown_memory:		bool,
 
-	queue_families:		[dynamic; 8]vk.QueueFamilyProperties2,
-	default_queue_family:	u32,
+	queue_families:			[dynamic; 8]vk.QueueFamilyProperties2,
+	default_queue_family:		u32,
 	has_default_queue_family:	bool,
-	transfer_queue_family:	u32,
+	transfer_queue_family:		u32,
 	has_transfer_queue_family:	bool,
 }
 
@@ -516,6 +516,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 	}
 
 	return vk_device_has_extension(info, "VK_KHR_dynamic_rendering") &&
+		vk_device_has_extension(info, "VK_KHR_synchronization2") &&
 		vk_info.features_12.bufferDeviceAddress == true &&
 		vk_info.features_12.runtimeDescriptorArray == true &&
 		vk_info.features_12.descriptorBindingPartiallyBound == true &&

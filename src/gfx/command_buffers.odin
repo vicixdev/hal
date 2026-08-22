@@ -12,8 +12,6 @@ Command_Buffer :: bit_field u64 {
 	generation:	u32	| 32,
 }
 
-Render_Pass_Descriptor :: struct {}
-
 Semaphore_Wait :: struct {
 	semaphore:	Semaphore,
 	value:		int,
@@ -35,19 +33,20 @@ Render_Pass_Signal :: struct {
 }
 
 _Command_Buffer_Metadata :: struct {
-	handle:			Command_Buffer,
+	handle:				Command_Buffer,
 
-	arena:			vmem.Arena,
-	allocator:		runtime.Allocator,
+	arena:				vmem.Arena,
+	allocator:			runtime.Allocator,
 
-	queue:			Queue,
-	in_use:			bool,
+	queue:				Queue,
+	in_use:				bool,
 
-	resource_set:		Resource_Set,
-	semaphore_waits:	[]Semaphore_Wait,
-	commands:		[dynamic]_Command,
+	resource_set:			Resource_Set,
+	semaphore_waits:		[]Semaphore_Wait,
+	commands:			[dynamic]_Command,
 
-	can_encode_signals:	bool,
+	can_encode_signals:		bool,
+	is_encoding_render_pass:	bool,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -64,6 +63,8 @@ _Command :: union {
 	_Command_Barrier,
 	_Command_Signal,
 	_Command_Wait,
+	_Command_Begin_Render_Pass,
+	_Command_End_Render_Pass,
 }
 
 _Command_Mem_Copy :: struct {
@@ -115,6 +116,15 @@ _Command_Signal_Semaphore :: struct {
 	semaphore:	Semaphore,
 	value:		int,
 }
+
+_Command_Begin_Render_Pass :: struct {
+	using desc:	Render_Pass_Descriptor,
+
+	signals:	[]Render_Pass_Signal,
+	waits:		[]Render_Pass_Wait,
+}
+
+_Command_End_Render_Pass :: struct {}
 
 _command_buffers:	[Queue][16]_Command_Buffer_Metadata
 _command_buffers_mutex:	sync.RW_Mutex
@@ -203,6 +213,7 @@ begin_command_encoding :: proc(
 
 	metadata.resource_set	= _default_resource_set
 	metadata.can_encode_signals = false
+	metadata.is_encoding_render_pass = false
 	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
 
 	if len(waits) > 0 {
@@ -241,6 +252,8 @@ mem_copy :: proc(
 
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	_check_not_in_render_pass(metadata, location) or_return
 
 	destination_metadata, destination_res := _metadata_of(destination)
 	_check_buffer_handle(destination_res, destination, location) or_return
@@ -324,6 +337,8 @@ copy_texture_to_texture :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 	
+	_check_not_in_render_pass(metadata, location) or_return
+
 	source_metadata, source_res := _metadata_of(source)
 	_check_texture_handle(source_res, source, location) or_return
 
@@ -388,6 +403,8 @@ copy_buffer_to_texture :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 	
+	_check_not_in_render_pass(metadata, location) or_return
+
 	texture_metadata, texture_res := _metadata_of(texture)
 	_check_texture_handle(texture_res, texture, location) or_return
 
@@ -443,6 +460,8 @@ copy_texture_to_buffer :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 	
+	_check_not_in_render_pass(metadata, location) or_return
+
 	texture_metadata, texture_res := _metadata_of(texture)
 	_check_texture_handle(texture_res, texture, location) or_return
 
@@ -524,6 +543,8 @@ dispatch_with_bytes_argument :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
+	_check_not_in_render_pass(metadata, location) or_return
+
 	pipeline_metadata, pipeline_res := _metadata_of(compute_pipeline)
 	_check_pipeline_handle(pipeline_res, compute_pipeline, location) or_return
 
@@ -568,6 +589,8 @@ barrier	:: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
+	_check_not_in_render_pass(metadata, location) or_return
+
 	_check_condition(
 		after != {} && before != {},
 		.Invalid_Arguments,
@@ -591,6 +614,8 @@ barrier	:: proc(
 signal :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #caller_location) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	_check_not_in_render_pass(metadata, location) or_return
 
 	_check_condition(
 		metadata.can_encode_signals,
@@ -624,6 +649,8 @@ wait :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #calle
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
+	_check_not_in_render_pass(metadata, location) or_return
+
 	for fence in fences {
 		_, fence_res := _metadata_of(fence)
 		_check_fence_handle(fence_res, fence, location) or_return
@@ -646,11 +673,132 @@ begin_render_pass :: proc(
 	waits:		[]Render_Pass_Wait	= {},
 	location :=	#caller_location,
 ) -> Result {
-	unimplemented()
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	for color_target in descriptor.color_attachments {
+		view_metadata, view_res := _metadata_of(color_target.view)
+		_check_view_handle(view_res, color_target.view, location) or_return
+
+		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
+		_check_texture_handle(texture_res, view_metadata.texture, location) or_return
+		
+		_check_condition(
+			.Color_Attachment in texture_metadata.usage,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid texture",
+			"A texture, in order to be used as a color render target must be created with the " +
+			"`.Color_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
+			view_metadata.texture,
+			color_target.view,
+			location=location,
+		) or_return
+
+		_, has_clear_color := color_target.clear_value.([4]f64)
+		_check_condition(
+			has_clear_color,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid color clear value",
+			"A color render target can only be cleared with a `[4]f64` value. `u32` is reverved for " +
+			"stencil attachments and `f64` is reserved for depth attachments. Found clear value `%v`.",
+			color_target.clear_value,
+			location=location,
+		) or_return
+	}
+
+if depth_target, has_depth_target := descriptor.depth_attachment.?; has_depth_target {
+		view_metadata, view_res := _metadata_of(depth_target.view)
+		_check_view_handle(view_res, depth_target.view, location) or_return
+
+		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
+		_check_texture_handle(texture_res, view_metadata.texture, location) or_return
+		
+		_check_condition(
+			.Depth_Stencil_Attachment in texture_metadata.usage,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid texture",
+			"A texture, in order to be used as a depth render target must be created with the " +
+			"`.Depth_Stencil_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
+			view_metadata.texture,
+			depth_target.view,
+			location=location,
+		) or_return
+
+		_, has_clear_depth := depth_target.clear_value.(f64)
+		_check_condition(
+			has_clear_depth,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid depth clear value",
+			"A depth render target can only be cleared with a `f64` value. `u32` is reverved for " +
+			"stencil attachments and `[4]f64` is reserved for color attachments. Found clear value `%v`.",
+			depth_target.clear_value,
+			location=location,
+		) or_return
+	}
+
+	if stencil_target, has_stencil_target := descriptor.stencil_attachment.?; has_stencil_target {
+		view_metadata, view_res := _metadata_of(stencil_target.view)
+		_check_view_handle(view_res, stencil_target.view, location) or_return
+
+		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
+		_check_texture_handle(texture_res, view_metadata.texture, location) or_return
+		
+		_check_condition(
+			.Depth_Stencil_Attachment in texture_metadata.usage,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid texture",
+			"A texture, in order to be used as a stencil render target must be created with the " +
+			"`.Depth_Stencil_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
+			view_metadata.texture,
+			stencil_target.view,
+			location=location,
+		) or_return
+
+		_, has_clear_stencil := stencil_target.clear_value.(u32)
+		_check_condition(
+			has_clear_stencil,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid stencil clear stencil",
+			"A stencil render target can only be cleared with a `u32` value. `f64` is reverved for " +
+			"depth attachments and `[4]f64` is reserved for color attachments. Found clear value `%v`.",
+			stencil_target.clear_value,
+			location=location,
+		) or_return
+	}
+
+	command := _Command_Begin_Render_Pass {
+		depth_attachment	= descriptor.depth_attachment,
+		stencil_attachment	= descriptor.stencil_attachment,
+		color_attachments	= slice.clone(descriptor.color_attachments, metadata.allocator) or_return,
+		signals			= slice.clone(signals, metadata.allocator) or_return,
+		waits			= slice.clone(waits, metadata.allocator) or_return,
+	}
+	append(&metadata.commands, command) or_return
+
+	metadata.can_encode_signals		= false
+	metadata.is_encoding_render_pass	= true
+
+	return nil
 }
 
 end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_location) -> Result {
-	unimplemented()
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	command := _Command_End_Render_Pass {}
+	append(&metadata.commands, command) or_return
+
+	metadata.is_encoding_render_pass = false
+
+	return nil
 }
 
 submit :: proc(
@@ -676,6 +824,18 @@ submit :: proc(
 			command_buffer,
 			queue,
 			command_buffer_metadata.queue,
+		) or_return
+
+		_check_condition(
+			!command_buffer_metadata.is_encoding_render_pass,
+			.Invalid_Command_Buffer,
+			.Error,
+			"Open render pass",
+			"Cannot submit the command buffer %v to queue %v, since it has an open render pass. Please " +
+			"call `gfx::end_render_pass` before submitting the buffer.",
+			command_buffer,
+			queue,
+			location=location
 		) or_return
 	}
 
@@ -849,6 +1009,33 @@ _check_command_buffer_handle :: proc(result: Result, command_buffer: Command_Buf
 		"Invalid resource handle",
 		"Invalid command buffer handle (%v).",
 		command_buffer,
+		location=location,
+	) or_return
+	return nil
+}
+
+_check_in_render_pass :: proc(metadata: ^_Command_Buffer_Metadata, location: runtime.Source_Code_Location) -> Result {
+	_check_condition(
+		metadata.is_encoding_render_pass,
+		.Invalid_Command,
+		.Error,
+		"Invalid command in encoding context",
+		"The issued command is only available when encoding render passes.",
+		location=location,
+	) or_return
+	return nil
+}
+
+_check_not_in_render_pass :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	location: runtime.Source_Code_Location,
+) -> Result {
+	_check_condition(
+		!metadata.is_encoding_render_pass,
+		.Invalid_Command,
+		.Error,
+		"Invalid command in encoding context",
+		"The issued command is only available when not encoding render passes.",
 		location=location,
 	) or_return
 	return nil

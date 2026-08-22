@@ -497,6 +497,71 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 }
 
 @(test)
+clear_render_pass :: proc(t: ^testing.T) {
+
+	FRAMEBUFFER_SIZE := [2]int{ 4, 4 }
+
+	memory: gfx.Arena
+	memory_res := gfx.create_arena(&memory, .Default, 4096)
+	assert(memory_res == nil)
+	defer gfx.destroy_arena(memory)
+
+	private_memory: gfx.Arena
+	private_memory_res := gfx.create_arena(&private_memory, .Private, 4096)
+	assert(private_memory_res == nil)
+	defer gfx.destroy_arena(private_memory)
+
+	semaphore, semaphore_res := gfx.create_semaphore(.Cpu_Waitable)
+	assert(semaphore_res == nil)
+
+	download, download_res := gfx.arena_alloc(&memory, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y * size_of([4]u8))
+	assert(download_res == nil)
+
+	framebuffer_descriptor := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		format		= .RGBA8_Unorm,
+		usage		= { .Color_Attachment },
+		dimensions	= { **FRAMEBUFFER_SIZE, 1 },
+	}
+	framebuffer_size, framebuffer_align, _ := gfx.size_align_of(framebuffer_descriptor)
+	framebuffer_memory, _ := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align)
+	framebuffer, framebuffer_res := gfx.create_texture(framebuffer_memory, framebuffer_descriptor)
+	framebuffer_view, _ := gfx.default_view_of(framebuffer)
+	assert(framebuffer_res == nil)
+
+	render_pass_descriptor := gfx.Render_Pass_Descriptor {
+		color_attachments = {
+			gfx.Render_Attachment {
+				view		= framebuffer_view,
+				load_operation	= .Clear,
+				store_operation	= .Store,
+				clear_value	= [4]f64{ 1.0, 0.0, 0.0, 1.0 },
+			},
+		},
+	}
+	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
+	gfx.begin_render_pass(command_buffer, render_pass_descriptor)
+	gfx.end_render_pass(command_buffer)
+
+	gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer })
+	gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
+		layer_count = 1,
+		size = { **FRAMEBUFFER_SIZE, 1 },
+	}, download)
+
+	gfx.submit(.Default, { command_buffer }, { semaphore, 1 })
+
+	gfx.wait_semaphore(semaphore, 1)
+
+	download_pixels := cast([^][4]u8)download.contents
+	for x in 0..<FRAMEBUFFER_SIZE.x do for y in 0..<FRAMEBUFFER_SIZE.y {
+
+		index := y * FRAMEBUFFER_SIZE.x + x
+		testing.expect_value(t, download_pixels[index], [4]u8{ 255, 0, 0, 255 })
+	}
+}
+
+@(test)
 generic_compute_test :: proc(t: ^testing.T) {
 	ARRAY_LENGTH :: 4096
 

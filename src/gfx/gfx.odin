@@ -60,6 +60,7 @@ Error :: enum {
 	Incompatible_Memory_Type,
 	Invalid_Pipeline_Argument,
 	Out_Of_Bounds,
+	Invalid_Command,
 
 	Invalid_Descriptor,
 	Invalid_Arguments,
@@ -78,6 +79,8 @@ Error :: enum {
 	Invalid_Resource_Set,
 	Invalid_Semaphore,
 	Invalid_Fence,
+	Invalid_Blend_State,
+	Invalid_Depth_Stencil_State,
 
 	No_Available_Command_Buffers,
 	Incompatible_Pipeline,
@@ -91,16 +94,13 @@ Result :: union #shared_nil {
 
 Handle :: hm.Handle64
 
-Raster_Stage :: enum {
-	Vertex,
-	Fragment,
-	Compute,
-}
-
 Stage :: enum {
 	Transfer,
 	Compute,
-	Raster,
+	Vertex,
+	Fragment,
+	Color_Attachment,
+	Depth_Stencil_Attachment,
 }
 
 Stages :: bit_set[Stage]
@@ -249,6 +249,8 @@ _metadata_of :: proc {
 	_resource_set_metadata_of,
 	_semaphore_metadata_of,
 	_fence_metadata_of,
+	_blend_state_metadata_of,
+	_depth_stencil_state_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {
