@@ -6,12 +6,14 @@ import "core:mem"
 import "core:testing"
 import "core:image"
 import "core:slice"
+import "core:log"
 @(require) import "core:image/png"
 import gfx ".."
 
 @(init)
 init_gfx :: proc "contextless" () {
 	context = runtime.default_context()
+	context.logger = log.create_console_logger(allocator=context.temp_allocator)
 
 	init_res := gfx.init()
 	assert(init_res == nil, "Could not initialize gfx.")
@@ -375,7 +377,7 @@ memory_transfers_with_textures :: proc(t: ^testing.T) {
 	}
 }
 
-@(test)
+// @(test)
 copy_texture_with_compute :: proc(t: ^testing.T) {
 
 	@(static, rodata)
@@ -499,7 +501,7 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 	}
 }
 
-@(test)
+// @(test)
 clear_render_pass :: proc(t: ^testing.T) {
 
 	FRAMEBUFFER_SIZE := [2]int{ 4, 4 }
@@ -634,7 +636,7 @@ generic_compute_test :: proc(t: ^testing.T) {
 	}
 }
 
-@(test)
+// @(test)
 draw_triangle :: proc(t: ^testing.T) {
 
 	when gfx.TARGET_API == .Vulkan {

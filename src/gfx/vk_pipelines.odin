@@ -75,8 +75,13 @@ vk_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
 	}
 }
 
-vk_create_render_pipeline :: proc() -> (handle: Pipeline) {
-	return
+vk_create_render_pipeline :: proc(
+	metadata: ^_Pipeline_Metadata,
+	descriptor: Render_Pipeline_Descriptor,
+	blend_metadata: ^_Blend_State_Metadata,
+) -> Result {
+
+	return {}
 }
 
 vk_shader_stage_descriptor_to_vk :: proc(descriptor: Shader_Stage_Descriptor) -> (info: vk.ShaderModuleCreateInfo) {

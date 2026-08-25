@@ -52,7 +52,7 @@ m3_create_compute_pipeline :: proc(
 	return nil
 }
 
-m3_create_graphics_pipeline :: proc(
+m3_create_render_pipeline :: proc(
 	metadata: ^_Pipeline_Metadata,
 	descriptor: Render_Pipeline_Descriptor,
 	blend_metadata: ^_Blend_State_Metadata,

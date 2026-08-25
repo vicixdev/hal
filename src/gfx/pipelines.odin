@@ -151,9 +151,9 @@ create_render_pipeline :: proc(
 	metadata.render.color_formats = slice.clone(descriptor.color_formats, _generic_allocator)
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_graphics_pipeline(metadata, descriptor, blend_metadata)
+		res = vk_create_render_pipeline(metadata, descriptor, blend_metadata)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_graphics_pipeline(metadata, descriptor, blend_metadata)
+		res = m3_create_render_pipeline(metadata, descriptor, blend_metadata)
 	}
 
 	_check_specific_result(

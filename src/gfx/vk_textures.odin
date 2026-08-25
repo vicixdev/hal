@@ -1,6 +1,7 @@
 package gfx
 
 import "core:fmt"
+import "core:sync"
 import vk "vendor:vulkan"
 
 vk_Texture_Metadata	:: struct {
@@ -67,6 +68,50 @@ vk_create_texture :: proc(
 
 	metadata.vk.image		= image
 	default_view_metadata.vk.view	= view
+
+	if sync.guard(&_queues[.Default].emission_mutex) {
+		command_pool := &_queues[.Default].vk.command_pool
+
+		fence := vk_begin_command_group(command_pool) or_return
+		command_buffer := vk_acquire_command_buffer_from(command_pool) or_return
+		
+		begin_info := vk.CommandBufferBeginInfo {
+			sType	= .COMMAND_BUFFER_BEGIN_INFO,
+			flags	= { .ONE_TIME_SUBMIT },
+		}
+		vk.BeginCommandBuffer(command_buffer, &begin_info)
+
+		image_barrier := vk.ImageMemoryBarrier2 {
+			sType		= .IMAGE_MEMORY_BARRIER_2,
+			oldLayout	= .UNDEFINED,
+			newLayout	= .GENERAL,
+			image		= image,
+			subresourceRange	= {
+				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[descriptor.format],
+				levelCount	= cast(u32)descriptor.mip_count,
+				layerCount	= cast(u32)descriptor.layer_count,
+			},
+		}
+		dependency_info := vk.DependencyInfo {
+			sType			= .DEPENDENCY_INFO,
+			imageMemoryBarrierCount	= 1,
+			pImageMemoryBarriers	= &image_barrier,
+		}
+		vk.CmdPipelineBarrier2KHR(command_buffer, &dependency_info)
+		vk.EndCommandBuffer(command_buffer)
+
+		command_buffer_info := vk.CommandBufferSubmitInfo {
+			sType		= .COMMAND_BUFFER_SUBMIT_INFO,
+			commandBuffer	= command_buffer,
+		}
+		submit_info := vk.SubmitInfo2 {
+			sType			= .SUBMIT_INFO_2,
+			commandBufferInfoCount	= 1,
+			pCommandBufferInfos	=  &command_buffer_info,
+		}
+		vk_call(vk.QueueSubmit2KHR(_queues[.Default].vk.queue, 1, &submit_info, fence)) or_return
+		vk_end_command_group(command_pool)
+	}
 
 	return
 }
@@ -183,6 +228,10 @@ vk_view_descriptor_to_vk :: proc(
 vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsageFlags) {
 	for usage in usages {
 		flags += vk_TEXTURE_USAGE_TO_VK[usage]
+	}
+
+	if usages == {} {
+		flags += { .TRANSFER_SRC, .TRANSFER_DST, .STORAGE }
 	}
 
 	return

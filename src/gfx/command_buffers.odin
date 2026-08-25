@@ -719,7 +719,7 @@ begin_render_pass :: proc(
 		) or_return
 	}
 
-if depth_target, has_depth_target := descriptor.depth_attachment.?; has_depth_target {
+	if depth_target, has_depth_target := descriptor.depth_attachment.?; has_depth_target {
 		view_metadata, view_res := _metadata_of(depth_target.view)
 		_check_view_handle(view_res, depth_target.view, location) or_return
 
