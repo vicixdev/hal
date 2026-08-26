@@ -5,12 +5,13 @@ import "base:intrinsics"
 import "core:dynlib"
 import "core:strings"
 import "core:log"
+import "core:os"
 import vk "vendor:vulkan"
 
 when ODIN_OS == .Linux {
 	vk_VULKAN_LOADER_PATH :: "/lib64/libvulkan.so"
 } else when ODIN_OS == .Darwin {
-	vk_VULKAN_LOADER_PATH :: "/opt/homebrew/lib/libvulkan.dylib"
+	vk_VULKAN_LOADER_PATH :: "./env/macOS/lib/libvulkan.dylib"
 } else when ODIN_OS == .Windows {
 	vk_VULKAN_LOADER_PATH :: "C:/Windows/System32/vulkan-1.dll"
 } else {
@@ -146,13 +147,6 @@ vk_init_instance :: proc() -> Result {
 	}
 	if has_debug_utils {
 		vk_link(&instance_desc, &vk_debug_messenger_descriptor)
-	}
-	when ODIN_OS == .Darwin && ENABLE_TRACING {
-		export_info := vk.ExportMetalObjectCreateInfoEXT {
-			sType			= .EXPORT_METAL_OBJECT_CREATE_INFO_EXT,
-			exportObjectType	= { .METAL_DEVICE },
-		}
-		vk_link(&instance_desc, &export_info)
 	}
 
 	vk_call(vk.CreateInstance(&instance_desc, nil, &vk_instance)) or_return
@@ -323,3 +317,16 @@ vk_result_to_gfx :: proc(res: vk.Result) -> Result {
 	case:					return .Generic_Backend_Error
 	}
 }
+
+@(init)
+setup_vulkan_environment :: proc "contextless" () {
+	when ODIN_OS != .Darwin {
+		return
+	}
+
+	context = runtime.default_context()
+
+	os.set_env("VK_LAYER_PATH", "./env/macOS/etc/vulkan/explicit_layer.d")
+	os.set_env("VK_DRIVER_FILES", "./env/macOS/etc/vulkan/icd.d")
+}
+

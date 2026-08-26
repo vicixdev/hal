@@ -48,6 +48,7 @@ m3_enumerate_devices :: proc(
 			Device_Info {
 				id		= device_id,
 				name		= device->name()->odinString(),
+				driver		= "Metal",
 				type		= .Integrated,
 				limits		= {
 					min_allocation_size	= 16 * mem.Kilobyte,

@@ -11,6 +11,8 @@ vk_Device_Info :: struct {
 	physical_device:		vk.PhysicalDevice,
 
 	properties:			vk.PhysicalDeviceProperties2,
+	properties_11:			vk.PhysicalDeviceVulkan11Properties,
+	properties_12:			vk.PhysicalDeviceVulkan12Properties,
 	features:			vk.PhysicalDeviceFeatures2,
 	features_11:			vk.PhysicalDeviceVulkan11Features,
 	features_12:			vk.PhysicalDeviceVulkan12Features,
@@ -89,14 +91,16 @@ vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device
 }
 
 vk_select_device :: proc(device: Device_Id) -> Result {
-	vk_device_info		= &vk_device_infos[device]._platform.vk
+	device_info		:= &_available_devices[device]
+	vk_device_info		= &device_info._platform.vk
 	vk_physical_device	= vk_device_info.physical_device
 
 	resize(&vk_enabled_device_extensions, 0)
 
 	when ODIN_OS == .Darwin {
-		append(&vk_enabled_device_extensions, "VK_KHR_portability_subset")
-		append(&vk_enabled_device_extensions, "VK_EXT_metal_objects")
+		if vk_device_has_extension(device_info, "VK_KHR_portability_subset") {
+			append(&vk_enabled_device_extensions, "VK_KHR_portability_subset")
+		}
 	}
 	append(&vk_enabled_device_extensions, "VK_KHR_dynamic_rendering")
 	append(&vk_enabled_device_extensions, "VK_KHR_synchronization2")
@@ -128,16 +132,20 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	device_features := vk.PhysicalDeviceFeatures2 {
 		sType			= .PHYSICAL_DEVICE_FEATURES_2,
 		features		= {
-			imageCubeArray		= true,
-			samplerAnisotropy	= true,
+			imageCubeArray				= true,
+			samplerAnisotropy			= true,
+			shaderSampledImageArrayDynamicIndexing	= true,
+			shaderStorageImageArrayDynamicIndexing	= true,
+			shaderStorageImageReadWithoutFormat	= true,
+			shaderStorageImageWriteWithoutFormat	= true,
 		},
 	}
 	device_feature_12 := vk.PhysicalDeviceVulkan12Features {
-		sType			= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-		pNext			= &device_features,
-		timelineSemaphore	= true,
-		bufferDeviceAddress	= true,
-		runtimeDescriptorArray	= true,
+		sType						= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+		pNext						= &device_features,
+		timelineSemaphore				= true,
+		bufferDeviceAddress				= true,
+		runtimeDescriptorArray				= true,
 		descriptorBindingPartiallyBound			= true,
 		descriptorBindingStorageImageUpdateAfterBind	= true,
 		descriptorBindingSampledImageUpdateAfterBind	= true,
@@ -346,7 +354,12 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res:
 	vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, raw_data(vk_info.extensions))) or_return
 
 	vk_info.physical_device		= device
+
 	vk_info.properties.sType	= .PHYSICAL_DEVICE_PROPERTIES_2
+	vk_info.properties.pNext	= &vk_info.properties_11
+	vk_info.properties_11.sType	= .PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES
+	vk_info.properties_11.pNext	= &vk_info.properties_12
+	vk_info.properties_12.sType	= .PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES
 	vk.GetPhysicalDeviceProperties2(device, &vk_info.properties)
 
 	vk_info.features.sType		= .PHYSICAL_DEVICE_FEATURES_2
@@ -366,6 +379,11 @@ vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res:
 	info.name = strings.clone_from_cstring_bounded(
 		cast(cstring)&vk_info.properties.properties.deviceName[0],
 		len(vk_info.properties.properties.deviceName),
+		_global_allocator,
+	)
+	info.driver = strings.clone_from_cstring_bounded(
+		cast(cstring)&vk_info.properties_12.driverName[0],
+		len(vk_info.properties_12.driverName),
 		_global_allocator,
 	)
 	info.type = vk_PHYSICAL_DEVICE_TYPE_TO_GFX[vk_info.properties.properties.deviceType]
@@ -507,16 +525,15 @@ vk_find_queue_families :: proc(device: vk.PhysicalDevice, info: ^Device_Info) {
 vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> bool {
 	vk_info := &info._platform.vk
 
-	when ODIN_OS == .Darwin {
-		vk_device_has_extension(info, "VK_KHR_portability_subset")
-		ensure(
-			vk_device_has_extension(info, "VK_EXT_metal_objects"),
-			"Vulkan on macOS does not have the VK_EXT_metal_objects device extension. Broken install?",
-		)
-	}
-
 	return vk_device_has_extension(info, "VK_KHR_dynamic_rendering") &&
 		vk_device_has_extension(info, "VK_KHR_synchronization2") &&
+		vk_info.features.features.imageCubeArray == true &&
+		vk_info.features.features.samplerAnisotropy == true &&
+		vk_info.features.features.shaderSampledImageArrayDynamicIndexing == true &&
+		vk_info.features.features.shaderStorageImageArrayDynamicIndexing == true &&
+		vk_info.features.features.shaderStorageImageReadWithoutFormat == true &&
+		vk_info.features.features.shaderStorageImageWriteWithoutFormat == true &&
+		vk_info.features_12.timelineSemaphore == true &&
 		vk_info.features_12.bufferDeviceAddress == true &&
 		vk_info.features_12.runtimeDescriptorArray == true &&
 		vk_info.features_12.descriptorBindingPartiallyBound == true &&

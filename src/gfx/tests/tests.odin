@@ -21,6 +21,8 @@ init_gfx :: proc "contextless" () {
 	devices, devices_res := gfx.enumerate_devices()
 	assert(devices_res == nil, "No suitable devices found.")
 
+	log.infof("%#v", devices)
+	// device_info := &devices[len(devices)-1]
 	device_info := &devices[0]
 	device := device_info.id
 	device_res := gfx.select_device(device)
@@ -377,7 +379,7 @@ memory_transfers_with_textures :: proc(t: ^testing.T) {
 	}
 }
 
-// @(test)
+@(test)
 copy_texture_with_compute :: proc(t: ^testing.T) {
 
 	@(static, rodata)

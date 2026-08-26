@@ -32,6 +32,7 @@ Device_Properties :: struct {
 Device_Info :: struct {
 	id:		Device_Id,
 	name:		string,
+	driver:		string,
 	type:		Device_Type,
 	properties:	Device_Properties,
 	limits:		Device_Limits,
