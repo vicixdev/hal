@@ -14,7 +14,7 @@ vk_create_blend_state :: proc(
 vk_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {}
 
 @(rodata)
-vk_BLEND_OP_TO_MTL := [Blend_Operation]vk.BlendOp {
+vk_BLEND_OP_TO_VK := [Blend_Operation]vk.BlendOp {
 	.Add			= .ADD,
 	.Subtract		= .SUBTRACT,
 	.Reverse_Subtract	= .REVERSE_SUBTRACT,
@@ -23,7 +23,7 @@ vk_BLEND_OP_TO_MTL := [Blend_Operation]vk.BlendOp {
 }
 
 @(rodata)
-vk_BLEND_FACTOR_TO_MTL := [Blend_Factor]vk.BlendFactor {
+vk_BLEND_FACTOR_TO_VK := [Blend_Factor]vk.BlendFactor {
 	.Zero				= .ZERO,
 	.One				= .ONE,
 	.Source_Color			= .SRC_COLOR,

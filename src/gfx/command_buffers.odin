@@ -926,21 +926,8 @@ submit :: proc(
 	}
 
 	for signal in signals {
-		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
+		_, semaphore_res := _metadata_of(signal.semaphore)
 		_check_semaphore_handle(semaphore_res, signal.semaphore, location) or_return
-
-		_check_condition(
-			signal.value > semaphore_metadata.last_signaled_value,
-			.Invalid_Arguments,
-			.Error,
-			"Invalid signal value",
-			"The values signaled to a semaphore must be monotonically (always) increasing. The last " +
-			"signaled value on semaphore %v is %d, while a signaling of %d was requested.",
-			signal.semaphore,
-			semaphore_metadata.last_signaled_value,
-			signal.value,
-			location=location,
-		) or_return
 	}
 
 	_check_fence_correctness(command_buffers, location) or_return
@@ -954,13 +941,6 @@ submit :: proc(
 	}
 
 	_check_generic_backend_error(res, location)
-
-	for signal in signals {
-		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
-		_check_semaphore_handle(semaphore_res, signal.semaphore, location) or_return
-
-		semaphore_metadata.last_signaled_value = signal.value
-	}
 
 	for command_buffer in command_buffers {
 		_, command_buffer_res := _metadata_of(command_buffer)

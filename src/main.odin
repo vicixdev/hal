@@ -28,7 +28,17 @@ main :: proc() {
 
 	devices, _ := gfx.enumerate_devices()
 	log.infof("%#v", devices)
-	gfx.select_device(devices[0].id)
+	device := devices[0].id
+	when gfx.TARGET_API == .Vulkan {
+		for device_info in devices {
+			if device_info.driver == "KosmicKrisp" {
+				device = device_info.id
+				break
+			}
+		}
+	}
+
+	gfx.select_device(device)
 
 	default_memory: gfx.Arena
 	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte)
@@ -51,7 +61,7 @@ main :: proc() {
 
 	download, _ := gfx.arena_alloc(&default_memory, size_of([4]u8) * 640 * 480)
 
-	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "build", context.temp_allocator)
+	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./src/gfx/tests/shaders", context.temp_allocator)
 	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
 		vertex_stage	= {
 			bytecode	= pipeline_bytecode,
@@ -67,6 +77,7 @@ main :: proc() {
 		color_formats	= { .RGBA8_Unorm },
 	}
 	pipeline, _ := gfx.create_render_pipeline(pipeline_descriptor)
+	defer gfx.destroy_pipeline(pipeline)
 
 	framebuffer_descriptor := gfx.Texture_Descriptor {
 		type		= .D2_Array,

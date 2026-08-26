@@ -19,12 +19,21 @@ init_gfx :: proc "contextless" () {
 	assert(init_res == nil, "Could not initialize gfx.")
 
 	devices, devices_res := gfx.enumerate_devices()
-	assert(devices_res == nil, "No suitable devices found.")
+	assert(devices_res == nil, "Could not enumerate devices.")
+	assert(len(devices) > 0, "No suitable devices found.")
 
-	log.infof("%#v", devices)
-	// device_info := &devices[len(devices)-1]
-	device_info := &devices[0]
-	device := device_info.id
+	device := devices[0].id
+	when gfx.TARGET_API == .Vulkan {
+		for device_info in devices {
+			// NOTE: MoltenVK has issues with the deallocation of resources from multiple threads.
+			//	Prefer using KosmicKrisp since it does not have this problem.
+			if device_info.driver == "KosmicKrisp" {
+				device = device_info.id
+				break
+			}
+		}
+	}
+
 	device_res := gfx.select_device(device)
 	assert(device_res == nil, "Could not select a device.")
 }
@@ -503,7 +512,7 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 	}
 }
 
-// @(test)
+@(test)
 clear_render_pass :: proc(t: ^testing.T) {
 
 	FRAMEBUFFER_SIZE := [2]int{ 4, 4 }
@@ -638,7 +647,7 @@ generic_compute_test :: proc(t: ^testing.T) {
 	}
 }
 
-// @(test)
+@(test)
 draw_triangle :: proc(t: ^testing.T) {
 
 	when gfx.TARGET_API == .Vulkan {
@@ -745,7 +754,7 @@ draw_triangle :: proc(t: ^testing.T) {
 	for x in 0..<640 do for y in 0..<480 {
 		i := y * 640 + x
 
-		assert(reference_pixels[i] == download_pixels[i])
+		testing.expect_value(t, download_pixels[i], reference_pixels[i])
 	}
 }
 

@@ -237,15 +237,15 @@ vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsage
 	return
 }
 
-vk_texture_usages_to_vk_image_layout :: proc(usages: Texture_Usages) -> (layout: vk.ImageLayout) {
-	if .Color_Attachment in usages {
-		return .COLOR_ATTACHMENT_OPTIMAL
-	} else if .Depth_Stencil_Attachment in usages {
-		return .DEPTH_ATTACHMENT_OPTIMAL
-	} else {
-		return .GENERAL
-	}
-}
+// vk_texture_usages_to_vk_image_layout :: proc(usages: Texture_Usages) -> (layout: vk.ImageLayout) {
+// 	if .Color_Attachment in usages {
+// 		return .COLOR_ATTACHMENT_OPTIMAL
+// 	} else if .Depth_Stencil_Attachment in usages {
+// 		return .DEPTH_ATTACHMENT_OPTIMAL
+// 	} else {
+// 		return .GENERAL
+// 	}
+// }
 
 @(rodata)
 vk_TEXTURE_TYPE_TO_VK := [Texture_Type]vk.ImageType {

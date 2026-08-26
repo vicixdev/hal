@@ -104,6 +104,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	}
 	append(&vk_enabled_device_extensions, "VK_KHR_dynamic_rendering")
 	append(&vk_enabled_device_extensions, "VK_KHR_synchronization2")
+	append(&vk_enabled_device_extensions, "VK_EXT_extended_dynamic_state")
 
 	queue_descriptors: []vk.DeviceQueueCreateInfo
 
@@ -140,9 +141,14 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 			shaderStorageImageWriteWithoutFormat	= true,
 		},
 	}
-	device_feature_12 := vk.PhysicalDeviceVulkan12Features {
+	device_features_11 := vk.PhysicalDeviceVulkan11Features {
+		sType			= .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+		pNext			= &device_features,
+		shaderDrawParameters	= true,
+	}
+	device_features_12 := vk.PhysicalDeviceVulkan12Features {
 		sType						= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-		pNext						= &device_features,
+		pNext						= &device_features_11,
 		timelineSemaphore				= true,
 		bufferDeviceAddress				= true,
 		runtimeDescriptorArray				= true,
@@ -155,7 +161,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	}
 	dynamic_rendering_features := vk.PhysicalDeviceDynamicRenderingFeaturesKHR {
 		sType			= .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
-		pNext			= &device_feature_12,
+		pNext			= &device_features_12,
 		dynamicRendering	= true,
 	}
 	synchronization2_features := vk.PhysicalDeviceSynchronization2FeaturesKHR {
@@ -163,9 +169,14 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		pNext			= &dynamic_rendering_features,
 		synchronization2	= true,
 	}
+	extended_dynamic_state_features := vk.PhysicalDeviceExtendedDynamicStateFeaturesEXT {
+		sType			= .PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
+		pNext			= &synchronization2_features,
+		extendedDynamicState	= true,
+	}
 	descriptor := vk.DeviceCreateInfo {
 		sType			= .DEVICE_CREATE_INFO,
-		pNext			= &synchronization2_features,
+		pNext			= &extended_dynamic_state_features,
 		queueCreateInfoCount	= cast(u32)len(queue_descriptors),
 		pQueueCreateInfos	= raw_data(queue_descriptors),
 		enabledExtensionCount	= cast(u32)len(vk_enabled_device_extensions),
@@ -527,12 +538,14 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 
 	return vk_device_has_extension(info, "VK_KHR_dynamic_rendering") &&
 		vk_device_has_extension(info, "VK_KHR_synchronization2") &&
+		vk_device_has_extension(info, "VK_EXT_extended_dynamic_state") &&
 		vk_info.features.features.imageCubeArray == true &&
 		vk_info.features.features.samplerAnisotropy == true &&
 		vk_info.features.features.shaderSampledImageArrayDynamicIndexing == true &&
 		vk_info.features.features.shaderStorageImageArrayDynamicIndexing == true &&
 		vk_info.features.features.shaderStorageImageReadWithoutFormat == true &&
 		vk_info.features.features.shaderStorageImageWriteWithoutFormat == true &&
+		vk_info.features_11.shaderDrawParameters == true &&
 		vk_info.features_12.timelineSemaphore == true &&
 		vk_info.features_12.bufferDeviceAddress == true &&
 		vk_info.features_12.runtimeDescriptorArray == true &&

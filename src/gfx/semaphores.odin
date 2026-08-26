@@ -15,8 +15,6 @@ _Semaphore_Metadata :: struct {
 	handle:			Semaphore,
 	type:			Semaphore_Type,
 
-	last_signaled_value:	int,
-
 	using platform:	struct #raw_union {
 		vk:	vk_Semaphore_Metadata,
 		m3:	m3_Semaphore_Metadata,

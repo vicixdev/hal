@@ -1,3 +1,5 @@
+#include "../../../shaders/gfx.slang"
+
 struct Vertex {
 	float	position[3];
 	float	color[3];
@@ -37,7 +39,7 @@ Vertex_Output vertex_main(
 	float3 color = parameters.vertices[index].get_color();
 
 	return Vertex_Output(
-		float4(position, 1.0),
+		mul(NORMALIZE_CLIP_COORDS, float4(position, 1.0)),
 		color,
 	);
 }

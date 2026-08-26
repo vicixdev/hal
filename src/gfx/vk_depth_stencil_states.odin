@@ -14,7 +14,7 @@ vk_create_depth_stencil_state :: proc(
 vk_destroy_depth_stencil_state :: proc(metadata: ^_Depth_Stencil_State_Metadata) {}
 
 @(rodata)
-vk_COMPARE_OPERATION_TO_MTL := [Compare_Operation]vk.CompareOp {
+vk_COMPARE_OPERATION_TO_VK := [Compare_Operation]vk.CompareOp {
 	.Never		= .NEVER,
 	.Less		= .LESS,
 	.Equal		= .EQUAL,
@@ -26,7 +26,7 @@ vk_COMPARE_OPERATION_TO_MTL := [Compare_Operation]vk.CompareOp {
 }
 
 @(rodata)
-vk_STENCIL_OPERATION_TO_MTL := [Stencil_Operation]vk.StencilOp {
+vk_STENCIL_OPERATION_TO_VK := [Stencil_Operation]vk.StencilOp {
 	.Keep			= .KEEP,
 	.Zero			= .ZERO,
 	.Replace		= .REPLACE,
