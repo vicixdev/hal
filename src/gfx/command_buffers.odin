@@ -32,6 +32,11 @@ Render_Pass_Signal :: struct {
 	after:		Stages,
 }
 
+Index_Type :: enum {
+	U16,
+	U32,
+}
+
 _Command_Buffer_Metadata :: struct {
 	handle:				Command_Buffer,
 
@@ -66,6 +71,7 @@ _Command :: union {
 	_Command_Begin_Render_Pass,
 	_Command_End_Render_Pass,
 	_Command_Draw,
+	_Command_Draw_Indexed,
 }
 
 _Command_Mem_Copy :: struct {
@@ -134,6 +140,17 @@ _Command_Draw :: struct {
 	vertex_count:	int,
 	instance_count:	int,
 	base_vertex:	int,
+}
+
+_Command_Draw_Indexed :: struct {
+	pipeline:	Pipeline,
+	resource_set:	Resource_Set,
+	argument:	[]byte,
+	indices:	Buffer,
+	index_count:	int,
+	instance_count:	int,
+	base_vertex:	int,
+	index_type:	Index_Type,
 }
 
 _command_buffers:	[Queue][16]_Command_Buffer_Metadata
@@ -885,6 +902,89 @@ draw_with_bytes_argument :: proc(
 draw :: proc {
 	draw_with_bytes_argument,
 	draw_with_any_argument,
+}
+
+draw_indexed_with_any_argument :: proc(
+	command_buffer:		Command_Buffer,
+	compute_pipeline:	Pipeline,
+	argument:		any,
+	indices:		Buffer,
+	index_count:		int,
+	instance_count :=	1,
+	index_type :=		Index_Type.U16,
+	location :=		#caller_location,
+) -> Result {
+	return draw_indexed_with_bytes_argument(command_buffer,
+		compute_pipeline,
+		mem.any_to_bytes(argument),
+		indices,
+		index_count,
+		instance_count,
+		index_type,
+		location,
+	)
+}
+
+draw_indexed_with_bytes_argument :: proc(
+	command_buffer:		Command_Buffer,
+	render_pipeline:	Pipeline,
+	argument:		[]byte,
+	indices:		Buffer,
+	index_count:		int,
+	instance_count :=	1,
+	index_type :=		Index_Type.U16,
+	location :=		#caller_location,
+) -> (res: Result) {
+	
+	_check_condition(
+		len(argument) < 64,
+		.Invalid_Pipeline_Argument,
+		.Error,
+		"Invalid pipeline argument",
+		"The size of the pipeline argument must be at most 64 bytes (%d found).",
+		len(argument),
+		location=location,
+	) or_return
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	_check_in_render_pass(metadata, location) or_return
+
+	pipeline_metadata, pipeline_res := _metadata_of(render_pipeline)
+	_check_pipeline_handle(pipeline_res, render_pipeline, location) or_return
+
+	_, indices_res := _metadata_of(indices)
+	_check_buffer_handle(indices_res, indices, location) or_return
+
+	_check_condition(
+		pipeline_metadata.type == .Render,
+		.Invalid_Pipeline,
+		.Error,
+		"Invalid pipeline type",
+		"A draw_indexed requires a render pipeline. The provided pipeline %v is of type %v.",
+		render_pipeline,
+		pipeline_metadata.type,
+		location=location,
+	)
+
+	command :=  _Command_Draw_Indexed {
+		pipeline	= render_pipeline,
+		resource_set	= metadata.resource_set,
+		argument	= slice.clone(argument, metadata.allocator) or_return,
+		indices		= indices,
+		index_count	= index_count,
+		instance_count	= instance_count,
+		index_type	= index_type,
+	}
+	append(&metadata.commands, command) or_return
+
+	return nil
+}
+
+draw_indexed :: proc {
+	draw_indexed_with_bytes_argument,
+	draw_indexed_with_any_argument,
 }
 
 submit :: proc(

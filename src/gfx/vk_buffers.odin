@@ -47,6 +47,7 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: 
 		sType	= .BUFFER_CREATE_INFO,
 		size	= cast(vk.DeviceSize)size,
 		usage	= {
+			.INDEX_BUFFER,
 			.TRANSFER_SRC,
 			.TRANSFER_DST,
 			.STORAGE_BUFFER,

@@ -758,3 +758,118 @@ draw_triangle :: proc(t: ^testing.T) {
 	}
 }
 
+@(test)
+draw_quad :: proc(t: ^testing.T) {
+
+	when gfx.TARGET_API == .Vulkan {
+		TRIANGLE_BYTECODE := #load("./shaders/triangle.spv")
+	} else when gfx.TARGET_API == .Metal_3 {
+		TRIANGLE_BYTECODE := #load("./shaders/triangle.metallib")
+	}
+
+	REFERENCE := #load("./images/quad.png")
+
+	default_memory: gfx.Arena
+	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte)
+
+	private_memory: gfx.Arena
+	gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte)
+
+	Vertex :: struct #packed {
+		position:	[3]f32,
+		color:		[3]f32,
+	}
+	VERTICES := [?]Vertex {
+		{ { -0.5, -0.5, 1.0 }, { 1.0, 0.0, 0.0 } },
+		{ {  0.5, -0.5, 1.0 }, { 0.0, 1.0, 0.0 } },
+		{ {  0.5,  0.5, 1.0 }, { 0.0, 0.0, 1.0 } },
+		{ { -0.5,  0.5, 1.0 }, { 1.0, 1.0, 0.0 } },
+	}
+	INDICES := [?]u16 {
+		0, 1, 2,
+		2, 3, 0,
+	}
+
+	vertices, _ := gfx.arena_alloc(&default_memory, size_of(VERTICES))
+	mem.copy(vertices.contents, &VERTICES[0], size_of(VERTICES))
+	gpu_vertices, _ := gfx.gpu_address_of(vertices)
+
+	indices, _ := gfx.arena_alloc(&default_memory, size_of(INDICES))
+	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
+
+	download, _ := gfx.arena_alloc(&default_memory, size_of([4]u8) * 640 * 480)
+
+	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+		vertex_stage	= {
+			bytecode	= TRIANGLE_BYTECODE[:],
+			entrypoint	= "vertex_main",
+		},
+		fragment_stage	= {
+			bytecode	= TRIANGLE_BYTECODE[:],
+			entrypoint	= "fragment_main",
+		},
+		topology	= .Triangle_List,
+		cull		= .None,
+		sample_count	= 4,
+		color_formats	= { .RGBA8_Unorm },
+	}
+	pipeline, _ := gfx.create_render_pipeline(pipeline_descriptor)
+	defer gfx.destroy_pipeline(pipeline)
+
+	framebuffer_descriptor := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		format		= .RGBA8_Unorm,
+		dimensions	= { 640, 480, 1 },
+		usage		= { .Color_Attachment },
+	}
+	framebuffer_size, framebuffer_align, _ := gfx.size_align_of(framebuffer_descriptor)
+	framebuffer_memory, _ := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align)
+	framebuffer, _ := gfx.create_texture(framebuffer_memory, framebuffer_descriptor)
+	defer gfx.destroy_texture(framebuffer)
+	framebuffer_view, _ := gfx.default_view_of(framebuffer)
+
+	semaphore, _ := gfx.create_semaphore(.Cpu_Waitable)
+	defer gfx.destroy_semaphore(semaphore)
+
+	Parameters :: struct #packed {
+		vertices:	uintptr,
+	}
+
+	render_pass_descriptor := gfx.Render_Pass_Descriptor {
+		color_attachments = {
+			gfx.Render_Attachment {
+				view		= framebuffer_view,
+				load_operation	= .Clear,
+				store_operation	= .Store,
+				clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
+			},
+		},
+	}
+	command_buffer, _ := gfx.begin_command_encoding(.Default)
+	gfx.begin_render_pass(command_buffer, render_pass_descriptor)
+	gfx.draw_indexed(command_buffer, pipeline, Parameters {
+		vertices = gpu_vertices,
+	}, indices, 6)
+	gfx.end_render_pass(command_buffer)
+
+	gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer })
+	gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
+		layer_count = 1,
+		size = { 640, 480, 1 },
+	}, download)
+
+	gfx.submit(.Default, { command_buffer }, { semaphore, 1 })
+	gfx.wait_semaphore(semaphore, 1)
+
+	img, img_res := image.load_from_bytes(REFERENCE[:])
+	assert(img_res == nil)
+	defer image.destroy(img)
+
+	reference_pixels := slice.reinterpret([][4]u8, img.pixels.buf[:])
+	download_pixels := cast([^][4]u8)download.contents
+	for x in 0..<640 do for y in 0..<480 {
+		i := y * 640 + x
+
+		testing.expect_value(t, download_pixels[i], reference_pixels[i])
+	}
+}

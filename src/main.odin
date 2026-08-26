@@ -29,14 +29,14 @@ main :: proc() {
 	devices, _ := gfx.enumerate_devices()
 	log.infof("%#v", devices)
 	device := devices[0].id
-	when gfx.TARGET_API == .Vulkan {
-		for device_info in devices {
-			if device_info.driver == "KosmicKrisp" {
-				device = device_info.id
-				break
-			}
-		}
-	}
+	// when gfx.TARGET_API == .Vulkan {
+	// 	for device_info in devices {
+	// 		if device_info.driver == "KosmicKrisp" {
+	// 			device = device_info.id
+	// 			break
+	// 		}
+	// 	}
+	// }
 
 	gfx.select_device(device)
 
@@ -53,11 +53,20 @@ main :: proc() {
 	VERTICES := [?]Vertex {
 		{ { -0.5, -0.5, 1.0 }, { 1.0, 0.0, 0.0 } },
 		{ {  0.5, -0.5, 1.0 }, { 0.0, 1.0, 0.0 } },
-		{ {  0.0,  0.5, 1.0 }, { 0.0, 0.0, 1.0 } },
+		{ {  0.5,  0.5, 1.0 }, { 0.0, 0.0, 1.0 } },
+		{ { -0.5,  0.5, 1.0 }, { 1.0, 1.0, 0.0 } },
 	}
+	INDICES := [?]u16 {
+		0, 1, 2,
+		2, 3, 0,
+	}
+
 	vertices, _ := gfx.arena_alloc(&default_memory, size_of(VERTICES))
 	mem.copy(vertices.contents, &VERTICES[0], size_of(VERTICES))
 	gpu_vertices, _ := gfx.gpu_address_of(vertices)
+
+	indices, _ := gfx.arena_alloc(&default_memory, size_of(INDICES))
+	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
 
 	download, _ := gfx.arena_alloc(&default_memory, size_of([4]u8) * 640 * 480)
 
@@ -110,9 +119,9 @@ main :: proc() {
 	}
 	command_buffer, _ := gfx.begin_command_encoding(.Default)
 	gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-	gfx.draw(command_buffer, pipeline, Parameters {
+	gfx.draw_indexed(command_buffer, pipeline, Parameters {
 		vertices = gpu_vertices,
-	}, 3)
+	}, indices, 6)
 	gfx.end_render_pass(command_buffer)
 
 	gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer })

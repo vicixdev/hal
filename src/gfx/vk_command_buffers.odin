@@ -401,6 +401,7 @@ vk_emit_begin_render_pass :: proc(
 		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
 		assert(texture_res == nil)
 
+		// TODO: Figure out reductions
 		color_attachment_infos[i] = {
 			sType			= .RENDERING_ATTACHMENT_INFO,
 			imageView		= view_metadata.vk.view,
@@ -552,6 +553,54 @@ vk_emit_draw :: proc(
 		0,
 	)
 
+	return nil
+}
+
+vk_emit_draw_indexed :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Draw_Indexed,
+) -> Result {
+
+	push_constant_buffer: [64]byte
+
+	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	indices_metadata, indices_res := _metadata_of(command.indices)
+	_check_internal_emission_result(indices_res) or_return
+	indices_offset := _offset_from_base(command.indices, indices_metadata)
+
+	push_constant_buffer = {}
+	copy(push_constant_buffer[:], command.argument)
+
+	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+
+	vk_use_resource_set(metadata, command.resource_set)
+	vk.CmdSetDepthTestEnableEXT(metadata.vk.command_buffer, false)
+	vk.CmdPushConstants(
+		metadata.vk.command_buffer,
+		vk_render_pipeline_layout,
+		{ .VERTEX, .FRAGMENT },
+		0,
+		64,
+		raw_data(push_constant_buffer[:]),
+	)
+	vk.CmdBindPipeline(metadata.vk.command_buffer, .GRAPHICS, pipeline_metadata.vk.pipeline)
+	vk.CmdBindIndexBuffer(
+		metadata.vk.command_buffer,
+		indices_metadata.vk.buffer,
+		cast(vk.DeviceSize)indices_offset,
+		vk_INDEX_TYPE_TO_VK[command.index_type],
+	)
+	vk.CmdDrawIndexed(
+		metadata.vk.command_buffer,
+		cast(u32)command.index_count,
+		cast(u32)command.instance_count,
+		0,
+		0,
+		0,
+	)
 
 	return nil
 }
@@ -595,6 +644,8 @@ vk_emit_commands :: proc(
 			vk_emit_end_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_Draw:
 			vk_emit_draw(metadata, queue_metadata, v) or_return
+		case _Command_Draw_Indexed:
+			vk_emit_draw_indexed(metadata, queue_metadata, v) or_return
 		}
 	}
 
@@ -887,5 +938,11 @@ vk_LOAD_OPERATION_TO_VK := [Load_Operation]vk.AttachmentLoadOp {
 vk_STORE_OPERATION_TO_VK := [Store_Operation]vk.AttachmentStoreOp {
 	.Store		= .STORE,
 	.Dont_Care	= .DONT_CARE,
+}
+
+@(rodata)
+vk_INDEX_TYPE_TO_VK := [Index_Type]vk.IndexType {
+	.U16	= .UINT16,
+	.U32	= .UINT32,
 }
 

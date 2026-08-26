@@ -375,6 +375,37 @@ m3_emit_draw :: proc(
 	return nil
 }
 
+m3_emit_draw_indexed :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	command:	_Command_Draw_Indexed,
+) -> Result {
+
+	assert(metadata.m3.current_encoder == .Render)
+
+	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	indices_metadata, indices_res := _metadata_of(command.indices)
+	_check_internal_emission_result(indices_res) or_return
+	indices_offset := _offset_from_base(command.indices, indices_metadata)
+
+	m3_bind_resource_set(metadata) or_return
+	metadata.m3.render_encoder->setVertexBytes(command.argument, 0)
+	metadata.m3.render_encoder->setFragmentBytes(command.argument, 0)
+	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
+	metadata.m3.render_encoder->drawIndexedPrimitivesWithInstanceCount(
+		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
+		cast(NS.UInteger)command.index_count,
+		m3_INDEX_TYPE_TO_MTL[command.index_type],
+		indices_metadata.m3.buffer,
+		cast(NS.UInteger)indices_offset,
+		cast(NS.UInteger)command.instance_count,
+	)
+
+	return nil
+}
+
 m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 
 	metadata.m3.wait_set = {}	
@@ -423,6 +454,8 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 			m3_emit_end_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_Draw:
 			m3_emit_draw(metadata, queue_metadata, v) or_return
+		case _Command_Draw_Indexed:
+			m3_emit_draw_indexed(metadata, queue_metadata, v) or_return
 		}
 	}
 
@@ -617,3 +650,8 @@ m3_STORE_OPERATION_TO_MTL := [Store_Operation]MTL.StoreAction {
 	.Dont_Care	= .DontCare,
 }
 
+@(rodata)
+m3_INDEX_TYPE_TO_MTL := [Index_Type]MTL.IndexType {
+	.U16	= .UInt16,
+	.U32	= .UInt32,
+}
