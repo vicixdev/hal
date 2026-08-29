@@ -153,6 +153,11 @@ _Command_Draw_Indexed :: struct {
 	index_type:	Index_Type,
 }
 
+_Semaphore_Wait :: struct {
+	semaphore:	^_Semaphore_Metadata,
+	value:		int,
+}
+
 _command_buffers:	[Queue][16]_Command_Buffer_Metadata
 _command_buffers_mutex:	sync.RW_Mutex
 
@@ -708,40 +713,73 @@ begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(color_target.view)
 		_check_view_handle(view_res, color_target.view, location) or_return
 
-		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
-		_check_texture_handle(texture_res, view_metadata.texture, location) or_return
+		switch v in view_metadata.reference {
+		case Texture:
+			texture_metadata, texture_res := _metadata_of(v)
+			_check_texture_handle(texture_res, v, location) or_return
 		
-		_check_condition(
-			.Color_Attachment in texture_metadata.usage,
-			.Invalid_Arguments,
-			.Error,
-			"Invalid texture",
-			"A texture, in order to be used as a color render target must be created with the " +
-			"`.Color_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
-			view_metadata.texture,
-			color_target.view,
-			location=location,
-		) or_return
+			_check_condition(
+				.Color_Attachment in texture_metadata.usage,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid texture",
+				"A texture, in order to be used as a color render target must be created with the " +
+				"`.Color_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
+				v,
+				color_target.view,
+				location=location,
+			) or_return
 
-		_, has_clear_color := color_target.clear_value.([4]f64)
-		_check_condition(
-			has_clear_color,
-			.Invalid_Arguments,
-			.Error,
-			"Invalid color clear value",
-			"A color render target can only be cleared with a `[4]f64` value. `u32` is reverved for " +
-			"stencil attachments and `f64` is reserved for depth attachments. Found clear value `%v`.",
-			color_target.clear_value,
-			location=location,
-		) or_return
+			_, has_clear_color := color_target.clear_value.([4]f64)
+			_check_condition(
+				has_clear_color,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid color clear value",
+				"A color render target can only be cleared with a `[4]f64` value. `u32` is reverved " +
+				"for stencil attachments and `f64` is reserved for depth attachments. Found clear " +
+				"value `%v`.",
+				color_target.clear_value,
+				location=location,
+			) or_return
+
+		case Surface:
+			_, surface_res := _metadata_of(v)
+			_check_surface_handle(surface_res, v, location) or_return
+
+			was_used := sync.atomic_exchange(&view_metadata.used, true)
+			_check_condition(
+				!was_used,
+				.Invalid_View,
+				.Error,
+				"Invalid view",
+				"A view referencing a surface can only be used once as a color attachment in a " +
+				"render pass. View %s has been used multiple times.",
+				color_target.view,
+				location=location,
+			) or_return
+		}
 	}
 
 	if depth_target, has_depth_target := descriptor.depth_attachment.?; has_depth_target {
 		view_metadata, view_res := _metadata_of(depth_target.view)
 		_check_view_handle(view_res, depth_target.view, location) or_return
 
-		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
-		_check_texture_handle(texture_res, view_metadata.texture, location) or_return
+		reference, is_referencing_texture := view_metadata.reference.(Texture)
+		_check_condition(
+			is_referencing_texture,
+			.Invalid_View,
+			.Error,
+			"Invalid view",
+			"Views referencing surfaces can only be used as color attachments. Texture view %v " +
+			"referencing surface %v is being used as a depth attachment.",
+			depth_target.view,
+			view_metadata.reference.(Surface),
+			location=location,
+		) or_return
+
+		texture_metadata, texture_res := _metadata_of(reference)
+		_check_texture_handle(texture_res, reference, location) or_return
 		
 		_check_condition(
 			.Depth_Stencil_Attachment in texture_metadata.usage,
@@ -750,7 +788,7 @@ begin_render_pass :: proc(
 			"Invalid texture",
 			"A texture, in order to be used as a depth render target must be created with the " +
 			"`.Depth_Stencil_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
-			view_metadata.texture,
+			reference,
 			depth_target.view,
 			location=location,
 		) or_return
@@ -772,8 +810,21 @@ begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(stencil_target.view)
 		_check_view_handle(view_res, stencil_target.view, location) or_return
 
-		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
-		_check_texture_handle(texture_res, view_metadata.texture, location) or_return
+		reference, is_referencing_texture := view_metadata.reference.(Texture)
+		_check_condition(
+			is_referencing_texture,
+			.Invalid_View,
+			.Error,
+			"Invalid view",
+			"Views referencing surfaces can only be used as color attachments. Texture view %v " +
+			"referencing surface %v is being used as a stencil attachment.",
+			stencil_target.view,
+			view_metadata.reference.(Surface),
+			location=location,
+		) or_return
+
+		texture_metadata, texture_res := _metadata_of(reference)
+		_check_texture_handle(texture_res, reference, location) or_return
 		
 		_check_condition(
 			.Depth_Stencil_Attachment in texture_metadata.usage,
@@ -782,7 +833,7 @@ begin_render_pass :: proc(
 			"Invalid texture",
 			"A texture, in order to be used as a stencil render target must be created with the " +
 			"`.Depth_Stencil_Attachment` usage. Texture %v (referenced by view %v) has usage %v.",
-			view_metadata.texture,
+			reference,
 			stencil_target.view,
 			location=location,
 		) or_return
@@ -1041,11 +1092,8 @@ submit :: proc(
 	}
 
 	_check_generic_backend_error(res, location)
-
+	
 	for command_buffer in command_buffers {
-		_, command_buffer_res := _metadata_of(command_buffer)
-		_check_command_buffer_handle(command_buffer_res, command_buffer, location) or_return
-
 		_remove_command_buffer(command_buffer)
 	}
 

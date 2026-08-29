@@ -3,48 +3,79 @@ package main
 import "core:log"
 import "core:mem"
 import "core:debug/trace"
-import "vendor:stb/image"
+import "vendor:glfw"
 import "gfx"
 
-main :: proc() {
-	context.logger = log.create_console_logger()
-	defer log.destroy_console_logger(context.logger)
+window:		glfw.WindowHandle
+surface:	gfx.Surface
+surface_format:	gfx.Pixel_Format
 
-	context.assertion_failure_proc = trace.assertion_failure_proc
+setup :: proc() {
+	ensure(glfw.Init() == true)
 
-	tracking_allocator: trace.Tracking_Allocator
-	trace.tracking_allocator_init(&tracking_allocator, context.allocator)
-	defer trace.tracking_allocator_destroy(&tracking_allocator)
-
-	context.allocator = trace.tracking_allocator(&tracking_allocator)
-	defer trace.tracking_allocator_print_results(&tracking_allocator)
+	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
+	glfw.WindowHint(glfw.RESIZABLE, glfw.FALSE)
+	window = glfw.CreateWindow(640, 480, "Window", nil, nil)
+	assert(window != nil)
 
 	gfx.init({
 		vk = {
 			// shader_format = .Metallib,
 		},
 	})
-	defer gfx.fini()
 
 	devices, _ := gfx.enumerate_devices()
 	log.infof("%#v", devices)
 	device := devices[0].id
-	// when gfx.TARGET_API == .Vulkan {
-	// 	for device_info in devices {
-	// 		if device_info.driver == "KosmicKrisp" {
-	// 			device = device_info.id
-	// 			break
-	// 		}
-	// 	}
-	// }
+	when gfx.TARGET_API == .Vulkan {
+		for device_info in devices {
+			if device_info.driver == "KosmicKrisp" {
+				device = device_info.id
+				break
+			}
+		}
+	}
 
 	gfx.select_device(device)
 
-	default_memory: gfx.Arena
-	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte)
+	target: gfx.Surface_Target
+	when ODIN_OS == .Darwin {
+		target = gfx.Surface_Cocoa_Target {
+			ns_view	= glfw.GetCocoaView(window),
+		}
+	} else when ODIN_OS == .Windows {
+		target = gfx.Surface_HWND_Target {
+			h_wnd	= glfw.GetWin32Window(window),
+		}
+	} else {
+		#panic("*nix is not yet supported.")
+	}
 
-	private_memory: gfx.Arena
-	gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte)
+	surface_descriptor := gfx.Surface_Descriptor {
+		type			= .V_Sync,
+		dimensions		= { 640, 480 },
+		frames_in_flight	= 3,
+		target			= target,
+	}
+	formats, formats_res := gfx.supported_formats_of(surface_descriptor)
+	assert(formats_res == nil && len(formats) > 0)
+
+	surface_format = formats[0]
+	surface_descriptor.format = surface_format
+	log.infof("Creating surface with descriptor %#v.", surface_descriptor)
+
+	surface_res: gfx.Result
+	surface, surface_res = gfx.create_surface(surface_descriptor)
+	assert(surface_res == nil)
+
+}
+
+fini :: proc() {
+	gfx.fini()
+	glfw.Terminate()
+}
+
+app :: proc() -> gfx.Result {
 
 	Vertex :: struct #packed {
 		position:	[3]f32,
@@ -61,14 +92,22 @@ main :: proc() {
 		2, 3, 0,
 	}
 
-	vertices, _ := gfx.arena_alloc(&default_memory, size_of(VERTICES))
+	Parameters :: struct #packed {
+		vertices:	uintptr,
+	}
+
+	frame_semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+	framecount: int
+
+	default_memory: gfx.Arena
+	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
+
+	vertices := gfx.arena_alloc(&default_memory, size_of(VERTICES)) or_return
 	mem.copy(vertices.contents, &VERTICES[0], size_of(VERTICES))
-	gpu_vertices, _ := gfx.gpu_address_of(vertices)
+	gpu_vertices := gfx.gpu_address_of(vertices) or_return
 
-	indices, _ := gfx.arena_alloc(&default_memory, size_of(INDICES))
+	indices := gfx.arena_alloc(&default_memory, size_of(INDICES)) or_return
 	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
-
-	download, _ := gfx.arena_alloc(&default_memory, size_of([4]u8) * 640 * 480)
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./src/gfx/tests/shaders", context.temp_allocator)
 	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
@@ -82,57 +121,78 @@ main :: proc() {
 		},
 		topology	= .Triangle_List,
 		cull		= .None,
-		sample_count	= 4,
-		color_formats	= { .RGBA8_Unorm },
+		sample_count	= 1,
+		color_formats	= { surface_format },
 	}
-	pipeline, _ := gfx.create_render_pipeline(pipeline_descriptor)
-	defer gfx.destroy_pipeline(pipeline)
+	pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
 
-	framebuffer_descriptor := gfx.Texture_Descriptor {
-		type		= .D2_Array,
-		format		= .RGBA8_Unorm,
-		dimensions	= { 640, 480, 1 },
-		usage		= { .Color_Attachment },
-	}
-	framebuffer_size, framebuffer_align, _ := gfx.size_align_of(framebuffer_descriptor)
-	framebuffer_memory, _ := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align)
-	framebuffer, _ := gfx.create_texture(framebuffer_memory, framebuffer_descriptor)
-	defer gfx.destroy_texture(framebuffer)
-	framebuffer_view, _ := gfx.default_view_of(framebuffer)
+	for !glfw.WindowShouldClose(window) {
+		glfw.PollEvents()
+		framecount += 1
 
-	semaphore, _ := gfx.create_semaphore(.Cpu_Waitable)
-	defer gfx.destroy_semaphore(semaphore)
+		surface_view: gfx.View
+		for {
+			surface_view_res: gfx.Result
+			surface_view, surface_view_res = gfx.acquire_surface_view(surface)
+			if surface_view_res == .Surface_Unavailable {
+				continue
+			} else if surface_view_res == nil {
+				break
+			} else {
+				return surface_view_res
+			}
+		}
 
-	Parameters :: struct #packed {
-		vertices:	uintptr,
-	}
-
-	render_pass_descriptor := gfx.Render_Pass_Descriptor {
-		color_attachments = {
-			gfx.Render_Attachment {
-				view		= framebuffer_view,
-				load_operation	= .Clear,
-				store_operation	= .Store,
-				clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
+		render_pass_descriptor := gfx.Render_Pass_Descriptor {
+			color_attachments = {
+				gfx.Render_Attachment {
+					view		= surface_view,
+					load_operation	= .Clear,
+					store_operation	= .Store,
+					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
+				},
 			},
-		},
+		}
+
+		command_buffer := gfx.begin_command_encoding(.Default, { frame_semaphore, framecount - 1 }) or_return
+
+		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
+			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
+			gfx.draw_indexed(command_buffer, pipeline, Parameters {
+				vertices = gpu_vertices,
+			}, indices, 6)
+		gfx.end_render_pass(command_buffer)
+
+		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return
+		gfx.present(.Default, surface_view, { frame_semaphore, framecount }) or_return
+
+		if framecount >= 4 {
+			gfx.wait_semaphore(frame_semaphore, framecount - 3)
+		}
 	}
-	command_buffer, _ := gfx.begin_command_encoding(.Default)
-	gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-	gfx.draw_indexed(command_buffer, pipeline, Parameters {
-		vertices = gpu_vertices,
-	}, indices, 6)
-	gfx.end_render_pass(command_buffer)
 
-	gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer })
-	gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
-		layer_count = 1,
-		size = { 640, 480, 1 },
-	}, download)
+	gfx.wait_semaphore(frame_semaphore, framecount)
 
-	gfx.submit(.Default, { command_buffer }, { semaphore, 1 })
-	gfx.wait_semaphore(semaphore, 1)
+	return nil
+}
 
-	image.write_png("build/out.png", 640, 480, 4, download.contents, 640 * size_of([4]u8))
+main :: proc() {
+	context.logger = log.create_console_logger()
+	defer log.destroy_console_logger(context.logger)
+
+	context.assertion_failure_proc = trace.assertion_failure_proc
+
+	tracking_allocator: trace.Tracking_Allocator
+	trace.tracking_allocator_init(&tracking_allocator, context.allocator)
+	defer trace.tracking_allocator_destroy(&tracking_allocator)
+
+	context.allocator = trace.tracking_allocator(&tracking_allocator)
+	defer trace.tracking_allocator_print_results(&tracking_allocator)
+
+	setup()
+	defer fini()
+
+	res := app()
+	if res != nil do log.error(res)
 }
 

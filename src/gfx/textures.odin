@@ -82,6 +82,11 @@ Texture_Region :: struct {
 	size:		[3]int,
 }
 
+_View_Reference :: union {
+	Texture,
+	Surface,
+}
+
 _Texture_Metadata :: struct {
 	handle:			Texture,
 	using desc:		Texture_Descriptor,
@@ -100,8 +105,14 @@ _View_Metadata :: struct {
 	handle:		View,
 	using desc:	View_Descriptor,
 
-	texture:	Texture,
+	// texture:	Texture,
+	reference:	_View_Reference,
 	next_view:	View,
+
+	// If the view is referencing a texture, it can be used only be used once as a render target.
+	// This flags indicates if the surface-referencing view has already been used as a render target.
+	// ATOMIC
+	used:		bool,
 
 	using platform: struct #raw_union {
 		m3:	m3_View_Metadata,
@@ -202,7 +213,7 @@ create_texture :: proc(
 
 	metadata.default_view	= view
 	view_metadata.next_view	= view
-	view_metadata.texture	= texture
+	view_metadata.reference	= texture
 
 	when TARGET_API == .Vulkan {
 		res = vk_create_texture(metadata, buffer, buffer_metadata, view_metadata, descriptor)
@@ -318,7 +329,7 @@ create_view :: proc(
 
 	metadata.desc = descriptor
 
-	metadata.texture	= texture
+	metadata.reference	= texture
 	metadata.next_view	= default_view_metadata.next_view
 	default_view_metadata.next_view = handle
 

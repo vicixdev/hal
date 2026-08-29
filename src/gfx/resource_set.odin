@@ -74,54 +74,60 @@ set_texture_set :: proc(
 	type:		View_Type,
 	textures:	[]View,
 	location := #caller_location,
-) {
+) -> Result {
 
 	metadata, metadata_res := _metadata_of(resource_set)
-	_check_resource_set_handle(metadata_res, resource_set, location)
-	if metadata_res != nil do return
+	_check_resource_set_handle(metadata_res, resource_set, location) or_return
 
 	for view, i in textures {
 		view_metadata, view_metadata_res := _metadata_of(view)
-		_check_view_handle(view_metadata_res, view, location)
-		if view_metadata_res != nil do return
+		_check_view_handle(view_metadata_res, view, location) or_return
 
-		texture_metadata, texture_metatadata_res := _metadata_of(view_metadata.texture)
+		reference_texture, is_referencing_texture := view_metadata.reference.(Texture)
+		_check_condition(
+			is_referencing_texture,
+			.Invalid_View,
+			.Error,
+			"Invalid view",
+			"A view referencing a surface cannot be used in a texture set, only as a render attachment. " +
+			"View %v is referencing a surface.",
+			view,
+			location=location,
+		) or_return
+
+		texture_metadata, texture_metatadata_res := _metadata_of(reference_texture)
 		assert(
 			texture_metatadata_res == nil,
 			"If the view metadata exists, then the referenced texture metadata should also exist.",
 		)
 
-		if view_metadata.type != type {
-			_log_message(
-				.Invalid_Texture,
-				.Error,
-				"Invalid texture type",
-				"Only views with type %v are allowed in the texture set of type %v. The view %v " +
-				"(at index %d) is of type %v.",
-				type,
-				type,
-				view,
-				i,
-				view_metadata.type,
-				location=location,
-			)
-			return
-		}
+		_check_condition(
+			view_metadata.type == type,
+			.Invalid_Texture,
+			.Error,
+			"Invalid texture type",
+			"Only views with type %v are allowed in the texture set of type %v. The view %v " +
+			"(at index %d) is of type %v.",
+			type,
+			type,
+			view,
+			i,
+			view_metadata.type,
+			location=location,
+		) or_return
 
-		if .Sampled not_in texture_metadata.usage {
-			_log_message(
-				.Invalid_Texture,
-				.Error,
-				"Invalid texture usage",
-				"A texture, in order to be used in a texture set should, be created with the `.Sampled` " +
-				"usage. The provided view %v (at index %i) references a texture with usage %v.",
-				view,
-				i,
-				texture_metadata.usage,
-				location=location,
-			)
-			return
-		}
+		_check_condition(
+			.Sampled in texture_metadata.usage,
+			.Invalid_Texture,
+			.Error,
+			"Invalid texture usage",
+			"A texture, in order to be used in a texture set should, be created with the `.Sampled` " +
+			"usage. The provided view %v (at index %i) references a texture with usage %v.",
+			view,
+			i,
+			texture_metadata.usage,
+			location=location,
+		) or_return
 	}
 	
 	delete(metadata.texture_sets[type], _generic_allocator)
@@ -134,7 +140,9 @@ set_texture_set :: proc(
 		res = m3_set_texture_set(metadata, type)
 	}
 
-	_check_generic_backend_error(res, location)
+	_check_generic_backend_error(res, location) or_return
+
+	return nil
 }
 
 set_storage_texture_set :: proc(
@@ -142,55 +150,61 @@ set_storage_texture_set :: proc(
 	type: Storage_View_Type,
 	textures: []View,
 	location := #caller_location,
-) {
+) -> Result {
 
 	metadata, metadata_res := _metadata_of(resource_set)
-	_check_resource_set_handle(metadata_res, resource_set, location)
-	if metadata_res != nil do return
+	_check_resource_set_handle(metadata_res, resource_set, location) or_return
 
 	for view, i in textures {
 		view_metadata, view_metadata_res := _metadata_of(view)
-		_check_view_handle(view_metadata_res, view, location)
-		if view_metadata_res != nil do return
+		_check_view_handle(view_metadata_res, view, location) or_return
 
-		texture_metadata, texture_metatadata_res := _metadata_of(view_metadata.texture)
+		reference_texture, is_referencing_texture := view_metadata.reference.(Texture)
+		_check_condition(
+			is_referencing_texture,
+			.Invalid_View,
+			.Error,
+			"Invalid view",
+			"A view referencing a surface cannot be used in a texture set, only as a render attachment. " +
+			"View %v is referencing a surface.",
+			view,
+			location=location,
+		) or_return
+
+		texture_metadata, texture_metatadata_res := _metadata_of(reference_texture)
 		assert(
 			texture_metatadata_res == nil,
 			"If the view metadata exists, then the referenced texture metadata should also exist.",
 		)
 
-		if view_metadata.type != _STORAGE_TEXTURE_TYPE_TO_VIEW_TYPE[type] {
-			_log_message(
-				.Invalid_Texture,
-				.Error,
-				"Invalid texture type",
-				"Only views with type %v are allowed in the texture set of type %v. The view %v " +
-				"(at index %d) is of type %v.",
-				type,
-				type,
-				view,
-				i,
-				view_metadata.type,
-				location=location,
-			)
-			return
-		}
+		_check_condition(
+			view_metadata.type == _STORAGE_TEXTURE_TYPE_TO_VIEW_TYPE[type],
+			.Invalid_Texture,
+			.Error,
+			"Invalid texture type",
+			"Only views with type %v are allowed in the texture set of type %v. The view %v " +
+			"(at index %d) is of type %v.",
+			type,
+			type,
+			view,
+			i,
+			view_metadata.type,
+			location=location,
+		) or_return
 
-		if .Storage not_in texture_metadata.usage {
-			_log_message(
-				.Invalid_Texture,
-				.Error,
-				"Invalid texture usage",
-				"A texture, in order to be used in a texture set should, be created with the " +
-				"`.Storage` usage. The provided view %v (at index %d) references a texture with " +
-				"usage %v.",
-				view,
-				i,
-				texture_metadata.usage,
-				location=location,
-			)
-			return
-		}
+		_check_condition(
+			.Storage in texture_metadata.usage,
+			.Invalid_Texture,
+			.Error,
+			"Invalid texture usage",
+			"A texture, in order to be used in a texture set should, be created with the " +
+			"`.Storage` usage. The provided view %v (at index %d) references a texture with " +
+			"usage %v.",
+			view,
+			i,
+			texture_metadata.usage,
+			location=location,
+		) or_return
 	}
 
 	delete(metadata.storage_texture_sets[type], _generic_allocator)
@@ -203,18 +217,18 @@ set_storage_texture_set :: proc(
 		res = m3_set_storage_texture_set(metadata, type)
 	}
 
-	_check_generic_backend_error(res, location)
+	_check_generic_backend_error(res, location) or_return
+	
+	return nil
 }
 
-set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, location := #caller_location) {
+set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, location := #caller_location) -> Result {
 	metadata, metadata_res := _metadata_of(resource_set)
-	_check_resource_set_handle(metadata_res, resource_set, location)
-	if metadata_res != nil do return
+	_check_resource_set_handle(metadata_res, resource_set, location) or_return
 
 	for sampler in samplers {
 		_, sampler_metadata_res := _metadata_of(sampler)
-		_check_sampler_handle(sampler_metadata_res, sampler, location)
-		if sampler_metadata_res != nil do return
+		_check_sampler_handle(sampler_metadata_res, sampler, location) or_return
 	}
 
 	delete(metadata.sampler_set, _generic_allocator)
@@ -227,7 +241,9 @@ set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, locatio
 		res = m3_set_sampler_set(metadata)
 	}
 
-	_check_generic_backend_error(res, location)
+	_check_generic_backend_error(res, location) or_return
+
+	return nil
 }
 
 _check_resource_set_handle :: proc(result: Result, resource_set: Resource_Set, location: runtime.Source_Code_Location) -> Result {

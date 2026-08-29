@@ -67,6 +67,8 @@ Error :: enum {
 	Invalid_Pipeline_Bytecode,
 	Invalid_Pipeline_Constants,
 
+	Surface_Unavailable,
+
 	Invalid_Device,
 	Invalid_Buffer,
 	Invalid_Texture,
@@ -81,6 +83,7 @@ Error :: enum {
 	Invalid_Fence,
 	Invalid_Blend_State,
 	Invalid_Depth_Stencil_State,
+	Invalid_Surface,
 
 	No_Available_Command_Buffers,
 	Incompatible_Pipeline,
@@ -151,6 +154,9 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	hm.dynamic_init(&_resource_sets, _global_allocator)
 	hm.dynamic_init(&_semaphores, _global_allocator)
 	hm.dynamic_init(&_fences, _global_allocator)
+	hm.dynamic_init(&_depth_stencil_states, _global_allocator)
+	hm.dynamic_init(&_blend_states, _global_allocator)
+	hm.dynamic_init(&_surfaces, _global_allocator)
 
 	when TARGET_API == .Vulkan {
 		res = vk_init()
@@ -166,14 +172,29 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 }
 
 fini :: proc() {
-	if _is_device_selected {
-		destroy_resource_set(_default_resource_set)
-	}
-
 	when TARGET_API == .Vulkan {
 		vk_pre_fini()
 	} else when TARGET_API == .Metal_3 {
 		m3_pre_fini()
+	}
+
+	if _is_device_selected {
+		destroy_resource_set(_default_resource_set)
+	}
+
+	surface_it := hm.dynamic_iterator_make(&_surfaces)
+	for _, surface in hm.iterate(&surface_it) {
+		destroy_surface(surface)
+	}
+
+	blend_it := hm.dynamic_iterator_make(&_blend_states)
+	for _, blend in hm.iterate(&blend_it) {
+		destroy_blend_state(blend)
+	}
+
+	depth_stencil_it := hm.dynamic_iterator_make(&_depth_stencil_states)
+	for _, depth_stencil in hm.iterate(&depth_stencil_it) {
+		destroy_depth_stencil_state(depth_stencil)
 	}
 
 	fence_it := hm.dynamic_iterator_make(&_fences)
@@ -251,6 +272,7 @@ _metadata_of :: proc {
 	_fence_metadata_of,
 	_blend_state_metadata_of,
 	_depth_stencil_state_metadata_of,
+	_surface_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {

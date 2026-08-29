@@ -31,6 +31,11 @@ vk_instance:			vk.Instance
 vk_has_validation:		bool
 vk_user_logger:			log.Logger
 
+vk_supports_metal_surfaces:	bool
+vk_supports_win32_surfaces:	bool
+vk_supports_wayland_surfaces:	bool
+vk_supports_xlib_surfaces:	bool
+
 vk_load_instance_procs :: proc() -> Result {
 	loader_path := _settings.vk.loader_path
 	if loader_path == "" {
@@ -123,12 +128,32 @@ vk_init_instance :: proc() -> Result {
 		vk_try_use_instance_extension("VK_KHR_portability_enumeration")
 	}
 	has_debug_utils := vk_try_use_instance_extension("VK_EXT_debug_utils")
-	log.debugf("Creating vulkan instance with extensions: %v.", vk_enabled_instance_extensions)
+
+	supports_surfaces := vk_try_use_instance_extension("VK_KHR_surface")
+	ensure(supports_surfaces, "The vulkan instace does not support presentation. Headless rendering is not yet supported.")
+	when ODIN_OS == .Darwin {
+		vk_supports_metal_surfaces = vk_try_use_instance_extension("VK_EXT_metal_surface")
+	} else when ODIN_OS == .Windows {
+		vk_supports_win32_surfaces = vk_try_use_instance_extension("VK_KHR_win32_surface")
+	} else {
+		vk_supports_wayland_surfaces = vk_try_use_instance_extension("VK_KHR_wayland_surface")
+		vk_supports_xlib_surfaces = vk_try_use_instance_extension("VK_KHR_xlib_surface")
+	}
+	ensure(
+		vk_supports_metal_surfaces ||
+		vk_supports_win32_surfaces ||
+		vk_supports_wayland_surfaces ||
+		vk_supports_xlib_surfaces,
+		"The instance does not support presenting neither with Metal surfaces, Win32 surfaces, Wayland " +
+		"surfaces nor XLib surfaces.",
+	)
 
 	if !has_debug_utils || !has_validation_layer {
 		log.warn("The instance does not meet the requirements to enable validation.")
 		vk_has_validation = false
 	}
+
+	log.debugf("Creating vulkan instance with extensions: %v.", vk_enabled_instance_extensions)
 
 	instance_desc := vk.InstanceCreateInfo {
 		sType			= .INSTANCE_CREATE_INFO,
@@ -229,6 +254,11 @@ vk_init :: proc() -> Result {
 }
 
 vk_pre_fini :: proc() {
+	vk.QueueWaitIdle(_queues[.Default].vk.queue)
+	if _device_info.properties.transfer_queue {
+		vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
+	}
+
 	when ODIN_OS == .Darwin && ENABLE_TRACING {
 		m3_end_tracing()
 	}

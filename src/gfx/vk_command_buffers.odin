@@ -19,10 +19,13 @@ vk_Command_Buffer_Metadata :: struct {
 	bound_resource_set:		Resource_Set,
 
 	is_first_command_buffer:	bool,
-	pending_waits:			[]Fence,
 
+	pending_waits:			[]Fence,
 	pending_render_pass_waits:	[]Render_Pass_Wait,
 	pending_render_pass_signals:	[]Render_Pass_Signal,
+	pending_surface_waits:		[dynamic]vk.Semaphore,
+
+	render_pass_surface_views:	[dynamic]View,
 
 	semaphore:			vk.Semaphore,
 	semaphore_value:		u64,
@@ -332,6 +335,7 @@ vk_emit_signal :: proc(
 	metadata.vk.pending_waits = {}
 	metadata.vk.pending_render_pass_signals = {}
 	metadata.vk.pending_render_pass_waits = {}
+	resize(&metadata.vk.pending_surface_waits, 0)
 	metadata.vk.semaphore_value += 1
 
 	return nil
@@ -382,6 +386,7 @@ vk_emit_begin_render_pass :: proc(
 		metadata.vk.pending_waits = {}
 		metadata.vk.pending_render_pass_signals = {}
 		metadata.vk.pending_render_pass_waits = {}
+		resize(&metadata.vk.pending_surface_waits, 0)
 		metadata.vk.semaphore_value += 1
 
 		vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
@@ -398,8 +403,6 @@ vk_emit_begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(attachment.view)
 		_check_internal_emission_result(view_res) or_return
 
-		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
-		assert(texture_res == nil)
 
 		// TODO: Figure out reductions
 		color_attachment_infos[i] = {
@@ -420,8 +423,57 @@ vk_emit_begin_render_pass :: proc(
 			},
 		}
 
-		render_area.x = max(render_area.x, texture_metadata.dimensions.x)
-		render_area.y = max(render_area.y, texture_metadata.dimensions.y)
+		switch v in view_metadata.reference {
+		case Texture:
+			texture_metadata, texture_res := _metadata_of(v)
+			assert(texture_res == nil)
+
+			render_area.x = max(render_area.x, texture_metadata.dimensions.x)
+			render_area.y = max(render_area.y, texture_metadata.dimensions.y)
+
+		case Surface:
+			surface_metadata, surface_res := _metadata_of(v)
+			assert(surface_res == nil)
+
+			render_area.x = max(render_area.x, surface_metadata.dimensions.x)
+			render_area.y = max(render_area.y, surface_metadata.dimensions.y)
+
+			append(
+				&metadata.vk.pending_surface_waits,
+				view_metadata.vk.swapchain_image_semaphore,
+			) or_return
+			append(
+				&metadata.vk.render_pass_surface_views,
+				attachment.view,
+			) or_return
+
+			old_layout: vk.ImageLayout
+			if !surface_metadata.vk.has_image_been_initialized[view_metadata.vk.swapchain_image_index] {
+				old_layout = .UNDEFINED
+				surface_metadata.vk.has_image_been_initialized[view_metadata.vk.swapchain_image_index] = true
+			} else {
+				old_layout = .PRESENT_SRC_KHR
+			}
+
+			image_barrier := vk.ImageMemoryBarrier2 {
+				sType			= .IMAGE_MEMORY_BARRIER_2,
+				dstStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
+				oldLayout		= old_layout,
+				newLayout		= .GENERAL,
+				image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
+				subresourceRange	= {
+					aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
+					levelCount	= 1,
+					layerCount	= 1,
+				},
+			}
+			dependency_info := vk.DependencyInfo {
+				sType			= .DEPENDENCY_INFO,
+				imageMemoryBarrierCount	= 1,
+				pImageMemoryBarriers	= &image_barrier,
+			}
+			vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
+ 		}
 	}
 
 	depth_attachment_info: ^vk.RenderingAttachmentInfo
@@ -429,7 +481,7 @@ vk_emit_begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(attachment.view)
 		_check_internal_emission_result(view_res) or_return
 
-		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
+		texture_metadata, texture_res := _metadata_of(view_metadata.reference.(Texture))
 		assert(texture_res == nil)
 
 		depth_attachment_info = &{
@@ -454,7 +506,7 @@ vk_emit_begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(attachment.view)
 		_check_internal_emission_result(view_res) or_return
 
-		texture_metadata, texture_res := _metadata_of(view_metadata.texture)
+		texture_metadata, texture_res := _metadata_of(view_metadata.reference.(Texture))
 		assert(texture_res == nil)
 
 		stencil_attachment_info = &{
@@ -514,6 +566,35 @@ vk_emit_end_render_pass :: proc(
 ) -> Result {
 
 	vk.CmdEndRenderingKHR(metadata.vk.command_buffer)
+
+	for view in metadata.vk.render_pass_surface_views {
+		view_metadata, view_res := _metadata_of(view)
+		_check_internal_emission_result(view_res) or_return
+
+		surface_metadata, surface_res := _metadata_of(view_metadata.reference.(Surface))
+		_check_internal_emission_result(surface_res) or_return
+
+		image_barrier := vk.ImageMemoryBarrier2 {
+			sType			= .IMAGE_MEMORY_BARRIER_2,
+			dstStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
+			oldLayout		= .GENERAL,
+			newLayout		= .PRESENT_SRC_KHR,
+			image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
+			subresourceRange	= {
+				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
+				levelCount	= 1,
+				layerCount	= 1,
+			},
+		}
+		dependency_info := vk.DependencyInfo {
+			sType			= .DEPENDENCY_INFO,
+			imageMemoryBarrierCount	= 1,
+			pImageMemoryBarriers	= &image_barrier,
+		}
+		vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
+	}
+
+	resize(&metadata.vk.render_pass_surface_views, 0)
 
 	return nil
 }
@@ -617,6 +698,8 @@ vk_emit_commands :: proc(
 	metadata.vk.pending_waits = {}
 	metadata.vk.pending_render_pass_signals = {}
 	metadata.vk.pending_render_pass_waits = {}
+	metadata.vk.pending_surface_waits = make([dynamic]vk.Semaphore, metadata.allocator) or_return
+	metadata.vk.render_pass_surface_views = make([dynamic]View, metadata.allocator) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata)
 
@@ -675,6 +758,8 @@ vk_emit_commands :: proc(
 	metadata.vk.pending_waits = {}
 	metadata.vk.pending_render_pass_signals = {}
 	metadata.vk.pending_render_pass_waits = {}
+	resize(&metadata.vk.pending_surface_waits, 0)
+	resize(&metadata.vk.render_pass_surface_views, 0)
 	
 	return submit_info, nil
 }
@@ -764,7 +849,7 @@ vk_prepare_wait_semaphore_submit_infos :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 ) -> (infos: []vk.SemaphoreSubmitInfo, res: Result) {
 
-	wait_count := len(metadata.vk.pending_waits)
+	wait_count := len(metadata.vk.pending_waits) + len(metadata.vk.pending_surface_waits)
 	if metadata.vk.is_first_command_buffer {
 		wait_count += len(metadata.semaphore_waits)
 	} else {
@@ -790,6 +875,17 @@ vk_prepare_wait_semaphore_submit_infos :: proc(
 			},
 		)
 	}
+	for semaphore in metadata.vk.pending_surface_waits {
+		append(
+			&waits,
+			vk.SemaphoreSubmitInfo {
+				sType		= .SEMAPHORE_SUBMIT_INFO,
+				semaphore	= semaphore,
+				stageMask	= { .COLOR_ATTACHMENT_OUTPUT },
+			},
+		)
+	}
+
 	for wait in metadata.vk.pending_render_pass_waits {
 		for fence in wait.fences {
 			fence_metadata, fence_res := _metadata_of(fence)

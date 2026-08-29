@@ -105,6 +105,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	append(&vk_enabled_device_extensions, "VK_KHR_dynamic_rendering")
 	append(&vk_enabled_device_extensions, "VK_KHR_synchronization2")
 	append(&vk_enabled_device_extensions, "VK_EXT_extended_dynamic_state")
+	append(&vk_enabled_device_extensions, "VK_KHR_swapchain")
 
 	queue_descriptors: []vk.DeviceQueueCreateInfo
 
@@ -539,6 +540,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 	return vk_device_has_extension(info, "VK_KHR_dynamic_rendering") &&
 		vk_device_has_extension(info, "VK_KHR_synchronization2") &&
 		vk_device_has_extension(info, "VK_EXT_extended_dynamic_state") &&
+		vk_device_has_extension(info, "VK_KHR_swapchain") &&
 		vk_info.features.features.imageCubeArray == true &&
 		vk_info.features.features.samplerAnisotropy == true &&
 		vk_info.features.features.shaderSampledImageArrayDynamicIndexing == true &&

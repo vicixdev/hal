@@ -10,6 +10,7 @@ m3_Texture_Metadata :: struct {
 
 m3_View_Metadata :: struct {
 	view:		^MTL.Texture,
+	drawable:	^MTL.Drawable,
 }
 
 m3_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) {

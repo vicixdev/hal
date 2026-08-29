@@ -873,3 +873,4 @@ draw_quad :: proc(t: ^testing.T) {
 		testing.expect_value(t, download_pixels[i], reference_pixels[i])
 	}
 }
+

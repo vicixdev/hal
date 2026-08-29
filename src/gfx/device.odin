@@ -20,13 +20,13 @@ Device_Limits :: struct {
 Device_Properties :: struct {
 	// `.Default` and `.Readback` memory allocations reside on the device.
 	//	NOTE: This only affects the gpu-access speed. The same code should work whether this is true or false.
-	host_accessible_device_memory:	bool,
+	host_accessible_device_memory:		bool,
 
 	// The device is fast at executing interleaved compute and render operations.
 	fast_compute_render_interleaving:	bool,
 
 	// The priority queue for data transfer operations is available.
-	transfer_queue:			bool,
+	transfer_queue:				bool,
 }
 
 Device_Info :: struct {

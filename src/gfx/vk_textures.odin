@@ -9,7 +9,11 @@ vk_Texture_Metadata	:: struct {
 }
 
 vk_View_Metadata	:: struct {
-	view:	vk.ImageView,
+	view:			vk.ImageView,
+
+	// If referencing a surface.
+	swapchain_image_index:	u32,
+	swapchain_image_semaphore:	vk.Semaphore,
 }
 
 vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) {
@@ -324,5 +328,35 @@ vk_TEXTURE_USAGE_TO_VK := [Texture_Usage]vk.ImageUsageFlags {
 	.Storage			= { .STORAGE, .TRANSFER_SRC, .TRANSFER_DST },
 	.Color_Attachment		= { .COLOR_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
 	.Depth_Stencil_Attachment	= { .DEPTH_STENCIL_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
+}
+
+
+vk_format_to_gfx_pixel_format :: proc(format: vk.Format) -> (Pixel_Format) {
+	#partial switch format {
+		case .R8_UNORM:			return .R8_Unorm
+		case .R8G8_UNORM:		return .RG8_Unorm
+		case .R8G8B8A8_UNORM:		return .RGBA8_Unorm
+		case .R8G8B8A8_SRGB:		return .RGBA8_Srgb
+		case .B8G8R8A8_UNORM:		return .BGRA8_Unorm
+		case .B8G8R8A8_SRGB:		return .BGRA8_Srgb
+		case .R16_SFLOAT:		return .R16_Float
+		case .R16G16_SFLOAT:		return .RG16_Float
+		case .R16G16B16A16_SFLOAT:	return .RGBA16_Float
+		case .R16G16B16A16_UNORM:	return .RGBA16_Unorm
+		case .R16_UNORM:		return .R16_Unorm
+		case .R16G16_UNORM:		return .RG16_Unorm
+		case .R32_SFLOAT:		return .R32_Float
+		case .R32G32_SFLOAT:		return .RG32_Float
+		case .R32G32B32A32_SFLOAT:	return .RGBA32_Float
+		case .B10G11R11_UFLOAT_PACK32:	return .RG11B10_Float
+		case .A2R10G10B10_UNORM_PACK32:	return .RGB10_A2_Unorm
+		case .A2R10G10B10_UINT_PACK32:	return .RGB10_A2_Uint
+		case .D32_SFLOAT:		return .D32_Float
+		case .D24_UNORM_S8_UINT:	return .D24_Unorm_S8_Uint
+		case .D32_SFLOAT_S8_UINT:	return .D32_Float_S8_Uint
+		case .D16_UNORM:		return .D16_Unorm
+	}
+	
+	return .None
 }
 

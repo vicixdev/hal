@@ -13,6 +13,7 @@ case "$target_api" in
 	;;
 	Metal_3)
 		odin build src -collection:shared=shared -out:build/out -debug -strict-style -vet -warnings-as-errors -define:GFX_TARGET_API=Metal_3
+		# odin build src -collection:shared=shared -out:build/out -debug -strict-style -warnings-as-errors -define:GFX_TARGET_API=Metal_3
 
 		slangc ./shaders/basic.slang -profile glsl_450 -target metal	-capability METAL_3_0 -capability GL_EXT_buffer_reference -o ./build/basic.metal -fvk-use-entrypoint-name -DGFX_METAL=1
 		slangc ./shaders/basic.slang -profile glsl_450 -target metallib	-capability METAL_3_0 -capability GL_EXT_buffer_reference -o ./build/basic.metallib -fvk-use-entrypoint-name -DGFX_METAL=1
