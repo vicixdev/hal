@@ -17,6 +17,7 @@ m3_supported_formats_for_target :: proc(
 	descriptor: Surface_Descriptor,
 	allocator: runtime.Allocator,
 ) -> (formats: []Pixel_Format, res: Result) {
+	NS.scoped_autoreleasepool()
 
 	formats = slice.clone(m3_SUPPORTED_PRESENTATION_FORMATS, allocator) or_return
 
@@ -24,6 +25,7 @@ m3_supported_formats_for_target :: proc(
 }
 
 m3_create_surface :: proc(metadata: ^_Surface_Metadata, descriptor: Surface_Descriptor) -> Result {
+	NS.scoped_autoreleasepool()
 	
 	view := cast(^NS.View)descriptor.target.(Surface_Cocoa_Target).ns_view
 	layer := m3_create_metal_layer_from_descriptor(descriptor)
@@ -39,6 +41,7 @@ m3_create_surface :: proc(metadata: ^_Surface_Metadata, descriptor: Surface_Desc
 }
 
 m3_destroy_surface :: proc(metadata: ^_Surface_Metadata) {
+	NS.scoped_autoreleasepool()
 
 	metadata.m3.view->setWantsLayer(false)
 	metadata.m3.view->setLayer(nil)
@@ -48,12 +51,14 @@ m3_destroy_surface :: proc(metadata: ^_Surface_Metadata) {
 }
 
 m3_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_View_Metadata) -> Result {
+	NS.scoped_autoreleasepool()
 
 	drawable := metadata.m3.layer->nextDrawable()
 	if drawable == nil {
 		return .Surface_Unavailable
 	}
 
+	drawable->retain()
 	view_metadata.m3.drawable	= drawable
 	view_metadata.m3.view		= drawable->texture()
 
@@ -73,6 +78,7 @@ m3_present :: proc(
 	view_metadata:		^_View_Metadata,
 	waits:			[]_Semaphore_Wait,
 ) -> Result {
+	NS.scoped_autoreleasepool()
 	
 	command_buffer := queue_metadata.m3.queue->commandBuffer()
 

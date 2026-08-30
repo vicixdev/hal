@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:sync"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "shared:darwext/Metal"
+import MTLe "darwext/Metal"
 
 m3_Buffer_Metadata :: struct {
 	heap:		^MTL.Heap,
@@ -56,6 +56,8 @@ m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 }
 
 m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
+	NS.scoped_autoreleasepool()
+
 	if sync.guard(&m3_residency_set_mutex) {
 		m3_residency_set->removeAllocation(metadata.m3.heap)
 		m3_residency_set->commit()
@@ -66,6 +68,7 @@ m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 }
 
 m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
+	NS.scoped_autoreleasepool()
 
 	heap_label := NS.String.alloc()->initWithOdinString(label)
 	defer heap_label->release()

@@ -29,7 +29,6 @@ m3_create_texture :: proc(
 	default_view_metadata:	^_View_Metadata,
 	descriptor: Texture_Descriptor,
 ) -> Result {
-
 	NS.scoped_autoreleasepool()
 
 	mtl_desc := m3_texture_descriptor_to_mtl(descriptor)
@@ -51,10 +50,14 @@ m3_create_texture :: proc(
 }
 
 m3_destroy_texture :: proc(metadata: ^_Texture_Metadata) {
+	NS.scoped_autoreleasepool()
+	
 	metadata.m3.texture->release()
 }
 
 m3_label_texture :: proc(metadata: ^_Texture_Metadata, label: string) -> Result {
+	NS.scoped_autoreleasepool()
+	
 	// FIXME: This works as long as the label is statically allocated, since `initWithOdinString` does not copy the
 	//	string, only references it.
 
@@ -88,6 +91,7 @@ m3_create_view_with_descriptor :: proc(
 	texture_metadata:	^_Texture_Metadata,
 	descriptor:		View_Descriptor,
 ) -> Result {
+	NS.scoped_autoreleasepool()
 
 	view := texture_metadata.m3.texture->newTextureViewWithLevels(
 		m3_PIXEL_FORMAT_TO_MTL[texture_metadata.format],
@@ -105,10 +109,14 @@ m3_create_view_with_descriptor :: proc(
 }
 
 m3_destroy_view :: proc(metadata: ^_View_Metadata) {
+	NS.scoped_autoreleasepool()
+
 	metadata.m3.view->release()
 }
 
 m3_label_view :: proc(metadata: ^_View_Metadata, label: string) -> Result {
+	NS.scoped_autoreleasepool()
+
 	objc_str := NS.String.alloc()->initWithOdinString(label)
 	defer objc_str->release()
 

@@ -1,30 +1,62 @@
 import gfx;
 
-struct Params {
-	float*	in_a;
-	float*	in_b;
-	float*	out;
+struct Vertex {
+	float	position[3];
+	float	color[3];
+
+	float3	get_position() {
+		return float3(position[0], position[1], position[2]);
+	}
+
+	float3	get_color() {
+		return float3(color[0], color[1], color[2]);
+	}
 }
 
-[shader("compute")]
-[numthreads(16,16,1)]
-void computeMain(
-	uint3 threadId : SV_DispatchThreadID,
-	uniform Params params,
+struct Parameters {
+	float4x4	model;
+	float4x4	view;
+	float4x4	proj;
+
+	Vertex*		vertices;
+}
+
+struct Vertex_Output {
+	float4	position	: SV_Position;
+	float3	color;
+}
+
+struct Fragment_Output {
+	float4	color;
+}
+
+[vk_push_constant]
+uniform Parameters* parameters;
+
+[shader("vertex")]
+Vertex_Output vertex_main(
+	uint32_t index	: SV_VertexID,
 ) {
-	uint index = threadId.x;
+	static_assert(sizeof(Vertex) == 24, "Unxpected Vertex size.");
 
-	params.out[index] = params.in_a[index] + params.in_b[index];
-	// params.out[index] = params.in_a[index] + params.in_b[index] *
-	// 	nonuniform(d2_texture_set[index]).Sample(sampler_set[0], { 0, 0 }).x;
-	// float4 value = nonuniform(d1_texture_set[index].texture).Sample(sampler_set[0].sampler_state, 0.5);
-	// nonuniform(d1_storage_texture_set[index].texture).Store(index, value);
+	float3 position = parameters.vertices[index].get_position();
+	float3 color = parameters.vertices[index].get_color();
 
-	// Texture1D tex = nonuniform(texture_1d_at(index + 1));
-	// SamplerState sampl = sampler_at(0);
-	// RWTexture1D res = storage_texture_1d_at(0);
+	// clip = NORMALIZE_CLIP_COORDS * proj * view * model * position
+	float4 clip = float4(position, 1.0);
+	clip = mul(parameters.model, clip);
+	clip = mul(parameters.view, clip);
+	clip = mul(parameters.proj, clip);
+	clip = mul(NORMALIZE_CLIP_COORDS, clip);
 
-	// float4 pix = tex.Sample(sampl, index);
-	// res.Store(index, pix);
+	return Vertex_Output(
+		clip,
+		color,
+	);
+}
+
+[shader("fragment")]
+Fragment_Output fragment_main(Vertex_Output input) {
+	return Fragment_Output(float4(input.color, 1.0));
 }
 

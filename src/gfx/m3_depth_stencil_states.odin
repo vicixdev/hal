@@ -1,6 +1,7 @@
 #+build darwin
 package gfx
 
+import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
 m3_Depth_Stencil_State_Metadata :: struct {
@@ -11,6 +12,7 @@ m3_create_depth_stencil_state :: proc(
 	metadata:	^_Depth_Stencil_State_Metadata,
 	descriptor:	Depth_Stencil_Descriptor,
 ) -> Result {
+	NS.scoped_autoreleasepool()
 
 	mtl_descriptor := m3_depth_stencil_descriptor_to_mtl(descriptor)
 
@@ -25,6 +27,8 @@ m3_create_depth_stencil_state :: proc(
 }
 
 m3_destroy_depth_stencil_state :: proc(metadata: ^_Depth_Stencil_State_Metadata) {
+	NS.scoped_autoreleasepool()
+
 	metadata.m3.depth_stencil_state->release()
 }
 

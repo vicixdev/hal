@@ -1,6 +1,7 @@
 #+build darwin
 package gfx
 
+// import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
 m3_Blend_State_Metadata :: struct {}
@@ -9,10 +10,14 @@ m3_create_blend_state :: proc(
 	metadata:	^_Blend_State_Metadata,
 	descriptor:	Blend_Descriptor,
 ) -> Result {
+	// NS.scoped_autoreleasepool()
+
 	return nil
 }
 
-m3_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {}
+m3_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {
+	// NS.scoped_autoreleasepool()
+}
 
 @(rodata)
 m3_BLEND_OPERATION_TO_MTL := [Blend_Operation]MTL.BlendOperation {

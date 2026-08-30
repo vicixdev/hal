@@ -3,7 +3,7 @@ package gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "shared:darwext/metal"
+import MTLe "darwext/metal"
 
 m3_Current_Encoder :: enum {
 	None,
@@ -470,6 +470,8 @@ m3_submit :: proc(
 	command_buffers: []Command_Buffer,
 	signals: []Semaphore_Signal,
 ) -> Result {
+	NS.scoped_autoreleasepool()
+
 	for command_buffer in command_buffers {
 		metadata, metadata_res := _metadata_of(command_buffer)
 		_check_internal_emission_result(metadata_res) or_return

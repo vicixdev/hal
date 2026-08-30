@@ -1,51 +1,97 @@
 package main
 
+import "core:time"
+import "core:slice"
 import "core:log"
 import "core:mem"
 import "core:debug/trace"
-import "vendor:glfw"
+import la "core:math/linalg"
+import sdl "vendor:sdl3"
 import "gfx"
 
-window:		glfw.WindowHandle
 surface:	gfx.Surface
 surface_format:	gfx.Pixel_Format
 
-setup :: proc() {
-	ensure(glfw.Init() == true)
+Camera :: struct {
+	position:	[3]f32,
+	// pitch and yaw
+	rotation:	[2]f32,
 
-	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
-	glfw.WindowHint(glfw.RESIZABLE, glfw.FALSE)
-	window = glfw.CreateWindow(640, 480, "Window", nil, nil)
+	fov:		f32,
+	aspect:		f32,
+	near:		f32,
+	far:		f32,
+}
+
+// Minecraft style
+move_camera :: proc(camera: ^Camera, direction: [3]f32, speed: f32, dt: f32) {
+	if direction == { 0, 0, 0 } {
+		return
+	}
+
+	input := la.normalize(direction) * speed * dt
+
+	front := [3]f32 {
+		la.sin(camera.rotation.y),
+		0,
+		-la.cos(camera.rotation.y),
+	}
+
+	right := la.cross(front, [3]f32{ 0, 1, 0})
+	
+	camera.position += front * input.z
+	camera.position += right * input.x
+	camera.position.y += input.y
+}
+
+rotate_camera :: proc(camera: ^Camera, rotation: [2]f32) {
+	epsilon: f32 = 0.05
+
+	camera.rotation += rotation
+
+	if camera.rotation.x >= (la.PI/2 - epsilon) {
+		camera.rotation.x = la.PI/2 - epsilon
+	} else if camera.rotation.x <= -(la.PI/2 - epsilon) {
+		camera.rotation.x = -(la.PI/2 - epsilon)
+	}
+}
+
+get_camera_matrices :: proc(camera: Camera) -> (view: matrix[4,4]f32, proj: matrix[4,4]f32) {
+	look_direction := [3]f32 {
+		 la.cos(camera.rotation.x) * la.sin(camera.rotation.y),
+		 la.sin(camera.rotation.x),
+		-la.cos(camera.rotation.x) * la.cos(camera.rotation.y),
+	}
+
+	view = la.matrix4_look_at_f32(camera.position, camera.position + look_direction, { 0, 1, 0 })
+	proj = la.matrix4_perspective_f32(camera.fov, camera.aspect, camera.near, camera.far)
+
+	return
+}
+
+setup :: proc() {
+	ensure(sdl.Init({ .VIDEO }) == true)
+
+	window_flags: sdl.WindowFlags = {} when ODIN_OS != .Darwin else { .METAL }
+	window = sdl.CreateWindow("Vulkan" when gfx.TARGET_API == .Vulkan else "Metal 3", 1024, 768, window_flags)
 	assert(window != nil)
 
-	gfx.init({
-		vk = {
-			// shader_format = .Metallib,
-		},
-	})
+	gfx.init()
 
 	devices, _ := gfx.enumerate_devices()
 	log.infof("%#v", devices)
 	device := devices[0].id
-	when gfx.TARGET_API == .Vulkan {
-		for device_info in devices {
-			if device_info.driver == "KosmicKrisp" {
-				device = device_info.id
-				break
-			}
-		}
-	}
 
 	gfx.select_device(device)
 
 	target: gfx.Surface_Target
 	when ODIN_OS == .Darwin {
 		target = gfx.Surface_Cocoa_Target {
-			ns_view	= glfw.GetCocoaView(window),
+			ns_view	= sdl.Metal_CreateView(window),
 		}
 	} else when ODIN_OS == .Windows {
 		target = gfx.Surface_HWND_Target {
-			h_wnd	= glfw.GetWin32Window(window),
+			h_wnd	= sdl.GetPointerProperty(sdl3.GetWindowProperties(window), sdl.PROP_WINDOW_WIN32_HWND_POINTER, nil),
 		}
 	} else {
 		#panic("*nix is not yet supported.")
@@ -53,7 +99,7 @@ setup :: proc() {
 
 	surface_descriptor := gfx.Surface_Descriptor {
 		type			= .V_Sync,
-		dimensions		= { 640, 480 },
+		dimensions		= { 1024, 760 },
 		frames_in_flight	= 3,
 		target			= target,
 	}
@@ -61,7 +107,11 @@ setup :: proc() {
 	assert(formats_res == nil && len(formats) > 0)
 
 	surface_format = formats[0]
+	if slice.contains(formats, gfx.Pixel_Format.BGRA8_Unorm) {
+		surface_format = .BGRA8_Unorm
+	}
 	surface_descriptor.format = surface_format
+	log.info(formats)
 	log.infof("Creating surface with descriptor %#v.", surface_descriptor)
 
 	surface_res: gfx.Result
@@ -72,7 +122,8 @@ setup :: proc() {
 
 fini :: proc() {
 	gfx.fini()
-	glfw.Terminate()
+
+	sdl.Quit()
 }
 
 app :: proc() -> gfx.Result {
@@ -82,17 +133,21 @@ app :: proc() -> gfx.Result {
 		color:		[3]f32,
 	}
 	VERTICES := [?]Vertex {
-		{ { -0.5, -0.5, 1.0 }, { 1.0, 0.0, 0.0 } },
-		{ {  0.5, -0.5, 1.0 }, { 0.0, 1.0, 0.0 } },
-		{ {  0.5,  0.5, 1.0 }, { 0.0, 0.0, 1.0 } },
-		{ { -0.5,  0.5, 1.0 }, { 1.0, 1.0, 0.0 } },
+		{ { -0.5, -0.5, 0.0 }, { 1.0, 0.0, 0.0 } },
+		{ {  0.5, -0.5, 0.0 }, { 0.0, 1.0, 0.0 } },
+		{ {  0.5,  0.5, 0.0 }, { 0.0, 0.0, 1.0 } },
+		{ { -0.5,  0.5, 0.0 }, { 1.0, 1.0, 0.0 } },
 	}
 	INDICES := [?]u16 {
 		0, 1, 2,
 		2, 3, 0,
 	}
 
-	Parameters :: struct #packed {
+	Arguments :: struct #packed {
+		model:		matrix[4,4]f32,
+		view:		matrix[4,4]f32,
+		proj:		matrix[4,4]f32,
+
 		vertices:	uintptr,
 	}
 
@@ -102,6 +157,9 @@ app :: proc() -> gfx.Result {
 	default_memory: gfx.Arena
 	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
 
+	frame_memory: gfx.Scratch
+	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
+
 	vertices := gfx.arena_alloc(&default_memory, size_of(VERTICES)) or_return
 	mem.copy(vertices.contents, &VERTICES[0], size_of(VERTICES))
 	gpu_vertices := gfx.gpu_address_of(vertices) or_return
@@ -109,7 +167,7 @@ app :: proc() -> gfx.Result {
 	indices := gfx.arena_alloc(&default_memory, size_of(INDICES)) or_return
 	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
 
-	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./src/gfx/tests/shaders", context.temp_allocator)
+	pipeline_bytecode, _ := gfx.load_bytecode_of("basic", "./build", context.temp_allocator)
 	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
 		vertex_stage	= {
 			bytecode	= pipeline_bytecode,
@@ -126,9 +184,70 @@ app :: proc() -> gfx.Result {
 	}
 	pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
 
-	for !glfw.WindowShouldClose(window) {
-		glfw.PollEvents()
+	prev_time := time.tick_now()
+	delta_time: f32
+
+	camera := Camera {
+		fov		= 95 * la.DEG_PER_RAD,
+		aspect		= 1024 / 768,
+		near		= 0.01,
+		far		= 100.0,
+	}
+	rotation: f32
+
+	for !should_quit {
 		framecount += 1
+		if framecount > 3 {
+			gfx.wait_semaphore(frame_semaphore, framecount - 3)
+		}
+
+		process_events()
+
+		time_now := time.tick_now()
+		time_diff := time.tick_diff(prev_time, time_now)
+
+		delta_time = cast(f32)time_diff / 1000_000_000
+		prev_time = time_now
+
+		if .Just_Pressed in key_states[.Tab] {
+			toggle_mouse_capture()
+		}
+		if .Just_Pressed in key_states[.Escape] {
+			should_quit = true
+		}
+
+		rotation += 0.25 * delta_time
+		input := [3]f32{}
+		speed: f32 = 3.0
+		if .Pressed in key_states[.W] {
+			input.z += 1
+		} else if .Pressed in key_states[.S] {
+			input.z -= 1
+		}
+		if .Pressed in key_states[.D] {
+			input.x += 1
+		} else if .Pressed in key_states[.A] {
+			input.x -= 1
+		}
+		if .Pressed in key_states[.Space] {
+			input.y += 1
+		} else if .Pressed in key_states[.Left_Control] {
+			input.y -= 1
+		}
+		if .Pressed in key_states[.Left_Shift] {
+			speed = 10.0
+		}
+		move_camera(&camera, input, speed, delta_time)
+		log.info(camera.position, delta_time)
+
+		if mouse_state.captured || .Pressed in mouse_state.buttons[.Right] {
+			camera_rotation := mouse_state.delta / 500.0
+			camera_rotation.x, camera_rotation.y = camera_rotation.y, camera_rotation.x
+			camera_rotation.x *= -1
+			rotate_camera(&camera, camera_rotation)
+		}
+
+		view, proj := get_camera_matrices(camera)
 
 		surface_view: gfx.View
 		for {
@@ -154,21 +273,24 @@ app :: proc() -> gfx.Result {
 			},
 		}
 
-		command_buffer := gfx.begin_command_encoding(.Default, { frame_semaphore, framecount - 1 }) or_return
+		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
+			args := gfx.scratch_alloc(&frame_memory, size_of(Arguments), 16) or_return
+			gfx.as(^Arguments, args)^ = {
+				vertices	= gpu_vertices,
+				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(rotation, { 0.0, 1.0, 0.0 }),
+				view		= view,
+				proj		= proj,
+			}
+			_ = view; _ = proj
+
 			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, Parameters {
-				vertices = gpu_vertices,
-			}, indices, 6)
+			gfx.draw_indexed(command_buffer, pipeline, gfx.gpu_address_of(args) or_return, indices, 6)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return
 		gfx.present(.Default, surface_view, { frame_semaphore, framecount }) or_return
-
-		if framecount >= 4 {
-			gfx.wait_semaphore(frame_semaphore, framecount - 3)
-		}
 	}
 
 	gfx.wait_semaphore(frame_semaphore, framecount)
@@ -193,6 +315,6 @@ main :: proc() {
 	defer fini()
 
 	res := app()
-	if res != nil do log.error(res)
+	if res != nil do log.fatalf("Example failed with error %v.", res)
 }
 

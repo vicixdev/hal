@@ -9,11 +9,25 @@ import "core:os"
 import vk "vendor:vulkan"
 
 when ODIN_OS == .Linux {
-	vk_VULKAN_LOADER_PATH :: "/lib64/libvulkan.so"
+	vk_VULKAN_LOADER_PATHS :: []string {
+		"./libvulkan.so",
+		"libvulkan.so",
+		"/lib64/libvulkan.so",
+	}
 } else when ODIN_OS == .Darwin {
-	vk_VULKAN_LOADER_PATH :: "./env/macOS/lib/libvulkan.dylib"
+	vk_VULKAN_LOADER_PATHS :: []string{
+		"./libvulkan.dylib",
+		"../Frameworks/libvulkan.dylib",
+		"libvulkan.dylib",
+		"./env/macOS/lib/libvulkan.dylib",
+		"/opt/homebrew/lib/libvulkan.dylib",
+	}
 } else when ODIN_OS == .Windows {
-	vk_VULKAN_LOADER_PATH :: "C:/Windows/System32/vulkan-1.dll"
+	vk_VULKAN_LOADER_PATHS :: []string{
+		"./vulkan-1.dll",
+		"vulkan-1.dll",
+		"C:/Windows/System32/vulkan-1.dll",
+	}
 } else {
 	#panic("Unsupported vulkan target.")
 }
@@ -36,22 +50,31 @@ vk_supports_win32_surfaces:	bool
 vk_supports_wayland_surfaces:	bool
 vk_supports_xlib_surfaces:	bool
 
-vk_load_instance_procs :: proc() -> Result {
-	loader_path := _settings.vk.loader_path
-	if loader_path == "" {
-		loader_path = vk_VULKAN_LOADER_PATH
-	}
-
-	vk_lib, lib_ok := dynlib.load_library(loader_path)
-	assert(lib_ok, "Could not find the vulkan loader library.")
+vk_try_loader_path :: proc(loader_path: string) -> bool {
+	vk_lib := dynlib.load_library(loader_path) or_return
 	vk_loader_lib = vk_lib
 
-	vk_get_proc, get_proc_ok := dynlib.symbol_address(vk_loader_lib, "vkGetInstanceProcAddr")
-	assert(get_proc_ok, "Could not acquire the vkGetInstanceProc address from the vulkan loader.")
-
+	vk_get_proc := dynlib.symbol_address(vk_loader_lib, "vkGetInstanceProcAddr") or_return
 	vk.load_proc_addresses(vk_get_proc)
+	
+	return true
+}
 
-	return nil
+vk_load_instance_procs :: proc() -> Result {
+	user_path := _settings.vk.loader_path
+	if user_path == "" {
+		if vk_try_loader_path(user_path) {
+			return nil
+		}
+	}
+
+	for loader_path in vk_VULKAN_LOADER_PATHS {
+		if vk_try_loader_path(loader_path) {
+			return nil
+		}
+	}
+
+	return .Not_Initialized
 }
 
 vk_try_use_instance_layer :: proc(layer: cstring) -> (found_layer: bool) {
@@ -321,7 +344,7 @@ vk_label_object :: proc {
 }
 
 vk_call :: proc(res: vk.Result, expr := #caller_expression, loc := #caller_location) -> Result {
-	if res == .SUCCESS {
+	if res == .SUCCESS || res == .SUBOPTIMAL_KHR {
 		return nil
 	}
 	

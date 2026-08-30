@@ -23,6 +23,8 @@ m3_Resource_Set_Metadata :: struct {
 }
 
 m3_create_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
+	NS.scoped_autoreleasepool()
+	
 	root_buffer := m3_resource_set_heap->newBufferWithLength(
 		size_of(m3_Resource_Set_Root),
 		{ .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked },
@@ -41,6 +43,8 @@ m3_create_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 }
 
 m3_destroy_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
+	NS.scoped_autoreleasepool()
+	
 	for texture_set in metadata.m3.texture_sets {
 		if texture_set != nil {
 			texture_set->release()
@@ -58,6 +62,8 @@ m3_destroy_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 }
 
 m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -> Result {
+	NS.scoped_autoreleasepool()
+	
 	textures := metadata.texture_sets[type]
 
 	metadata.m3.texture_sets[type]->release()
@@ -83,6 +89,8 @@ m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -
 }
 
 m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Storage_View_Type) -> Result {
+	NS.scoped_autoreleasepool()
+	
 	textures := metadata.storage_texture_sets[type]
 
 	metadata.m3.storage_texture_sets[type]->release()
@@ -108,6 +116,8 @@ m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Stor
 }
 
 m3_set_sampler_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
+	NS.scoped_autoreleasepool()
+	
 	samplers := metadata.sampler_set
 
 	metadata.m3.sampler_set->release()

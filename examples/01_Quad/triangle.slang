@@ -1,4 +1,4 @@
-#include "../../../shaders/gfx.slang"
+import gfx;
 
 struct Vertex {
 	float	position[3];
@@ -13,7 +13,7 @@ struct Vertex {
 	}
 }
 
-struct Arguments {
+struct Parameters {
 	Vertex*	vertices;
 }
 
@@ -27,7 +27,7 @@ struct Fragment_Output {
 }
 
 [vk_push_constant]
-uniform Arguments arguments;
+uniform Parameters parameters;
 
 [shader("vertex")]
 Vertex_Output vertex_main(
@@ -35,8 +35,8 @@ Vertex_Output vertex_main(
 ) {
 	static_assert(sizeof(Vertex) == 24, "Unxpected Vertex size.");
 
-	float3 position = arguments.vertices[index].get_position();
-	float3 color = arguments.vertices[index].get_color();
+	float3 position = parameters.vertices[index].get_position();
+	float3 color = parameters.vertices[index].get_color();
 
 	return Vertex_Output(
 		mul(NORMALIZE_CLIP_COORDS, float4(position, 1.0)),

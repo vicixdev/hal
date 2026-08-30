@@ -1,8 +1,9 @@
 #+build darwin
 package gfx
 
+import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "shared:darwext/metal"
+import MTLe "darwext/metal"
 
 m3_Semaphore_Metadata :: struct {
 	using _: struct #raw_union {
@@ -12,6 +13,8 @@ m3_Semaphore_Metadata :: struct {
 }
 
 m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
+	NS.scoped_autoreleasepool()
+
 	switch type {
 	case .Default:
 		event := m3_device->newEvent()
@@ -36,6 +39,8 @@ m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type
 }
 
 m3_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
+	NS.scoped_autoreleasepool()
+
 	switch metadata.type {
 	case .Default:
 		metadata.m3.event->release()
@@ -48,6 +53,8 @@ m3_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
 }
 
 m3_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result {
+	NS.scoped_autoreleasepool()
+
 	assert(metadata.type == .Cpu_Waitable)
 
 	MTLe.SharedEvent_waitUntilSignaledValue(auto_cast metadata.m3.shared_event, cast(u64)value, max(u64))

@@ -9,6 +9,7 @@ m3_Sampler_Metadata :: struct {
 }
 
 m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Descriptor) -> Result {
+	NS.scoped_autoreleasepool()
 
 	sampler_desc := m3_sampler_descriptor_to_mtl(descriptor)
 	sampler := m3_device->newSamplerState(sampler_desc)
@@ -22,10 +23,14 @@ m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Desc
 }
 
 m3_destroy_sampler :: proc(metadata: ^_Sampler_Metadata) {
+	NS.scoped_autoreleasepool()
+
 	metadata.m3.sampler->release()
 }
 
 m3_label_sampler :: proc(metadata: ^_Sampler_Metadata, label: string) -> Result {
+	NS.scoped_autoreleasepool()
+
 	// NOTE: Metal does not allow setting a sampler label after the creation.
 	return nil
 }

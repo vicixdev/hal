@@ -9,6 +9,8 @@ m3_Queue_Metadata :: struct {
 }
 
 m3_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
+	NS.scoped_autoreleasepool()
+
 	queue := m3_device->newCommandQueueWithMaxCommandBufferCount(1)
 	if queue == nil {
 		return .Generic_Backend_Error
@@ -22,5 +24,7 @@ m3_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 }
 
 m3_destroy_queue :: proc(metadata: ^_Queue_Metadata) {
+	NS.scoped_autoreleasepool()
+
 	metadata.m3.queue->release()
 }

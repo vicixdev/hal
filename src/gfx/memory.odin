@@ -65,7 +65,6 @@ create_scratch :: proc(scratch: ^Scratch, memory_type: Memory, size: int, locati
 	scratch.memory_type = memory_type
 	scratch.base	= buffer
 	scratch.size	= size
-	scratch.size	= 0
 
 	return nil
 }

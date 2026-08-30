@@ -3,7 +3,7 @@ package gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import "shared:darwext/dispatch"
+import "darwext/dispatch"
 
 m3_Pipeline_Stage_Metadata :: struct {
 	library:	^MTL.Library,
@@ -28,6 +28,7 @@ m3_create_compute_pipeline :: proc(
 	metadata:	^_Pipeline_Metadata,
 	descriptor:	Compute_Pipeline_Descriptor,
 ) -> Result {
+	NS.scoped_autoreleasepool()
 
 	library, function := m3_compile_pipeline_stage(descriptor.stage) or_return
 
@@ -57,6 +58,7 @@ m3_create_render_pipeline :: proc(
 	descriptor: Render_Pipeline_Descriptor,
 	blend_metadata: ^_Blend_State_Metadata,
 ) -> Result {
+	NS.scoped_autoreleasepool()
 
 	vertex_library, vertex_function := m3_compile_pipeline_stage(descriptor.vertex_stage) or_return
 	fragment_library, fragment_function := m3_compile_pipeline_stage(descriptor.fragment_stage) or_return
@@ -93,6 +95,8 @@ m3_create_render_pipeline :: proc(
 }
 
 m3_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
+	NS.scoped_autoreleasepool()
+
 	switch metadata.type {
 	case .Compute:
 		metadata.m3.compute.pipeline->release()

@@ -185,14 +185,15 @@ present :: proc(
 	surface_metadata, surface_res := _metadata_of(surface)
 	_check_surface_handle(surface_res, surface, location) or_return
 
-	_check_generic_condition(
+	_check_condition(
 		view_metadata.used,
+		.Invalid_View,
 		.Warning,
 		"Presenting unused view",
 		"The view %v is being presented when it has not been used in a renderpass.",
 		view,
 		location=location,
-	)
+	) or_return
 
 	waits := make([]_Semaphore_Wait, len(after), _temp_allocator) or_return
 	for wait, i in after {

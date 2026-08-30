@@ -5,10 +5,18 @@ import "core:mem"
 import "core:sync"
 import hm "core:container/handle_map"
 
+// Memory types used to control resource placement and access.
 Memory :: enum {
+	// General-purpose memory.
 	Default,
+
+	// Memory accessible only by the device.
 	Private,
+
+	// Memory optimized for reading data back from the device.
 	Readback,
+
+	// Memory optimized for transfering data to the device.
 	Staging,
 }
 
@@ -164,6 +172,39 @@ label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location
 	_check_generic_backend_error(res, location)
 }
 
+as_slice :: proc($T: typeid/[]$E, buffer: Buffer) -> []E {
+	metadata, metadata_res := _metadata_of(buffer)
+	assert(metadata_res == nil, "The provided buffer handle is not valid.")
+
+	assert(
+		metadata.memory_type != .Private,
+		"It is not possible to obtain a reference to the contents of a buffer using `.Private` memory. " +
+		"Please use memory transfer operations instead.",
+	)
+
+	offset := cast(int)_offset_from_base(buffer, metadata)
+	assert(offset >= 0 && offset < metadata.size, "Out of bounds offset.")
+
+	remaining_size := metadata.size - offset
+	count := remaining_size / size_of(E)
+
+	return mem.slice_ptr(cast(^E)buffer.contents, count)
+}
+
+as_multipointer :: proc($T: typeid/[^]$E, buffer: Buffer) -> [^]E {
+	return cast([^]E)buffer.contents
+}
+
+as_pointer :: proc($T: typeid/^$E, buffer: Buffer) -> ^E {
+	return cast(^E)buffer.contents
+}
+
+as :: proc {
+	as_slice,
+	as_pointer,
+	as_multipointer,
+}
+
 _check_buffer_handle :: proc(result: Result, buffer: Buffer, location: runtime.Source_Code_Location) -> Result {
 	_check_result(
 		result,
@@ -211,6 +252,7 @@ _is_aligned :: proc(p: uintptr, #any_int align: int) -> bool {
 
 _offset_from_base :: proc(buffer: Buffer, metadata: ^_Buffer_Metadata) -> uintptr {
 	if (metadata.memory_type == .Private) {
+
 		return buffer.address - metadata.gpu_address
 	} else {
 		return cast(uintptr)buffer.contents - metadata.cpu_address

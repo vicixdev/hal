@@ -866,7 +866,7 @@ draw_quad :: proc(t: ^testing.T) {
 	defer image.destroy(img)
 
 	reference_pixels := slice.reinterpret([][4]u8, img.pixels.buf[:])
-	download_pixels := cast([^][4]u8)download.contents
+	download_pixels := gfx.as([][4]u8, download)
 	for x in 0..<640 do for y in 0..<480 {
 		i := y * 640 + x
 

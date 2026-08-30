@@ -7,7 +7,7 @@ import "core:log"
 import "core:os"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "shared:darwext/Metal"
+import MTLe "darwext/Metal"
 
 m3_Device_Info :: struct {
 	device:	^MTL.Device,
@@ -16,14 +16,12 @@ m3_Device_Info :: struct {
 m3_device:	^MTL.Device
 m3_is_tracing:	bool
 
-m3_queue:	^MTL.CommandQueue
-m3_transfer_queue:	^MTL.CommandQueue
-
 m3_resource_set_heap:	^MTL.Heap
 
 m3_enumerate_devices :: proc(
 	allocator: runtime.Allocator,
 ) -> (available_devices: []Device_Info, res:Result) {
+	NS.scoped_autoreleasepool()
 
 	log.info(_initialized)
 
@@ -75,8 +73,9 @@ m3_enumerate_devices :: proc(
 }
 
 m3_select_device :: proc(device: Device_Id) -> Result {
+	NS.scoped_autoreleasepool()
+
 	m3_device = _available_devices[device]._platform.m3.device
-	m3_queue = m3_device->newCommandQueue()
 
 	when ENABLE_TRACING {
 		m3_begin_tracing()
@@ -106,6 +105,8 @@ m3_begin_tracing :: proc() {
 }
 
 m3_begin_tracing_on_device :: proc(device: ^MTL.Device) {
+	NS.scoped_autoreleasepool()
+
 	if m3_is_tracing {
 		log.errorf("Could not start a capture. Another capture is already active.")
 	}
