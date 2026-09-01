@@ -95,12 +95,12 @@ app :: proc() -> gfx.Result {
 	default_memory: gfx.Arena
 	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
 
-	vertices := gfx.arena_alloc(&default_memory, size_of(VERTICES)) or_return
-	mem.copy(vertices.contents, &VERTICES[0], size_of(VERTICES))
-	gpu_vertices := gfx.gpu_address_of(vertices) or_return
+	vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
+	copy(vertices, VERTICES[:])
+	gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-	indices := gfx.arena_alloc(&default_memory, size_of(INDICES)) or_return
-	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
+	indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
+	copy(indices, INDICES[:])
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./shaders", context.temp_allocator)
 	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
@@ -155,11 +155,11 @@ app :: proc() -> gfx.Result {
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
 			arguments := gfx.arena_alloc(&default_memory, Arguments) or_return
-			arguments.contents^ = Arguments {
+			arguments^ = Arguments {
 				vertices = gpu_vertices,
 			}
 			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, arguments, indices, 6)
+			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return

@@ -286,18 +286,22 @@ _remove_buffer_metadata :: proc(buffer: _Buffer, metadata: ^_Buffer_Metadata) {
 			did_remove = avl.remove_value(&_address_map, cpu_address_node, false)
 			assert(did_remove, "Could not find the node of a cpu address range.")
 		}
+
+		// NOTE: This is the only point in the codebase where the mutexes are nested. Thus this should be fine.
+		if sync.guard(&_buffers_mutex) {
+			hm.remove(&_buffers, buffer)
+		}
 	}
 
-	if sync.guard(&_buffers_mutex) {
-		hm.remove(&_buffers, buffer)
-	}
 }
 
 _register_address_ranges :: proc(metadata: ^_Buffer_Metadata) -> Result {
-	_register_address_range(metadata.gpu_address, metadata.size, metadata.handle, false) or_return
+	if sync.guard(&_address_map_mutex) {
+		_register_address_range(metadata.gpu_address, metadata.size, metadata.handle, false) or_return
 
-	if metadata.memory_type != .Private {
-		_register_address_range(metadata.cpu_address, metadata.size, metadata.handle, true) or_return
+		if metadata.memory_type != .Private {
+			_register_address_range(metadata.cpu_address, metadata.size, metadata.handle, true) or_return
+		}
 	}
 
 	return nil
@@ -314,10 +318,8 @@ _register_address_range :: proc(base_ptr: uintptr, length: int, buffer: _Buffer,
 		is_cpu_address	= is_cpu_address,
 	}
 
-	if sync.guard(&_address_map_mutex) {
-		_, inserted := avl.find_or_insert(&_address_map, node) or_return
-		assert(inserted, "The registered address is already present in the address map.")
-	}
+	_, inserted := avl.find_or_insert(&_address_map, node) or_return
+	assert(inserted, "The registered address is already present in the address map.")
 
 	return nil
 }
@@ -332,21 +334,20 @@ _address_info_of :: proc(address: rawptr) -> (info: _Address_Info, res: Result) 
 		address = address_range,
 	}
 
-	node: ^avl.Node(_Address_Map_Node)
-	if sync.guard(&_address_map_mutex) {
-		node = avl.find(&_address_map, needle)
-	}
+	if sync.shared_guard(&_address_map_mutex) {
+		node := avl.find(&_address_map, needle)
 
-	if node == nil {
-		return {}, .Invalid_Buffer
-	}
+		if node == nil {
+			return {}, .Invalid_Buffer
+		}
 
-	info.address		= cast(uintptr)address
-	info.buffer		= node.value.buffer
-	info.base		= node.value.address.start
-	info.offset		= info.address - info.base
-	info.remaining_size	= node.value.address.end - info.address
-	info.is_cpu_address	= node.value.is_cpu_address
+		info.address		= cast(uintptr)address
+		info.buffer		= node.value.buffer
+		info.base		= node.value.address.start
+		info.offset		= info.address - info.base
+		info.remaining_size	= node.value.address.end - info.address
+		info.is_cpu_address	= node.value.is_cpu_address
+	}
 
 	return
 }
@@ -358,7 +359,7 @@ _is_aligned :: proc(p: uintptr, #any_int align: int) -> bool {
 // NOTE: The avl tree implementation always puts the seached value as the first parameter and the current node as the
 //	second parameter. This is a bit of a hack, but it works.
 _compare_address_map_nodes :: proc(needle: _Address_Map_Node, node: _Address_Map_Node) -> avl.Ordering {
-	if node.address.start <= needle.address.start && node.address.end >= needle.address.end {
+	if node.address.start <= needle.address.start && node.address.end > needle.address.end {
 		return .Equal
 	} else if node.address.start > needle.address.start {
 		return .Greater

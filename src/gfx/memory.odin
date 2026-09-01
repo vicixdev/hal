@@ -32,7 +32,7 @@ arena_free_all :: proc(arena: ^Arena) {
 	arena.offset = 0
 }
 
-arena_alloc_raw :: proc(arena: ^Arena, size: int, align := 1) -> (address: rawptr, res: Result) {
+arena_alloc_raw :: proc(arena: ^Arena, size: int, align := 128) -> (address: rawptr, res: Result) {
 	base_offset: int
 	if !_is_aligned(cast(uintptr)arena.offset, align) {
 		base_offset = mem.align_forward_int(arena.offset, align)
@@ -51,13 +51,13 @@ arena_alloc_raw :: proc(arena: ^Arena, size: int, align := 1) -> (address: rawpt
 	return
 }
 
-arena_alloc_ptr :: proc(arena: ^Arena, $T: typeid, align := 1) -> (ptr: ^T, res: Result) {
+arena_alloc_ptr :: proc(arena: ^Arena, $T: typeid, align := 128) -> (ptr: ^T, res: Result) {
 	address := arena_alloc_raw(arena, size_of(T), align) or_return
 	return cast(^T)address, nil
 }
 
-arena_alloc_slice :: proc(arena: ^Arena, $T: typeid/[]$E, length: int, align := 1) -> (slice: []E, res: Result) {
-	address := arena_alloc_raw(arena, size_of(T) * length, align) or_return
+arena_alloc_slice :: proc(arena: ^Arena, $T: typeid/[]$E, length: int, align := 128) -> (slice: []E, res: Result) {
+	address := arena_alloc_raw(arena, size_of(E) * length, align) or_return
 	return mem.slice_ptr(cast(^E)address, length), nil
 }
 
@@ -88,7 +88,7 @@ destroy_scratch :: proc(scratch: Scratch) {
 	dealloc(cast(rawptr)scratch.base)
 }
 
-scratch_alloc_raw :: proc(scratch: ^Scratch, size: int, align := 1) -> (address: rawptr, res: Result) {
+scratch_alloc_raw :: proc(scratch: ^Scratch, size: int, align := 128) -> (address: rawptr, res: Result) {
 	if size > scratch.size {
 		return {}, .Out_Of_Gpu_Memory
 	}
@@ -105,13 +105,13 @@ scratch_alloc_raw :: proc(scratch: ^Scratch, size: int, align := 1) -> (address:
 	return
 }
 
-scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 1) -> (ptr: ^T, res: Result) {
+scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 128) -> (ptr: ^T, res: Result) {
 	address := scratch_alloc_raw(scratch, size_of(T), align) or_return
 	return cast(^T)address, nil
 }
 
-scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, length: int, align := 1) -> (slice: []E, res: Result) {
-	address := scratch_alloc_raw(scratch, size_of(T) * length, align) or_return
+scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, length: int, align := 128) -> (slice: []E, res: Result) {
+	address := scratch_alloc_raw(scratch, size_of(E) * length, align) or_return
 	return mem.slice_ptr(cast(^E)address, length), nil
 }
 
