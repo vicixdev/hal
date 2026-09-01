@@ -38,7 +38,11 @@ vk_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 }
 
 vk_destroy_queue :: proc(metadata: ^_Queue_Metadata) {
-	vk.QueueWaitIdle(metadata.vk.queue)
 	vk_destroy_command_pool(metadata.vk.command_pool)
 }
 
+vk_wait_idle :: proc(metadata: ^_Queue_Metadata) -> Result {
+	vk_call(vk.QueueWaitIdle(metadata.vk.queue)) or_return
+	
+	return nil
+}

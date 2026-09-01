@@ -1,6 +1,7 @@
 package main
 
 import sdl "vendor:sdl3"
+import "gfx"
 
 Key :: enum {
 	None,
@@ -99,7 +100,16 @@ Mouse_State :: struct {
 	captured:	bool,
 }
 
+Window_State :: struct {
+	dimensions:	[2]int,
+	did_resize:	bool,
+}
+
 window:		^sdl.Window
+window_state :=	Window_State {
+	dimensions	= WINDOW_SIZE,
+}
+
 key_states:	[Key]Key_States
 
 mouse_state:	Mouse_State
@@ -107,6 +117,8 @@ mouse_state:	Mouse_State
 should_quit:	bool
 
 process_events :: proc() {
+	window_state.did_resize = false
+
 	for &state in key_states {
 		if .Just_Released in state {
 			state -= { .Just_Released }
@@ -147,6 +159,12 @@ process_events :: proc() {
 			mouse_state.position = {
 				event.motion.x, event.motion.y,
 			}
+
+		case .WINDOW_RESIZED:
+			window_state.dimensions = { cast(int)event.window.data1, cast(int)event.window.data2 }
+			gfx.resize_surface(surface, window_state.dimensions)
+
+			window_state.did_resize = true
 		}
 	}
 }

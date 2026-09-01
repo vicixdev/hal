@@ -226,6 +226,14 @@ vk_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_V
 	return nil
 }
 
+vk_resize_surface :: proc(metadata: ^_Surface_Metadata, dimensions: [2]int) -> Result {
+	
+	vk_destroy_surface(metadata)
+	vk_create_surface(metadata, metadata.desc) or_return
+
+	return nil
+}
+
 vk_destroy_surface_view :: proc(surface_metadata: ^_Surface_Metadata, view_metadata: ^_View_Metadata) -> Result {
 	return nil
 }

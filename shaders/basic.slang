@@ -35,7 +35,7 @@ uniform Parameters* parameters;
 
 [shader("vertex")]
 Vertex_Output vertex_main(
-	uint32_t index	: SV_VertexID,
+	uint32_t index : SV_VertexID,
 ) {
 	static_assert(sizeof(Vertex) == 24, "Unxpected Vertex size.");
 
@@ -56,7 +56,9 @@ Vertex_Output vertex_main(
 }
 
 [shader("fragment")]
-Fragment_Output fragment_main(Vertex_Output input) {
+Fragment_Output fragment_main(
+	Vertex_Output	input,
+) {
 	return Fragment_Output(float4(input.color, 1.0));
 }
 

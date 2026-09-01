@@ -50,6 +50,14 @@ m3_destroy_surface :: proc(metadata: ^_Surface_Metadata) {
 	metadata.m3.layer->release()
 }
 
+m3_resize_surface :: proc(metadata: ^_Surface_Metadata, dimensions: [2]int) -> Result {
+	metadata.m3.layer->setDrawableSize({
+		cast(CF.CGFloat)dimensions.x, cast(CF.CGFloat)dimensions.y,
+	})
+
+	return nil
+}
+
 m3_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_View_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 

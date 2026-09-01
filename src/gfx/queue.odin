@@ -22,6 +22,22 @@ _Queue_Metadata :: struct {
 
 _queues: [Queue]_Queue_Metadata
 
+wait_idle :: proc(queue: Queue, location := #caller_location) -> (res: Result) {
+	_check_queue_validity(queue, location) or_return
+
+	queue_metadata := _queue_metadata_of(queue) or_return
+
+	when TARGET_API == .Vulkan {
+		res = vk_wait_idle(queue_metadata)
+	} else {
+		res = m3_wait_idle(queue_metadata)
+	}
+
+	_check_generic_backend_error(res, location) or_return
+
+	return nil
+}
+
 _init_queues :: proc() -> Result {
 	_setup_queue(.Default) or_return
 	if _device_info.properties.transfer_queue {
@@ -60,6 +76,8 @@ _setup_queue :: proc(queue: Queue) -> Result {
 _destroy_queue :: proc(queue: Queue) {
 	metadata, metadata_res := _queue_metadata_of(queue)
 	assert(metadata_res == nil)
+
+	wait_idle(queue)
 
 	_destroy_command_buffers_of(queue)
 	when TARGET_API == .Vulkan {

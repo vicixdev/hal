@@ -152,7 +152,7 @@ acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> 
 	if res == .Surface_Unavailable {
 		return
 	}
-	
+
 	_check_generic_backend_error(res, location) or_return
 
 	return
@@ -221,6 +221,29 @@ present :: proc(
 	return nil
 }
 
+resize_surface :: proc(surface: Surface, dimensions: [2]int, location := #caller_location) -> (res: Result) {
+	
+	metadata, surface_res := _metadata_of(surface)
+	_check_surface_handle(surface_res, surface, location) or_return
+
+	metadata.dimensions = dimensions
+
+	wait_idle(.Default)
+	if _device_info.properties.transfer_queue {
+		wait_idle(.Transfer)
+	}
+
+	when TARGET_API == .Vulkan {
+		res = vk_resize_surface(metadata, dimensions)
+	} else {
+		res = m3_resize_surface(metadata, dimensions)
+	}
+
+	res = _check_generic_backend_error(res, location)
+
+	return
+}
+
 _destroy_surface_view :: proc(view: View, location := #caller_location) {
 
 	view_metadata, view_res := _metadata_of(view)
@@ -237,6 +260,8 @@ _destroy_surface_view :: proc(view: View, location := #caller_location) {
 	} else {
 		res = m3_destroy_surface_view(surface_metadata, view_metadata)
 	}
+
+	_remove_view_metadata(view)
 
 	_check_generic_backend_error(res, location)
 }

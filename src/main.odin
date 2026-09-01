@@ -9,79 +9,101 @@ import la "core:math/linalg"
 import sdl "vendor:sdl3"
 import "gfx"
 
-surface:	gfx.Surface
-surface_format:	gfx.Pixel_Format
-
 WINDOW_SIZE :: [2]int {
 	1024, 768,
 }
 
-Camera :: struct {
+Vertex :: struct #packed {
 	position:	[3]f32,
-	// pitch and yaw
-	rotation:	[2]f32,
-
-	fov:		f32,
-	aspect:		f32,
-	near:		f32,
-	far:		f32,
+	color:		[3]f32,
 }
 
-// Minecraft style
-move_camera :: proc(camera: ^Camera, direction: [3]f32, speed: f32, dt: f32) {
-	if direction == { 0, 0, 0 } {
-		return
-	}
+VERTICES := [?]Vertex {
+	{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0, 0.0 } },
+	{ {  1.0, -1.0, -1.0 }, { 0.0, 1.0, 0.0 } },
+	{ {  1.0,  1.0, -1.0 }, { 0.0, 0.0, 1.0 } },
+	{ { -1.0,  1.0, -1.0 }, { 1.0, 1.0, 0.0 } },
 
-	input := la.normalize(direction) * speed * dt
-
-	front := [3]f32 {
-		la.sin(camera.rotation.y),
-		0,
-		-la.cos(camera.rotation.y),
-	}
-
-	right := la.cross(front, [3]f32{ 0, 1, 0})
-	
-	camera.position += front * input.z
-	camera.position += right * input.x
-	camera.position.y += input.y
+	{ { -1.0, -1.0,  1.0 }, { 1.0, 0.0, 1.0 } },
+	{ {  1.0, -1.0,  1.0 }, { 0.0, 1.0, 1.0 } },
+	{ {  1.0,  1.0,  1.0 }, { 1.0, 1.0, 1.0 } },
+	{ { -1.0,  1.0,  1.0 }, { 0.0, 0.0, 0.0 } },
 }
 
-rotate_camera :: proc(camera: ^Camera, rotation: [2]f32) {
-	epsilon: f32 = 0.05
+INDICES := [?]u16 {
+	// Front
+	4, 5, 6,
+	6, 7, 4,
 
-	camera.rotation += rotation
+	// Back
+	0, 2, 1,
+	2, 0, 3,
 
-	if camera.rotation.x >= (la.PI/2 - epsilon) {
-		camera.rotation.x = la.PI/2 - epsilon
-	} else if camera.rotation.x <= -(la.PI/2 - epsilon) {
-		camera.rotation.x = -(la.PI/2 - epsilon)
-	}
+	// Left
+	0, 4, 7,
+	7, 3, 0,
+
+	// Right
+	1, 2, 6,
+	6, 5, 1,
+
+	// Top
+	3, 7, 6,
+	6, 2, 3,
+
+	// Bottom
+	0, 1, 5,
+	5, 4, 0,
 }
 
-get_camera_matrices :: proc(camera: Camera) -> (view: matrix[4,4]f32, proj: matrix[4,4]f32) {
-	look_direction := [3]f32 {
-		 la.cos(camera.rotation.x) * la.sin(camera.rotation.y),
-		 la.sin(camera.rotation.x),
-		-la.cos(camera.rotation.x) * la.cos(camera.rotation.y),
-	}
+Arguments :: struct #packed {
+	model:		matrix[4,4]f32,
+	view:		matrix[4,4]f32,
+	proj:		matrix[4,4]f32,
 
-	view = la.matrix4_look_at_f32(camera.position, camera.position + look_direction, { 0, 1, 0 })
-	proj = la.matrix4_perspective_f32(camera.fov, camera.aspect, camera.near, camera.far)
-
-	return
+	vertices:	uintptr,
 }
+
+device_info:		gfx.Device_Info
+
+surface:		gfx.Surface
+surface_format:		gfx.Pixel_Format
+
+default_memory:		gfx.Arena
+private_memory:		gfx.Arena
+frame_memory:		gfx.Scratch
+
+vertices:		[]Vertex
+gpu_vertices:		uintptr
+indices:		[]u16
+
+depth_buffer:		gfx.Texture
+depth_buffer_view:	gfx.View
+depth_format:		gfx.Pixel_Format
+
+depth_stencil:		gfx.Depth_Stencil_State
+
+pipeline:		gfx.Pipeline
+
+frame_semaphore:	gfx.Semaphore
+frame_count:		int
+
+camera:			Camera
+cube_rotation:		f32
 
 setup :: proc() {
 	ensure(sdl.Init({ .VIDEO }) == true)
 
-	window_flags: sdl.WindowFlags = {} when ODIN_OS != .Darwin else { .METAL }
+	window_flags := sdl.WindowFlags { .RESIZABLE }
+	when ODIN_OS == .Darwin {
+		window_flags += { .METAL }
+	}
+
 	window_title: cstring = "Vulkan" when gfx.TARGET_API == .Vulkan else "Metal 3"
 	window = sdl.CreateWindow(
 		window_title,
-		cast(i32)WINDOW_SIZE.x,
-		cast(i32)WINDOW_SIZE.y,
+		cast(i32)window_state.dimensions.x,
+		cast(i32)window_state.dimensions.y,
 		window_flags,
 	)
 	assert(window != nil)
@@ -109,7 +131,7 @@ setup :: proc() {
 
 	surface_descriptor := gfx.Surface_Descriptor {
 		type			= .V_Sync,
-		dimensions		= WINDOW_SIZE,
+		dimensions		= window_state.dimensions,
 		frames_in_flight	= 3,
 		target			= target,
 	}
@@ -136,87 +158,16 @@ fini :: proc() {
 	sdl.Quit()
 }
 
-app :: proc() -> gfx.Result {
-
-	Vertex :: struct #packed {
-		position:	[3]f32,
-		color:		[3]f32,
+prepare_stuff_for_window_size :: proc() -> gfx.Result {
+	if depth_buffer != {} {
+		gfx.wait_idle(.Default)
+		gfx.destroy_texture(depth_buffer)
 	}
-
-	VERTICES := [?]Vertex {
-		{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0, 0.0 } },
-		{ {  1.0, -1.0, -1.0 }, { 0.0, 1.0, 0.0 } },
-		{ {  1.0,  1.0, -1.0 }, { 0.0, 0.0, 1.0 } },
-		{ { -1.0,  1.0, -1.0 }, { 1.0, 1.0, 0.0 } },
-
-		{ { -1.0, -1.0,  1.0 }, { 1.0, 0.0, 1.0 } },
-		{ {  1.0, -1.0,  1.0 }, { 0.0, 1.0, 1.0 } },
-		{ {  1.0,  1.0,  1.0 }, { 1.0, 1.0, 1.0 } },
-		{ { -1.0,  1.0,  1.0 }, { 0.0, 0.0, 0.0 } },
-	}
-
-	INDICES := [?]u16 {
-		// Front
-		4, 5, 6,
-		6, 7, 4,
-
-		// Back
-		0, 2, 1,
-		2, 0, 3,
-
-		// Left
-		0, 4, 7,
-		7, 3, 0,
-
-		// Right
-		1, 2, 6,
-		6, 5, 1,
-
-		// Top
-		3, 7, 6,
-		6, 2, 3,
-
-		// Bottom
-		0, 1, 5,
-		5, 4, 0,
-	}
-
-	Arguments :: struct #packed {
-		model:		matrix[4,4]f32,
-		view:		matrix[4,4]f32,
-		proj:		matrix[4,4]f32,
-
-		vertices:	uintptr,
-	}
-
-	frame_semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
-	framecount: int
-
-	default_memory: gfx.Arena
-	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
-
-	private_memory: gfx.Arena
-	gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
-
-	frame_memory: gfx.Scratch
-	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
-
-	vertices := gfx.arena_alloc(&default_memory, size_of(VERTICES)) or_return
-	mem.copy(vertices, &VERTICES[0], size_of(VERTICES))
-	gpu_vertices := gfx.gpu_address_of(vertices) or_return
-
-	indices := gfx.arena_alloc(&default_memory, size_of(INDICES)) or_return
-	mem.copy(indices, &INDICES[0], size_of(INDICES))
-
-	depth_stencil := gfx.create_depth_stencil_state(gfx.Depth_Stencil_Descriptor {
-		depth_enable	= true,
-		depth_write	= true,
-		depth_test	= .Less,
-	}) or_return
+	gfx.arena_free_all(&private_memory)
 
 	depth_buffer_descriptor := gfx.Texture_Descriptor {
 		type		= .D2_Array,
-		dimensions	= { **WINDOW_SIZE, 1 },
+		dimensions	= { **window_state.dimensions, 1 },
 		mip_count	= 1,
 		layer_count	= 1,
 		sample_count	= 1,
@@ -225,8 +176,40 @@ app :: proc() -> gfx.Result {
 	}
 	depth_buffer_size, depth_buffer_align := gfx.size_align_of(depth_buffer_descriptor) or_return
 	depth_buffer_memory := gfx.arena_alloc(&private_memory, depth_buffer_size, depth_buffer_align) or_return
-	depth_buffer := gfx.create_texture(depth_buffer_memory, depth_buffer_descriptor) or_return
-	depth_buffer_view := gfx.default_view_of(depth_buffer) or_return
+	depth_buffer = gfx.create_texture(depth_buffer_memory, depth_buffer_descriptor) or_return
+	depth_buffer_view = gfx.default_view_of(depth_buffer) or_return
+	depth_format = .D32_Float
+
+	camera.fov	= la.to_radians(cast(f32)95.0)
+	camera.aspect	= cast(f32)window_state.dimensions.x / cast(f32)window_state.dimensions.y
+	camera.near	= 0.01
+	camera.far	= 100.0
+
+	return nil
+}
+
+app :: proc() -> gfx.Result {
+
+	frame_semaphore = gfx.create_semaphore(.Cpu_Waitable) or_return
+
+	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
+	gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
+	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
+
+	vertices = gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+	copy(vertices, VERTICES[:])
+	gpu_vertices = gfx.gpu_address_of(raw_data(vertices)) or_return
+
+	indices = gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+	copy(indices, INDICES[:])
+
+	prepare_stuff_for_window_size()
+
+	depth_stencil = gfx.create_depth_stencil_state(gfx.Depth_Stencil_Descriptor {
+		depth_enable	= true,
+		depth_write	= true,
+		depth_test	= .Less,
+	}) or_return
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("basic", "./build", context.temp_allocator)
 	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
@@ -242,28 +225,25 @@ app :: proc() -> gfx.Result {
 		cull		= .None,
 		sample_count	= 1,
 		color_formats	= { surface_format },
-		depth_format	= depth_buffer_descriptor.format,
+		depth_format	= depth_format,
 	}
-	pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
+	pipeline = gfx.create_render_pipeline(pipeline_descriptor) or_return
 
 	prev_time := time.tick_now()
 	delta_time: f32
 
-	camera := Camera {
-		fov		= 95 * la.DEG_PER_RAD,
-		aspect		= cast(f32)WINDOW_SIZE.x / cast(f32)WINDOW_SIZE.y,
-		near		= 0.01,
-		far		= 100.0,
-	}
-	rotation: f32
-
 	for !should_quit {
-		framecount += 1
-		if framecount > 3 {
-			gfx.wait_semaphore(frame_semaphore, framecount - 3)
+		frame_count += 1
+		if frame_count > 3 {
+			gfx.wait_semaphore(frame_semaphore, frame_count - 3)
 		}
 
 		process_events()
+
+		if window_state.did_resize {
+			prepare_stuff_for_window_size() or_return
+			gfx.resize_surface(surface, window_state.dimensions)
+		}
 
 		time_now := time.tick_now()
 		time_diff := time.tick_diff(prev_time, time_now)
@@ -278,7 +258,7 @@ app :: proc() -> gfx.Result {
 			should_quit = true
 		}
 
-		rotation += 0.25 * delta_time
+		cube_rotation += 0.25 * delta_time
 		input := [3]f32{}
 		speed: f32 = 3.0
 		if .Pressed in key_states[.W] {
@@ -300,7 +280,6 @@ app :: proc() -> gfx.Result {
 			speed = 10.0
 		}
 		move_camera(&camera, input, speed, delta_time)
-		log.info(camera.position, delta_time)
 
 		if mouse_state.captured || .Pressed in mouse_state.buttons[.Right] {
 			camera_rotation := mouse_state.delta / 500.0
@@ -348,19 +327,19 @@ app :: proc() -> gfx.Result {
 			args := gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args^ = {
 				vertices	= gpu_vertices,
-				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(rotation, { 0.0, 1.0, 0.0 }),
+				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(cube_rotation, { 0.0, 1.0, 0.0 }),
 				view		= view,
 				proj		= proj,
 			}
 			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, args, indices, 36)
+			gfx.draw_indexed(command_buffer, pipeline, args, raw_data(indices), 36)
 		gfx.end_render_pass(command_buffer)
 
-		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return
-		gfx.present(.Default, surface_view, { frame_semaphore, framecount }) or_return
+		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return
+		gfx.present(.Default, surface_view, { frame_semaphore, frame_count }) or_return
 	}
 
-	gfx.wait_semaphore(frame_semaphore, framecount)
+	gfx.wait_semaphore(frame_semaphore, frame_count)
 
 	return nil
 }
