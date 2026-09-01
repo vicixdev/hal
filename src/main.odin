@@ -202,11 +202,11 @@ app :: proc() -> gfx.Result {
 	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
 
 	vertices := gfx.arena_alloc(&default_memory, size_of(VERTICES)) or_return
-	mem.copy(vertices.contents, &VERTICES[0], size_of(VERTICES))
+	mem.copy(vertices, &VERTICES[0], size_of(VERTICES))
 	gpu_vertices := gfx.gpu_address_of(vertices) or_return
 
 	indices := gfx.arena_alloc(&default_memory, size_of(INDICES)) or_return
-	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
+	mem.copy(indices, &INDICES[0], size_of(INDICES))
 
 	depth_stencil := gfx.create_depth_stencil_state(gfx.Depth_Stencil_Descriptor {
 		depth_enable	= true,
@@ -346,7 +346,7 @@ app :: proc() -> gfx.Result {
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
 			gfx.use_depth_stencil_state(command_buffer, depth_stencil) or_return
 			args := gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
-			args.contents^ = {
+			args^ = {
 				vertices	= gpu_vertices,
 				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(rotation, { 0.0, 1.0, 0.0 }),
 				view		= view,

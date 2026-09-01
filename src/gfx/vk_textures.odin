@@ -45,7 +45,7 @@ vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: i
 
 vk_create_texture :: proc(
 	metadata:		^_Texture_Metadata,
-	buffer:			Buffer,
+	address_info:		_Address_Info,
 	buffer_metadata:	^_Buffer_Metadata,
 	default_view_metadata:	^_View_Metadata,
 	descriptor:		Texture_Descriptor,
@@ -61,7 +61,7 @@ vk_create_texture :: proc(
 		vk_device,
 		image,
 		buffer_metadata.vk.device_memory,
-		cast(vk.DeviceSize)_offset_from_base(buffer, buffer_metadata),
+		cast(vk.DeviceSize)address_info.offset,
 	)) or_return
 
 	view_info := vk_texture_descriptor_to_vk_view(descriptor, image)

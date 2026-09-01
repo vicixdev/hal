@@ -144,13 +144,11 @@ size_align_of :: proc(
 }
 
 create_texture :: proc(
-	buffer:		Buffer,
+	address:	rawptr,
 	descriptor:	Texture_Descriptor,
 	location	:= #caller_location
-) -> (
-	handle: Texture,
-	res: Result,
-) {
+) -> (handle: Texture, res: Result) {
+
 	descriptor := descriptor
 	_normalize_texture_descriptor(&descriptor)
 
@@ -159,32 +157,32 @@ create_texture :: proc(
 	// NOTE: size_align_of() also checks for the descriptor validity.
 	required_size, required_align := size_align_of(descriptor, location) or_return
 
-	buffer_metadata, buffer_metadata_res := _metadata_of(buffer)
-	_check_buffer_handle(buffer_metadata_res, buffer, location) or_return
+	address_info, address_res := _address_info_of(address)
+	_check_address_info(address_res, address, location) or_return
 
-	offset_from_base := _offset_from_base(buffer, buffer_metadata)
-	free_space := buffer_metadata.size - cast(int)_offset_from_base(buffer, buffer_metadata)
+	buffer_metadata, buffer_metadata_res := _metadata_of(address_info.buffer)
+	assert(buffer_metadata_res == nil)
 
 	_check_condition(
-		_is_aligned(buffer.address, required_align),
+		_is_aligned(cast(uintptr)address, required_align),
 		.Invalid_Align,
 		.Error,
 		"Invalid align",
 		"The provided buffer address (0x%x) is not aligned with the required texture aligments for the " +
 		"provided descriptor (required alignment: %d bytes)",
-		buffer.address,
+		address,
 		required_align,
 		location=location,
 	) or_return
 	_check_condition(
-		free_space >= required_size,
+		address_info.remaining_size >= cast(uintptr)required_size,
 		.Out_Of_Gpu_Memory,
 		.Error,
 		"Not enough memory",
 		"The buffer is not big enough to contain the requested texture at the offset %d (%d available bytes, " +
 		"%d requested bytes).",
-		offset_from_base,
-		free_space,
+		address_info.offset,
+		address_info.remaining_size,
 		required_size,
 		location=location,
 	) or_return
@@ -216,9 +214,9 @@ create_texture :: proc(
 	view_metadata.reference	= texture
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_texture(metadata, buffer, buffer_metadata, view_metadata, descriptor)
+		res = vk_create_texture(metadata, address_info, buffer_metadata, view_metadata, descriptor)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_texture(metadata, buffer, buffer_metadata, view_metadata, descriptor)
+		res = m3_create_texture(metadata, address_info, buffer_metadata, view_metadata, descriptor)
 	}
 
 	_check_specific_result(

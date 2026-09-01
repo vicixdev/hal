@@ -5,6 +5,7 @@ import "base:runtime"
 import "core:mem"
 import "core:log"
 import "core:os"
+import "core:strings"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/Metal"
@@ -23,10 +24,7 @@ m3_enumerate_devices :: proc(
 ) -> (available_devices: []Device_Info, res:Result) {
 	NS.scoped_autoreleasepool()
 
-	log.info(_initialized)
-
 	mtl_devices := MTL.CopyAllDevices()
-	log.info(_initialized)
 	defer mtl_devices->release()
 
 	devices := make([dynamic]Device_Info, 0, mtl_devices->count(), allocator=allocator) or_return
@@ -45,7 +43,7 @@ m3_enumerate_devices :: proc(
 			&devices,
 			Device_Info {
 				id		= device_id,
-				name		= device->name()->odinString(),
+				name		= strings.clone(device->name()->odinString(), _global_allocator),
 				driver		= "Metal",
 				type		= .Integrated,
 				limits		= {

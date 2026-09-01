@@ -50,21 +50,18 @@ m3_emit_mem_copy :: proc(
 	command:	_Command_Mem_Copy,
 ) -> Result {
 	
-	source_metadata, source_res := _metadata_of(command.source)
+	source_metadata, source_res := _metadata_of(command.source.buffer)
 	_check_internal_emission_result(source_res) or_return
 
-	destination_metadata, destination_res := _metadata_of(command.destination)
+	destination_metadata, destination_res := _metadata_of(command.destination.buffer)
 	_check_internal_emission_result(destination_res) or_return
-
-	source_offset := _offset_from_base(command.source, source_metadata)
-	destination_offset := _offset_from_base(command.destination, destination_metadata)
 
 	m3_enable_blit_encoder(metadata) or_return
 	metadata.m3.blit_encoder->copyFromBuffer(
 		source_metadata.m3.buffer,
-		cast(NS.UInteger)source_offset,
+		cast(NS.UInteger)command.source.offset,
 		destination_metadata.m3.buffer,
-		cast(NS.UInteger)destination_offset,
+		cast(NS.UInteger)command.destination.offset,
 		cast(NS.UInteger)command.size,
 	)
 
@@ -110,9 +107,8 @@ m3_emit_copy_buffer_to_texture :: proc(
 	command:	_Command_Copy_Buffer_To_Texture,
 ) -> Result {
 
-	source_metadata, source_res := _metadata_of(command.source)
+	source_metadata, source_res := _metadata_of(command.source.buffer)
 	_check_internal_emission_result(source_res) or_return
-	source_offset := _offset_from_base(command.source, source_metadata)
 
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
@@ -125,7 +121,7 @@ m3_emit_copy_buffer_to_texture :: proc(
 	for i in 0..<command.region.layer_count {
 		metadata.m3.blit_encoder->copyFromBufferEx(
 			source_metadata.m3.buffer,
-			cast(NS.UInteger)(cast(int)source_offset + layer_size * i),
+			cast(NS.UInteger)(cast(int)command.source.offset + layer_size * i),
 			cast(NS.UInteger)row_size,
 			cast(NS.UInteger)(command.region.size.z == 1 ? 0 : image_size),
 			m3_size_to_mtl(command.region.size),
@@ -145,9 +141,8 @@ m3_emit_copy_texture_to_buffer :: proc(
 	command:	_Command_Copy_Texture_To_Buffer,
 ) -> Result {
 
-	destination_metadata, destination_res := _metadata_of(command.destination)
+	destination_metadata, destination_res := _metadata_of(command.destination.buffer)
 	_check_internal_emission_result(destination_res) or_return
-	destination_offset := _offset_from_base(command.destination, destination_metadata)
 
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
@@ -165,7 +160,7 @@ m3_emit_copy_texture_to_buffer :: proc(
 			m3_origin_to_mtl(command.region.origin),
 			m3_size_to_mtl(command.region.size),
 			destination_metadata.m3.buffer,
-			cast(NS.UInteger)(cast(int)destination_offset + layer_size * i),
+			cast(NS.UInteger)(cast(int)command.destination.offset + layer_size * i),
 			cast(NS.UInteger)row_size,
 			cast(NS.UInteger)(command.region.size.z == 1 ? 0 : image_size),
 		)
@@ -185,7 +180,7 @@ m3_emit_dispatch :: proc(
 
 	group_size := pipeline_metadata.compute.group_size
 
-	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	m3_enable_compute_encoder(metadata) or_return
@@ -366,7 +361,7 @@ m3_emit_draw :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	m3_bind_resource_set(metadata, command.resource_set) or_return
@@ -395,11 +390,10 @@ m3_emit_draw_indexed :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	indices_metadata, indices_res := _metadata_of(command.indices)
+	indices_metadata, indices_res := _metadata_of(command.indices.buffer)
 	_check_internal_emission_result(indices_res) or_return
-	indices_offset := _offset_from_base(command.indices, indices_metadata)
 
-	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	m3_bind_resource_set(metadata, command.resource_set) or_return
@@ -412,7 +406,7 @@ m3_emit_draw_indexed :: proc(
 		cast(NS.UInteger)command.index_count,
 		m3_INDEX_TYPE_TO_MTL[command.index_type],
 		indices_metadata.m3.buffer,
-		cast(NS.UInteger)indices_offset,
+		cast(NS.UInteger)command.indices.offset,
 		cast(NS.UInteger)command.instance_count,
 	)
 

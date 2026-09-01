@@ -3,6 +3,7 @@ package gfx
 import "base:runtime"
 import "core:mem"
 import "core:sync"
+import avl "core:container/avl"
 import hm "core:container/handle_map"
 
 // Memory types used to control resource placement and access.
@@ -20,34 +21,22 @@ Memory :: enum {
 	Staging,
 }
 
-Buffer :: struct {
-	handle:	Handle,
-	using _: struct #raw_union {
-		// If the memory type is `Default` or `Readback` it contains the Cpu Mapped Virtual Address.
-		contents:	rawptr,
-		// If the memory type is `Private` contains the Gpu Virtual Address of the buffer.
-		address:	uintptr,
-	},
-}
+_Buffer	:: distinct Handle
 
-Ptr :: struct($T: typeid) {
-	handle:	Handle,
-	using _: struct #raw_union {
-		contents:	^T,
-		address:	uintptr,
-	},
-}
+// Used internally to pass data about an address.
+_Address_Info :: struct {
+	buffer:		_Buffer,
 
-Slice :: struct($T: typeid) {
-	handle:	Handle,
-	using _: struct #raw_union {
-		contents:	[]T,
-		address:	uintptr,
-	},
+	base:		uintptr,
+	offset:		uintptr,
+	remaining_size:	uintptr,
+	address:	uintptr,
+
+	is_cpu_address:	bool,
 }
 
 _Buffer_Metadata :: struct {
-	handle:		Handle,
+	handle:		_Buffer,
 
 	memory_type:	Memory,
 	size:		int,
@@ -61,10 +50,22 @@ _Buffer_Metadata :: struct {
 	},
 }
 
-_buffers:	hm.Dynamic_Handle_Map(_Buffer_Metadata, Handle)
+_buffers:	hm.Dynamic_Handle_Map(_Buffer_Metadata, _Buffer)
 _buffers_mutex:	sync.RW_Mutex
 
-alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer: Buffer, res: Result) {
+_Address_Range :: struct {
+	start:	uintptr,
+	end:	uintptr,
+}
+_Address_Map_Node :: struct {
+	address:	_Address_Range,
+	buffer:		_Buffer,
+	is_cpu_address:	bool,
+}
+_address_map:		avl.Tree(_Address_Map_Node)
+_address_map_mutex:	sync.RW_Mutex
+
+alloc :: proc(type: Memory, size: int, location := #caller_location) -> (address: rawptr, res: Result) {
 	size := size
 
 	_check_device_selected(location) or_return
@@ -103,7 +104,7 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer:
 	}
 
 	handle, metadata := _add_buffer_metadata() or_return
-	defer if res != nil do _remove_buffer_metadata(handle)
+	defer if res != nil do _remove_buffer_metadata(handle, metadata)
 
 	metadata.size		= size
 	metadata.memory_type	= type
@@ -125,26 +126,36 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (buffer:
 	) or_return
 	_check_generic_backend_error(res, location) or_return
 
-	buffer.handle = handle
-	if type == .Private {
-		buffer.address = metadata.gpu_address
-	} else {
-		buffer.contents = cast(rawptr)metadata.cpu_address
-	}
+	_register_address_ranges(metadata) or_return
 
-	return
+	if metadata.memory_type == .Private {
+		return cast(rawptr)metadata.gpu_address, nil
+	} else {
+		return cast(rawptr)metadata.cpu_address, nil
+	}
 }
 
-dealloc :: proc(buffer: Buffer, location := #caller_location) {
-	if _check_device_selected(location) != nil {
-		return
-	}
+dealloc :: proc(address: rawptr, location := #caller_location) {
+	if _check_device_selected(location) != nil do return
 
-	metadata, metadata_res := _metadata_of(buffer)
-	_check_buffer_handle(metadata_res, buffer, location)
-	if metadata_res != nil {
-		return
-	}
+	address_info, address_res := _address_info_of(address)
+	_check_address_info(address_res, address, location)
+	if address_res != nil do return
+
+	_check_generic_condition(
+		address_info.offset == 0,
+		.Warning,
+		"Freeing address with offset",
+		"The provided address 0x%x references an allocation with base address 0x%x. `gfx::dealloc` would " +
+		"require every allocation to be released referencing its base address. The deallocation will still " +
+		"complete.",
+		address,
+		address_info.base,
+		location=location,
+	)
+
+	metadata, metadata_res := _metadata_of(address_info.buffer)
+	assert(metadata_res == nil)
 
 	when TARGET_API == .Vulkan {
 		vk_dealloc(metadata)
@@ -152,45 +163,33 @@ dealloc :: proc(buffer: Buffer, location := #caller_location) {
 		m3_dealloc(metadata)
 	}
 
-	_remove_buffer_metadata(buffer.handle)
+	_remove_buffer_metadata(address_info.buffer, metadata)
 }
 
-gpu_address_of_buffer :: proc(buffer: Buffer, location := #caller_location) -> (address: uintptr, res: Result) {
+gpu_address_of :: proc(address: rawptr, location := #caller_location) -> (gpu_address: uintptr, res: Result) {
 	_check_device_selected(location) or_return
 
-	metadata, metadata_res := _metadata_of(buffer)
-	_check_buffer_handle(metadata_res, buffer, location) or_return
+	address_info, address_res := _address_info_of(address)
+	_check_address_info(address_res, address, location) or_return
 
-	if metadata.memory_type == .Private {
-		return buffer.address, nil
+	if !address_info.is_cpu_address {
+		return address_info.address, nil
+	} else {
+		metadata, metadata_res := _metadata_of(address_info.buffer)
+		assert(metadata_res == nil)
+
+		return metadata.gpu_address + address_info.offset, nil
 	}
-
-	offset := _offset_from_base(buffer, metadata)
-	return metadata.gpu_address + offset, nil
 }
 
-gpu_address_of_ptr :: proc(ptr: Ptr($T), location := #caller_location) -> (address: uintptr, res: Result) {
-	return gpu_address_of_buffer(to_buffer(ptr), location)
-}
+label_buffer :: proc(address: rawptr, label: string, location := #caller_location) -> Result {
+	_check_device_selected(location) or_return
 
-gpu_address_of_slice :: proc(slice: Slice($T), location := #caller_location) -> (address: uintptr, res: Result) {
-	return gpu_address_of_buffer(to_buffer(ptr), location)
-}
+	address_info, address_res := _address_info_of(address)
+	_check_address_info(address_res, address, location) or_return
 
-gpu_address_of :: proc {
-	gpu_address_of_buffer,
-	gpu_address_of_ptr,
-	gpu_address_of_slice,
-}
-
-label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location) {
-	if _check_device_selected(location) != nil do return
-
-	metadata, metadata_res := _metadata_of(buffer)
-	_check_buffer_handle(metadata_res, buffer, location)
-	if metadata_res != nil {
-		return
-	}
+	metadata, metadata_res := _metadata_of(address_info.buffer)
+	assert(metadata_res == nil)
 
 	res: Result
 	when TARGET_API == .Vulkan {
@@ -199,92 +198,51 @@ label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location
 		res = m3_label_buffer(metadata, label)
 	}
 
-	_check_generic_backend_error(res, location)
+	_check_generic_backend_error(res, location) or_return
+
+	return nil
 }
 
-ptr_to_buffer :: proc(ptr: Ptr($T)) -> Buffer {
-	return Buffer {
-		handle	= ptr.handle,
-		address	= ptr.address,
-	}
-}
-
-slice_to_buffer :: proc(slice: Slice($T)) -> Buffer {
-	return Buffer {
-		handle	= ptr.handle,
-	}
-}
-
-to_buffer :: proc {
-	ptr_to_buffer,
-	slice_to_buffer,
-}
-
-buffer_as_ptr :: proc($T: typeid/^$E, buffer: Buffer, offset := 0) -> Ptr(E) {
-	return Ptr(E) {
-		handle	= buffer.handle,
-		address	= buffer.address + cast(uintptr)offset,
-	}
-}
-
-buffer_as_slice :: proc($T: typeid/[]$E, buffer: Buffer, offset := 0) -> Slice(E) {
+_dealloc_from_handle :: proc(buffer: _Buffer, location := #caller_location) {
 	metadata, metadata_res := _metadata_of(buffer)
-	assert(metadata_res == nil, "The provided buffer handle is not valid.")
+	assert(metadata_res == nil)
 
-	assert(
-		metadata.memory_type != .Private,
-		"It is not possible to obtain a reference to the contents of a buffer using `.Private` memory. " +
-		"Please use memory transfer operations instead.",
-	)
-
-	offset := cast(int)_offset_from_base(buffer, metadata) + offset
-	assert(offset >= 0 && offset < metadata.size, "Out of bounds offset.")
-
-	remaining_size := metadata.size - offset
-	count := remaining_size / size_of(E)
-
-	return Slice(E) {
-		handle		= buffer.handle,
-		contents	= mem.slice_ptr(cast(^E)buffer.contents, count),
+	when TARGET_API == .Vulkan {
+		vk_dealloc(metadata)
+	} else when TARGET_API == .Metal_3 {
+		m3_dealloc(metadata)
 	}
+
+	_remove_buffer_metadata(buffer, metadata)
 }
 
-as :: proc {
-	buffer_as_ptr,
-	buffer_as_slice,
-}
-
-reference :: proc(slice: Slice($T), index: int) -> Ptr(T) {
-	return Ptr(T) {
-		handle		= slice.handle,
-		address		= slice.address + size_of(T) * index,
-	}
-}
-
-slice :: proc(s: Slice($T), start: int, end: int) -> Slice(T) {
-	return Slice(T) {
-		handle		= s.handle,
-		contents	= s.contents[start:end],
-	}
-}
-
-_check_buffer_handle :: proc(result: Result, buffer: Buffer, location: runtime.Source_Code_Location) -> Result {
+_check_address_info :: proc(result: Result, address: rawptr, location: runtime.Source_Code_Location) -> Result {
 	_check_result(
 		result,
 		.Warning,
-		"Invalid resource handle",
-		"Invalid buffer handle (%v).",
-		buffer.handle,
+		"Invalid address",
+		"The address 0x%x does not reference any valid allocation.",
+		address,
 		location=location,
 	) or_return
 	return nil
 }
 
-_buffer_metadata_of :: proc(buffer: Buffer) -> (metadata: ^_Buffer_Metadata, res: Result) {
+_to_gpu_address :: proc(address_info: _Address_Info) -> (address: uintptr, res: Result) {
+	if !address_info.is_cpu_address {
+		return address_info.address, nil
+	} else {
+		metadata := _metadata_of(address_info.buffer) or_return
+
+		return metadata.gpu_address + address_info.offset, nil
+	}
+}
+
+_buffer_metadata_of :: proc(buffer: _Buffer) -> (metadata: ^_Buffer_Metadata, res: Result) {
 	sync.shared_guard(&_buffers_mutex)
 
 	metadata_ok: bool
-	metadata, metadata_ok = hm.get(&_buffers, buffer.handle)
+	metadata, metadata_ok = hm.get(&_buffers, buffer)
 	if !metadata_ok {
 		return nil, .Invalid_Buffer
 	}
@@ -292,32 +250,120 @@ _buffer_metadata_of :: proc(buffer: Buffer) -> (metadata: ^_Buffer_Metadata, res
 	return metadata, nil
 }
 
-_add_buffer_metadata :: proc() -> (handle: Handle, metadata: ^_Buffer_Metadata, res: Result) {
+_add_buffer_metadata :: proc() -> (buffer: _Buffer, metadata: ^_Buffer_Metadata, res: Result) {
 	sync.guard(&_buffers_mutex)
 
-	handle = hm.add(&_buffers, _Buffer_Metadata {}) or_return
+	buffer = hm.add(&_buffers, _Buffer_Metadata {}) or_return
 	metadata_ok: bool
-	metadata, metadata_ok = hm.get(&_buffers, handle)
+	metadata, metadata_ok = hm.get(&_buffers, buffer)
 	assert(metadata_ok)
 
 	return
 }
 
-_remove_buffer_metadata :: proc(handle: Handle) {
-	sync.guard(&_buffers_mutex)
+_remove_buffer_metadata :: proc(buffer: _Buffer, metadata: ^_Buffer_Metadata) {
+	if sync.guard(&_address_map_mutex) {
+		gpu_address_range := _Address_Range {
+			start	= metadata.gpu_address,
+			end	= metadata.gpu_address,
+		}
+		gpu_address_node := _Address_Map_Node {
+			address	= gpu_address_range,
+		}
 
-	hm.remove(&_buffers, handle)
+		did_remove := avl.remove_value(&_address_map, gpu_address_node, false)
+		assert(did_remove, "Could not find the node of a gpu address range.")
+
+		if metadata.memory_type != .Private {
+			cpu_address_range := _Address_Range {
+				start	= metadata.cpu_address,
+				end	= metadata.cpu_address,
+			}
+			cpu_address_node := _Address_Map_Node {
+				address	= cpu_address_range,
+			}
+
+			did_remove = avl.remove_value(&_address_map, cpu_address_node, false)
+			assert(did_remove, "Could not find the node of a cpu address range.")
+		}
+	}
+
+	if sync.guard(&_buffers_mutex) {
+		hm.remove(&_buffers, buffer)
+	}
+}
+
+_register_address_ranges :: proc(metadata: ^_Buffer_Metadata) -> Result {
+	_register_address_range(metadata.gpu_address, metadata.size, metadata.handle, false) or_return
+
+	if metadata.memory_type != .Private {
+		_register_address_range(metadata.cpu_address, metadata.size, metadata.handle, true) or_return
+	}
+
+	return nil
+}
+
+_register_address_range :: proc(base_ptr: uintptr, length: int, buffer: _Buffer, is_cpu_address: bool) -> Result {
+	address_range := _Address_Range {
+		start		= base_ptr,
+		end		= base_ptr + cast(uintptr)length,
+	}
+	node := _Address_Map_Node {
+		address		= address_range,
+		buffer		= buffer,
+		is_cpu_address	= is_cpu_address,
+	}
+
+	if sync.guard(&_address_map_mutex) {
+		_, inserted := avl.find_or_insert(&_address_map, node) or_return
+		assert(inserted, "The registered address is already present in the address map.")
+	}
+
+	return nil
+}
+
+_address_info_of :: proc(address: rawptr) -> (info: _Address_Info, res: Result) {
+	
+	address_range := _Address_Range {
+		start	= cast(uintptr)address,
+		end	= cast(uintptr)address,
+	}
+	needle := _Address_Map_Node {
+		address = address_range,
+	}
+
+	node: ^avl.Node(_Address_Map_Node)
+	if sync.guard(&_address_map_mutex) {
+		node = avl.find(&_address_map, needle)
+	}
+
+	if node == nil {
+		return {}, .Invalid_Buffer
+	}
+
+	info.address		= cast(uintptr)address
+	info.buffer		= node.value.buffer
+	info.base		= node.value.address.start
+	info.offset		= info.address - info.base
+	info.remaining_size	= node.value.address.end - info.address
+	info.is_cpu_address	= node.value.is_cpu_address
+
+	return
 }
 
 _is_aligned :: proc(p: uintptr, #any_int align: int) -> bool {
 	return (p & (uintptr(align) - 1)) == 0
 }
 
-_offset_from_base :: proc(buffer: Buffer, metadata: ^_Buffer_Metadata) -> uintptr {
-	if (metadata.memory_type == .Private) {
-
-		return buffer.address - metadata.gpu_address
+// NOTE: The avl tree implementation always puts the seached value as the first parameter and the current node as the
+//	second parameter. This is a bit of a hack, but it works.
+_compare_address_map_nodes :: proc(needle: _Address_Map_Node, node: _Address_Map_Node) -> avl.Ordering {
+	if node.address.start <= needle.address.start && node.address.end >= needle.address.end {
+		return .Equal
+	} else if node.address.start > needle.address.start {
+		return .Greater
 	} else {
-		return cast(uintptr)buffer.contents - metadata.cpu_address
+		return .Less
 	}
 }
+

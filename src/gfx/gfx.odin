@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:mem"
 import vmem "core:mem/virtual"
 import hm "core:container/handle_map"
+import "core:container/avl"
 
 // Features:
 //	- Vertex pooling (no explicit layout)
@@ -158,6 +159,8 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	hm.dynamic_init(&_blend_states, _global_allocator)
 	hm.dynamic_init(&_surfaces, _global_allocator)
 
+	avl.init(&_address_map, _compare_address_map_nodes, _generic_allocator)
+
 	when TARGET_API == .Vulkan {
 		res = vk_init()
 	} else when TARGET_API == .Metal_3 {
@@ -229,9 +232,7 @@ fini :: proc() {
 
 	buffer_it := hm.dynamic_iterator_make(&_buffers)
 	for _, buffer in hm.iterate(&buffer_it) {
-		dealloc({
-			handle = buffer,
-		})
+		_dealloc_from_handle(buffer)
 	}
 
 	if _is_device_selected {
@@ -246,6 +247,8 @@ fini :: proc() {
 
 	vmem.arena_destroy(&_global_arena)
 	mem.scratch_destroy(&_temp_scratch)
+
+	avl.destroy(&_address_map)
 
 	_is_device_selected = false
 	_device_info = nil

@@ -24,7 +24,7 @@ m3_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: i
 
 m3_create_texture :: proc(
 	metadata:		^_Texture_Metadata,
-	buffer:			Buffer,
+	address_info:		_Address_Info,
 	buffer_metadata:	^_Buffer_Metadata,
 	default_view_metadata:	^_View_Metadata,
 	descriptor: Texture_Descriptor,
@@ -34,9 +34,10 @@ m3_create_texture :: proc(
 	mtl_desc := m3_texture_descriptor_to_mtl(descriptor)
 	mtl_desc->setResourceOptions(m3_MEMORY_TO_RESOURCEOPTIONS[buffer_metadata.memory_type])
 
-	offset := _offset_from_base(buffer, buffer_metadata)
-
-	texture := buffer_metadata.m3.heap->newTextureWithDescriptorAndOffset(mtl_desc, cast(NS.UInteger)offset)
+	texture := buffer_metadata.m3.heap->newTextureWithDescriptorAndOffset(
+		mtl_desc,
+		cast(NS.UInteger)address_info.offset,
+	)
 	if (texture == nil) {
 		return .Out_Of_Gpu_Memory
 	}

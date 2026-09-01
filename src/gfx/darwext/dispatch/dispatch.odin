@@ -1,5 +1,5 @@
 #+build darwin
-package darwext_dispatch
+package vicixdev_gfx_darwext_dispatch
 
 import "base:runtime"
 import NS "core:sys/darwin/Foundation"

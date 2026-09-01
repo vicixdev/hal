@@ -1,4 +1,5 @@
-package darwext
+#+build darwin
+package vicixdev_gfx_darwext_metal
 
 import "base:intrinsics"
 import NS "core:sys/darwin/Foundation"

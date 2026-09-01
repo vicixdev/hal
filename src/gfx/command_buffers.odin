@@ -75,8 +75,8 @@ _Command :: union {
 }
 
 _Command_Mem_Copy :: struct {
-	source:		Buffer,
-	destination:	Buffer,
+	source:		_Address_Info,
+	destination:	_Address_Info,
 	size:		int,
 }
 
@@ -88,7 +88,7 @@ _Command_Copy_Texture_To_Texture :: struct {
 }
 
 _Command_Copy_Buffer_To_Texture :: struct {
-	source:		Buffer,
+	source:		_Address_Info,
 	texture:	Texture,
 	region:		Texture_Region,
 }
@@ -96,7 +96,7 @@ _Command_Copy_Buffer_To_Texture :: struct {
 _Command_Copy_Texture_To_Buffer :: struct {
 	texture:	Texture,
 	region:		Texture_Region,
-	destination:	Buffer,
+	destination:	_Address_Info,
 }
 
 _Command_Barrier :: struct {
@@ -107,7 +107,7 @@ _Command_Barrier :: struct {
 _Command_Dispatch :: struct {
 	pipeline:	Pipeline,
 	resource_set:	Resource_Set,
-	arguments:	Buffer,
+	arguments:	_Address_Info,
 	group_count:	[3]int,
 }
 
@@ -137,7 +137,7 @@ _Command_Draw :: struct {
 	pipeline:		Pipeline,
 	resource_set:		Resource_Set,
 	depth_stencil_state:	Depth_Stencil_State,
-	arguments:		Buffer,
+	arguments:		_Address_Info,
 	vertex_count:		int,
 	instance_count:		int,
 	base_vertex:		int,
@@ -147,8 +147,8 @@ _Command_Draw_Indexed :: struct {
 	pipeline:		Pipeline,
 	resource_set:		Resource_Set,
 	depth_stencil_state:	Depth_Stencil_State,
-	arguments:		Buffer,
-	indices:		Buffer,
+	arguments:		_Address_Info,
+	indices:		_Address_Info,
 	index_count:		int,
 	instance_count:		int,
 	base_vertex:		int,
@@ -296,8 +296,8 @@ use_depth_stencil_state :: proc(
 
 mem_copy :: proc(
 	command_buffer:	Command_Buffer,
-	destination:	Buffer,
-	source:		Buffer,
+	destination:	rawptr,
+	source:		rawptr,
 	size:		int,
 	location :=	#caller_location,
 ) -> (res: Result) {
@@ -307,38 +307,42 @@ mem_copy :: proc(
 
 	_check_not_in_render_pass(metadata, location) or_return
 
-	destination_metadata, destination_res := _metadata_of(destination)
-	_check_buffer_handle(destination_res, destination, location) or_return
-	destination_offset := _offset_from_base(destination, destination_metadata)
+	destination_info, destination_res := _address_info_of(destination)
+	_check_address_info(destination_res, destination, location) or_return
 
-	source_metadata, source_res := _metadata_of(source)
-	_check_buffer_handle(source_res, source, location) or_return
-	source_offset := _offset_from_base(source, source_metadata)
+	destination_metadata, destination_metadata_res := _metadata_of(destination_info.buffer)
+	assert(destination_metadata_res == nil)
+
+	source_info, source_res := _address_info_of(source)
+	_check_address_info(source_res, source, location) or_return
+
+	source_metadata, source_metadata_res := _metadata_of(source_info.buffer)
+	assert(source_metadata_res == nil)
 
 	_check_condition(
-		destination_metadata.size - cast(int)destination_offset >= size,
+		destination_info.remaining_size >= cast(uintptr)size,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
 		"The requested memory copy operation would result in out of bounds accesses. The user specified a " +
 		"copy lenth of %d, but the destination buffer (at 0x%x) has only %d bytes remaining at offset %d.",
 		size,
-		destination.address,
-		destination_metadata.size - cast(int)destination_offset,
-		destination_offset,
+		destination,
+		destination_info.remaining_size,
+		destination_info.offset,
 		location=location,
 	) or_return
 	_check_condition(
-		source_metadata.size - cast(int)source_offset >= size,
+		source_info.remaining_size >= cast(uintptr)size,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
 		"The requested memory copy operation would result in out of bounds accesses. The user specified a " +
 		"copy lenth of %d, but the source buffer (at 0x%x) has only %d bytes remaining at offset %d.",
 		size,
-		source.address,
-		source_metadata.size - cast(int)source_offset,
-		source_offset,
+		source,
+		source_info.remaining_size,
+		source_info.offset,
 		location=location,
 	) or_return
 
@@ -350,7 +354,7 @@ mem_copy :: proc(
 		"The source buffer (at 0x%x) is of memory type `.Readback`. `.Readback` buffers can only be used as " +
 		"destination. To upload data consider using `.Default` buffers for small memory sizes or `.Staging` " +
 		"for bigger ones.",
-		source.address,
+		source,
 		location=location,
 	) or_return
 	_check_condition(
@@ -361,13 +365,13 @@ mem_copy :: proc(
 		"The destination buffer (at 0x%x) is of memory type `.Staging`. `.Staging` buffers can only be used " +
 		"as source. To download data consider using `.Default` buffers for small memory sizes or `.Readback` " +
 		"for bigger ones.",
-		destination.address,
+		destination,
 		location=location,
 	) or_return
 
 	command := _Command_Mem_Copy {
-		source		= source,
-		destination	= destination,
+		source		= source_info,
+		destination	= destination_info,
 		size		= size,
 	}
 	append(&metadata.commands, command)
@@ -447,7 +451,7 @@ copy_texture_to_texture :: proc(
 
 copy_buffer_to_texture :: proc(
 	command_buffer:	Command_Buffer,
-	source:		Buffer,
+	source:		rawptr,
 	texture:	Texture,
 	region:		Texture_Region,
 	location :=	#caller_location,
@@ -460,9 +464,12 @@ copy_buffer_to_texture :: proc(
 	texture_metadata, texture_res := _metadata_of(texture)
 	_check_texture_handle(texture_res, texture, location) or_return
 
-	source_metadata, source_res := _metadata_of(source)
-	_check_buffer_handle(source_res, source, location) or_return
-	source_offset := _offset_from_base(source, source_metadata)
+	source_info, source_res := _address_info_of(source)
+	_check_address_info(source_res, source, location) or_return
+
+	source_metadata, source_metadata_res := _metadata_of(source_info.buffer)
+	assert(source_metadata_res == nil)
+	source_offset := source_info.offset
 
 	required_size := _size_of_texture_region(texture_metadata, region)
 
@@ -474,11 +481,11 @@ copy_buffer_to_texture :: proc(
 		"The source buffer (at 0x%x) is of memory type `.Readback`. `.Readback` buffers can only be used as " +
 		"destination. To upload data consider using `.Default` buffers for small memory sizes or `.Staging` " +
 		"for bigger ones.",
-		source.address,
+		source,
 		location=location,
 	) or_return
 	_check_condition(
-		source_metadata.size - cast(int)source_offset >= required_size,
+		source_info.remaining_size >= cast(uintptr)required_size,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
@@ -486,14 +493,14 @@ copy_buffer_to_texture :: proc(
 		"require a length of %d, but the source buffer (at 0x%x) has only %d bytes remaining at offset " +
 		"%d.",
 		required_size,
-		source.address,
-		source_metadata.size - cast(int)source_offset,
+		source,
+		source_info.remaining_size,
 		source_offset,
 		location=location,
 	) or_return
 
 	command := _Command_Copy_Buffer_To_Texture {
-		source		= source,
+		source		= source_info,
 		texture		= texture,
 		region		= region,
 	}
@@ -506,7 +513,7 @@ copy_texture_to_buffer :: proc(
 	command_buffer:	Command_Buffer,
 	texture:	Texture,
 	region:		Texture_Region,
-	destination:	Buffer,
+	destination:	rawptr,
 	location :=	#caller_location,
 ) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
@@ -517,9 +524,12 @@ copy_texture_to_buffer :: proc(
 	texture_metadata, texture_res := _metadata_of(texture)
 	_check_texture_handle(texture_res, texture, location) or_return
 
-	destination_metadata, destination_res := _metadata_of(destination)
-	_check_buffer_handle(destination_res, destination, location) or_return
-	destination_offset := _offset_from_base(destination, destination_metadata)
+	destination_info, destination_res := _address_info_of(destination)
+	_check_address_info(destination_res, destination, location) or_return
+
+	destination_metadata, destination_metadata_res := _metadata_of(destination_info.buffer)
+	assert(destination_metadata_res == nil)
+	destination_offset := destination_info.offset
 
 	required_size := _size_of_texture_region(texture_metadata, region)
 
@@ -531,11 +541,11 @@ copy_texture_to_buffer :: proc(
 		"The destination buffer (at 0x%x) is of memory type `.Staging`. `.Staging` buffers can only be used " +
 		"as source. To download data consider using `.Default` buffers for small memory sizes or `.Readback` " +
 		"for bigger ones.",
-		destination.address,
+		destination,
 		location=location,
 	) or_return
 	_check_condition(
-		destination_metadata.size - cast(int)destination_offset >= required_size,
+		destination_info.remaining_size >= cast(uintptr)required_size,
 		.Out_Of_Bounds,
 		.Error,
 		"Out of bounds copy",
@@ -543,8 +553,8 @@ copy_texture_to_buffer :: proc(
 		"require a length of %d, but the destination buffer (at 0x%x) has only %d bytes remaining at offset " +
 		"%d.",
 		required_size,
-		destination.address,
-		destination_metadata.size - cast(int)destination_offset,
+		destination,
+		destination_info.remaining_size,
 		destination_offset,
 		location=location,
 	) or_return
@@ -552,17 +562,17 @@ copy_texture_to_buffer :: proc(
 	command := _Command_Copy_Texture_To_Buffer {
 		texture		= texture,
 		region		= region,
-		destination	= destination,
+		destination	= destination_info,
 	}
 	append(&metadata.commands, command) or_return
 
 	return nil
 }
 
-dispatch_with_buffer :: proc(
+dispatch :: proc(
 	command_buffer:		Command_Buffer,
 	compute_pipeline:	Pipeline,
-	arguments:		Buffer,
+	arguments:		rawptr,
 	group_count:		[3]int,
 	location :=		#caller_location,
 ) -> (res: Result) {
@@ -586,10 +596,13 @@ dispatch_with_buffer :: proc(
 		location=location,
 	)
 
+	arguments_info, arguments_res := _address_info_of(arguments)
+	_check_address_info(arguments_res, arguments, location) or_return
+
 	command :=  _Command_Dispatch {
 		pipeline	= compute_pipeline,
 		resource_set	= metadata.resource_set,
-		arguments	= arguments,
+		arguments	= arguments_info,
 		group_count	= group_count,
 	}
 	append(&metadata.commands, command) or_return
@@ -597,44 +610,6 @@ dispatch_with_buffer :: proc(
 	metadata.can_encode_signals = true
 
 	return nil
-}
-
-dispatch_with_ptr :: proc(
-	command_buffer:		Command_Buffer,
-	compute_pipeline:	Pipeline,
-	arguments:		Ptr($T),
-	group_count:		[3]int,
-	location :=		#caller_location,
-) -> (res: Result) {
-	return dispatch_with_buffer(
-		command_buffer,
-		compute_pipeline,
-		to_buffer(arguments),
-		group_count,
-		location,
-	)
-}
-
-dispatch_with_slice :: proc(
-	command_buffer:		Command_Buffer,
-	compute_pipeline:	Pipeline,
-	arguments:		Slice($T),
-	group_count:		[3]int,
-	location :=		#caller_location,
-) -> (res: Result) {
-	return dispatch_with_buffer(
-		command_buffer,
-		compute_pipeline,
-		to_buffer(arguments),
-		group_count,
-		location,
-	)
-}
-
-dispatch :: proc {
-	dispatch_with_buffer,
-	dispatch_with_ptr,
-	dispatch_with_slice,
 }
 
 // Emplaces a synchronization barrier in the command buffer.
@@ -907,10 +882,10 @@ end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_loca
 	return nil
 }
 
-draw_with_buffer :: proc(
+draw :: proc(
 	command_buffer:		Command_Buffer,
 	render_pipeline:	Pipeline,
-	arguments:		Buffer,
+	arguments:		rawptr,
 	vertex_count:		int,
 	instance_count :=	1,
 	base_vertex :=		0,
@@ -936,11 +911,14 @@ draw_with_buffer :: proc(
 		location=location,
 	)
 
+	arguments_info, arguments_res := _address_info_of(arguments)
+	_check_address_info(arguments_res, arguments, location) or_return
+
 	command :=  _Command_Draw {
 		pipeline		= render_pipeline,
 		resource_set		= metadata.resource_set,
 		depth_stencil_state	= metadata.depth_stencil_state,
-		arguments		= arguments,
+		arguments		= arguments_info,
 		vertex_count		= vertex_count,
 		instance_count		= instance_count,
 		base_vertex		= base_vertex,
@@ -950,57 +928,11 @@ draw_with_buffer :: proc(
 	return nil
 }
 
-draw_with_ptr :: proc(
+draw_indexed :: proc(
 	command_buffer:		Command_Buffer,
 	render_pipeline:	Pipeline,
-	arguments:		Ptr($T),
-	vertex_count:		int,
-	instance_count :=	1,
-	base_vertex :=		0,
-	location :=		#caller_location,
-) -> (res: Result) {
-	return draw_with_buffer(
-		command_buffer,
-		render_pipeline,
-		to_buffer(arguments),
-		vertex_count,
-		instance_count,
-		base_vertex,
-		location,
-	)
-}
-
-draw_with_slice :: proc(
-	command_buffer:		Command_Buffer,
-	render_pipeline:	Pipeline,
-	arguments:		Slice($T),
-	vertex_count:		int,
-	instance_count :=	1,
-	base_vertex :=		0,
-	location :=		#caller_location,
-) -> (res: Result) {
-	return draw_with_buffer(
-		command_buffer,
-		render_pipeline,
-		to_buffer(arguments),
-		vertex_count,
-		instance_count,
-		base_vertex,
-		location,
-	)
-}
-
-draw :: proc {
-	draw_with_buffer,
-	draw_with_ptr,
-	draw_with_slice,
-}
-
-draw_indexed_with_buffer :: proc(
-	command_buffer:		Command_Buffer,
-	render_pipeline:	Pipeline,
-	arguments:		Buffer,
-	indices:		Buffer,
+	arguments:		rawptr,
+	indices:		rawptr,
 	index_count:		int,
 	instance_count :=	1,
 	index_type :=		Index_Type.U16,
@@ -1015,8 +947,11 @@ draw_indexed_with_buffer :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(render_pipeline)
 	_check_pipeline_handle(pipeline_res, render_pipeline, location) or_return
 
-	_, indices_res := _metadata_of(indices)
-	_check_buffer_handle(indices_res, indices, location) or_return
+	arguments_info, arguments_res := _address_info_of(arguments)
+	_check_address_info(arguments_res, arguments, location) or_return
+
+	indices_info, indices_res := _address_info_of(indices)
+	_check_address_info(indices_res, indices, location) or_return
 
 	_check_condition(
 		pipeline_metadata.type == .Render,
@@ -1033,8 +968,8 @@ draw_indexed_with_buffer :: proc(
 		pipeline		= render_pipeline,
 		resource_set		= metadata.resource_set,
 		depth_stencil_state	= metadata.depth_stencil_state,
-		arguments		= arguments,
-		indices			= indices,
+		arguments		= arguments_info,
+		indices			= indices_info,
 		index_count		= index_count,
 		instance_count		= instance_count,
 		index_type		= index_type,
@@ -1042,56 +977,6 @@ draw_indexed_with_buffer :: proc(
 	append(&metadata.commands, command) or_return
 
 	return nil
-}
-
-draw_indexed_with_ptr :: proc(
-	command_buffer:		Command_Buffer,
-	render_pipeline:	Pipeline,
-	arguments:		Ptr($T),
-	indices:		Buffer,
-	index_count:		int,
-	instance_count :=	1,
-	index_type :=		Index_Type.U16,
-	location :=		#caller_location,
-) -> (res: Result) {
-	return draw_indexed_with_buffer(
-		command_buffer,
-		render_pipeline,
-		to_buffer(arguments),
-		indices,
-		index_count,
-		instance_count,
-		index_type,
-		location,
-	)
-}
-
-draw_indexed_with_slice :: proc(
-	command_buffer:		Command_Buffer,
-	render_pipeline:	Pipeline,
-	arguments:		Slice($T),
-	indices:		Buffer,
-	index_count:		int,
-	instance_count :=	1,
-	index_type :=		Index_Type.U16,
-	location :=		#caller_location,
-) -> (res: Result) {
-	return draw_indexed_with_buffer(
-		command_buffer,
-		render_pipeline,
-		to_buffer(arguments),
-		indices,
-		index_count,
-		instance_count,
-		index_type,
-		location,
-	)
-}
-
-draw_indexed :: proc {
-	draw_indexed_with_buffer,
-	draw_indexed_with_ptr,
-	draw_indexed_with_slice,
 }
 
 submit :: proc(

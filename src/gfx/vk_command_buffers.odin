@@ -57,20 +57,17 @@ vk_emit_mem_copy :: proc(
 	command:	_Command_Mem_Copy,
 ) -> Result {
 	
-	source_metadata, source_res := _metadata_of(command.source)
+	source_metadata, source_res := _metadata_of(command.source.buffer)
 	_check_internal_emission_result(source_res) or_return
 
-	destination_metadata, destination_res := _metadata_of(command.destination)
+	destination_metadata, destination_res := _metadata_of(command.destination.buffer)
 	_check_internal_emission_result(destination_res) or_return
-
-	source_offset := _offset_from_base(command.source, source_metadata)
-	destination_offset := _offset_from_base(command.destination, destination_metadata)
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	region := vk.BufferCopy {
-		srcOffset	= cast(vk.DeviceSize)source_offset,
-		dstOffset	= cast(vk.DeviceSize)destination_offset,
+		srcOffset	= cast(vk.DeviceSize)command.source.offset,
+		dstOffset	= cast(vk.DeviceSize)command.destination.offset,
 		size		= cast(vk.DeviceSize)command.size,
 	}
 	vk.CmdCopyBuffer(
@@ -133,9 +130,8 @@ vk_emit_copy_buffer_to_texture :: proc(
 	command:	_Command_Copy_Buffer_To_Texture,
 ) -> Result {
 
-	source_metadata, source_res := _metadata_of(command.source)
+	source_metadata, source_res := _metadata_of(command.source.buffer)
 	_check_internal_emission_result(source_res) or_return
-	source_offset := _offset_from_base(command.source, source_metadata)
 
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
@@ -143,7 +139,7 @@ vk_emit_copy_buffer_to_texture :: proc(
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 	
 	region := vk.BufferImageCopy {
-		bufferOffset		= cast(vk.DeviceSize)source_offset,
+		bufferOffset		= cast(vk.DeviceSize)command.source.offset,
 		bufferRowLength		= cast(u32)command.region.size.x,
 		bufferImageHeight	= cast(u32)command.region.size.y,
 		imageOffset		= vk_origin_to_vk_offset(command.region.origin),
@@ -173,9 +169,8 @@ vk_emit_copy_texture_to_buffer :: proc(
 	command:	_Command_Copy_Texture_To_Buffer,
 ) -> Result {
 
-	destination_metadata, destination_res := _metadata_of(command.destination)
+	destination_metadata, destination_res := _metadata_of(command.destination.buffer)
 	_check_internal_emission_result(destination_res) or_return
-	destination_offset := _offset_from_base(command.destination, destination_metadata)
 
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
@@ -183,7 +178,7 @@ vk_emit_copy_texture_to_buffer :: proc(
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 	
 	region := vk.BufferImageCopy {
-		bufferOffset		= cast(vk.DeviceSize)destination_offset,
+		bufferOffset		= cast(vk.DeviceSize)command.destination.offset,
 		bufferRowLength		= cast(u32)command.region.size.x,
 		bufferImageHeight	= cast(u32)command.region.size.y,
 		imageOffset		= vk_origin_to_vk_offset(command.region.origin),
@@ -332,7 +327,7 @@ vk_emit_dispatch :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
@@ -690,7 +685,7 @@ vk_emit_draw :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
@@ -726,11 +721,10 @@ vk_emit_draw_indexed :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	indices_metadata, indices_res := _metadata_of(command.indices)
+	indices_metadata, indices_res := _metadata_of(command.indices.buffer)
 	_check_internal_emission_result(indices_res) or_return
-	indices_offset := _offset_from_base(command.indices, indices_metadata)
 
-	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
@@ -749,7 +743,7 @@ vk_emit_draw_indexed :: proc(
 	vk.CmdBindIndexBuffer(
 		metadata.vk.command_buffer,
 		indices_metadata.vk.buffer,
-		cast(vk.DeviceSize)indices_offset,
+		cast(vk.DeviceSize)command.indices.offset,
 		vk_INDEX_TYPE_TO_VK[command.index_type],
 	)
 	vk.CmdDrawIndexed(
