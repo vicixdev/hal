@@ -32,7 +32,7 @@ arena_free_all :: proc(arena: ^Arena) {
 	arena.offset = 0
 }
 
-arena_alloc :: proc(arena: ^Arena, size: int, align := 1) -> (buffer: Buffer, res: Result) {
+arena_alloc_raw :: proc(arena: ^Arena, size: int, align := 1) -> (buffer: Buffer, res: Result) {
 	base_offset: int
 	if !_is_aligned(cast(uintptr)arena.offset, align) {
 		base_offset = mem.align_forward_int(arena.offset, align)
@@ -50,6 +50,22 @@ arena_alloc :: proc(arena: ^Arena, size: int, align := 1) -> (buffer: Buffer, re
 	buffer.address += cast(uintptr)base_offset
 
 	return
+}
+
+arena_alloc_ptr :: proc(arena: ^Arena, $T: typeid, align := 1) -> (ptr: Ptr(T), res: Result) {
+	buffer := arena_alloc_raw(arena, size_of(T), align) or_return
+	return as(^T, buffer), nil
+}
+
+arena_alloc_slice :: proc(arena: ^Arena, $T: typeid/[]$E, length: int, align := 1) -> (slice: Slice(E), res: Result) {
+	buffer := arena_alloc_raw(arena, size_of(T) * length, align) or_return
+	return as([]T, buffer), nil
+}
+
+arena_alloc :: proc {
+	arena_alloc_raw,
+	arena_alloc_ptr,
+	arena_alloc_slice,
 }
 
 Scratch :: struct {
@@ -73,7 +89,7 @@ destroy_scratch :: proc(scratch: Scratch) {
 	dealloc(scratch.base)
 }
 
-scratch_alloc :: proc(scratch: ^Scratch, size: int, align := 1) -> (buffer: Buffer, res: Result) {
+scratch_alloc_raw :: proc(scratch: ^Scratch, size: int, align := 1) -> (buffer: Buffer, res: Result) {
 	if size > scratch.size {
 		return {}, .Out_Of_Gpu_Memory
 	}
@@ -89,5 +105,21 @@ scratch_alloc :: proc(scratch: ^Scratch, size: int, align := 1) -> (buffer: Buff
 	buffer.address += cast(uintptr)base_offset
 
 	return
+}
+
+scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 1) -> (ptr: Ptr(T), res: Result) {
+	buffer := scratch_alloc_raw(scratch, size_of(T), align) or_return
+	return as(^T, buffer), nil
+}
+
+scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, length: int, align := 1) -> (slice: Slice(E), res: Result) {
+	buffer := scratch_alloc_raw(scratch, size_of(T) * length, align) or_return
+	return as([]T, buffer), nil
+}
+
+scratch_alloc :: proc {
+	scratch_alloc_raw,
+	scratch_alloc_ptr,
+	scratch_alloc_slice,
 }
 

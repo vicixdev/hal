@@ -8,7 +8,7 @@ struct Parameters {
 const float MULT_FACTOR;
 
 [push_constant]
-Parameters parameters;
+Parameters* parameters;
 
 [shader("compute")]
 [numthreads(128,1,1)]

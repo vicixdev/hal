@@ -1,6 +1,7 @@
 #+build darwin
 package gfx
 
+import "core:mem"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/metal"
@@ -183,9 +184,12 @@ m3_emit_dispatch :: proc(
 
 	group_size := pipeline_metadata.compute.group_size
 
+	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	_check_internal_emission_result(arguments_res) or_return
+
 	m3_enable_compute_encoder(metadata) or_return
 	m3_bind_resource_set(metadata) or_return
-	metadata.m3.compute_encoder->setBytes(command.argument, 0)
+	metadata.m3.compute_encoder->setBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
 	metadata.m3.compute_encoder->dispatchThreadgroups(
 		{
@@ -361,9 +365,12 @@ m3_emit_draw :: proc(
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
+	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	_check_internal_emission_result(arguments_res) or_return
+
 	m3_bind_resource_set(metadata) or_return
-	metadata.m3.render_encoder->setVertexBytes(command.argument, 0)
-	metadata.m3.render_encoder->setFragmentBytes(command.argument, 0)
+	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
+	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
 	metadata.m3.render_encoder->drawPrimitivesWithInstanceCount(
 		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
@@ -390,9 +397,12 @@ m3_emit_draw_indexed :: proc(
 	_check_internal_emission_result(indices_res) or_return
 	indices_offset := _offset_from_base(command.indices, indices_metadata)
 
+	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	_check_internal_emission_result(arguments_res) or_return
+
 	m3_bind_resource_set(metadata) or_return
-	metadata.m3.render_encoder->setVertexBytes(command.argument, 0)
-	metadata.m3.render_encoder->setFragmentBytes(command.argument, 0)
+	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
+	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
 	metadata.m3.render_encoder->drawIndexedPrimitivesWithInstanceCount(
 		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],

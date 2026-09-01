@@ -85,7 +85,7 @@ app :: proc() -> gfx.Result {
 		2, 3, 0,
 	}
 
-	Parameters :: struct #packed {
+	Arguments :: struct #packed {
 		vertices:	uintptr,
 	}
 
@@ -154,10 +154,12 @@ app :: proc() -> gfx.Result {
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, Parameters {
+			arguments := gfx.arena_alloc(&default_memory, Arguments) or_return
+			arguments.contents^ = Arguments {
 				vertices = gpu_vertices,
-			}, indices, 6)
+			}
+			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
+			gfx.draw_indexed(command_buffer, pipeline, arguments, indices, 6)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return

@@ -276,17 +276,15 @@ app :: proc() -> gfx.Result {
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-			args := gfx.scratch_alloc(&frame_memory, size_of(Arguments), 16) or_return
-			gfx.as(^Arguments, args)^ = {
+			args := gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
+			args.contents^ = {
 				vertices	= gpu_vertices,
 				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(rotation, { 0.0, 1.0, 0.0 }),
 				view		= view,
 				proj		= proj,
 			}
-			_ = view; _ = proj
-
 			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, gfx.gpu_address_of(args) or_return, indices, 6)
+			gfx.draw_indexed(command_buffer, pipeline, args, indices, 6)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return

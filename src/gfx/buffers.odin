@@ -21,11 +21,27 @@ Memory :: enum {
 }
 
 Buffer :: struct {
-	handle:  Handle,
+	handle:	Handle,
 	using _: struct #raw_union {
 		// If the memory type is `Default` or `Readback` it contains the Cpu Mapped Virtual Address.
 		contents:	rawptr,
 		// If the memory type is `Private` contains the Gpu Virtual Address of the buffer.
+		address:	uintptr,
+	},
+}
+
+Ptr :: struct($T: typeid) {
+	handle:	Handle,
+	using _: struct #raw_union {
+		contents:	^T,
+		address:	uintptr,
+	},
+}
+
+Slice :: struct($T: typeid) {
+	handle:	Handle,
+	using _: struct #raw_union {
+		contents:	[]T,
 		address:	uintptr,
 	},
 }
@@ -139,7 +155,7 @@ dealloc :: proc(buffer: Buffer, location := #caller_location) {
 	_remove_buffer_metadata(buffer.handle)
 }
 
-gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address: uintptr, res: Result) {
+gpu_address_of_buffer :: proc(buffer: Buffer, location := #caller_location) -> (address: uintptr, res: Result) {
 	_check_device_selected(location) or_return
 
 	metadata, metadata_res := _metadata_of(buffer)
@@ -151,6 +167,20 @@ gpu_address_of :: proc(buffer: Buffer, location := #caller_location) -> (address
 
 	offset := _offset_from_base(buffer, metadata)
 	return metadata.gpu_address + offset, nil
+}
+
+gpu_address_of_ptr :: proc(ptr: Ptr($T), location := #caller_location) -> (address: uintptr, res: Result) {
+	return gpu_address_of_buffer(to_buffer(ptr), location)
+}
+
+gpu_address_of_slice :: proc(slice: Slice($T), location := #caller_location) -> (address: uintptr, res: Result) {
+	return gpu_address_of_buffer(to_buffer(ptr), location)
+}
+
+gpu_address_of :: proc {
+	gpu_address_of_buffer,
+	gpu_address_of_ptr,
+	gpu_address_of_slice,
 }
 
 label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location) {
@@ -172,7 +202,32 @@ label_buffer :: proc(buffer: Buffer, label: string, location := #caller_location
 	_check_generic_backend_error(res, location)
 }
 
-as_slice :: proc($T: typeid/[]$E, buffer: Buffer) -> []E {
+ptr_to_buffer :: proc(ptr: Ptr($T)) -> Buffer {
+	return Buffer {
+		handle	= ptr.handle,
+		address	= ptr.address,
+	}
+}
+
+slice_to_buffer :: proc(slice: Slice($T)) -> Buffer {
+	return Buffer {
+		handle	= ptr.handle,
+	}
+}
+
+to_buffer :: proc {
+	ptr_to_buffer,
+	slice_to_buffer,
+}
+
+buffer_as_ptr :: proc($T: typeid/^$E, buffer: Buffer, offset := 0) -> Ptr(E) {
+	return Ptr(E) {
+		handle	= buffer.handle,
+		address	= buffer.address + cast(uintptr)offset,
+	}
+}
+
+buffer_as_slice :: proc($T: typeid/[]$E, buffer: Buffer, offset := 0) -> Slice(E) {
 	metadata, metadata_res := _metadata_of(buffer)
 	assert(metadata_res == nil, "The provided buffer handle is not valid.")
 
@@ -182,27 +237,35 @@ as_slice :: proc($T: typeid/[]$E, buffer: Buffer) -> []E {
 		"Please use memory transfer operations instead.",
 	)
 
-	offset := cast(int)_offset_from_base(buffer, metadata)
+	offset := cast(int)_offset_from_base(buffer, metadata) + offset
 	assert(offset >= 0 && offset < metadata.size, "Out of bounds offset.")
 
 	remaining_size := metadata.size - offset
 	count := remaining_size / size_of(E)
 
-	return mem.slice_ptr(cast(^E)buffer.contents, count)
-}
-
-as_multipointer :: proc($T: typeid/[^]$E, buffer: Buffer) -> [^]E {
-	return cast([^]E)buffer.contents
-}
-
-as_pointer :: proc($T: typeid/^$E, buffer: Buffer) -> ^E {
-	return cast(^E)buffer.contents
+	return Slice(E) {
+		handle		= buffer.handle,
+		contents	= mem.slice_ptr(cast(^E)buffer.contents, count),
+	}
 }
 
 as :: proc {
-	as_slice,
-	as_pointer,
-	as_multipointer,
+	buffer_as_ptr,
+	buffer_as_slice,
+}
+
+reference :: proc(slice: Slice($T), index: int) -> Ptr(T) {
+	return Ptr(T) {
+		handle		= slice.handle,
+		address		= slice.address + size_of(T) * index,
+	}
+}
+
+slice :: proc(s: Slice($T), start: int, end: int) -> Slice(T) {
+	return Slice(T) {
+		handle		= s.handle,
+		contents	= s.contents[start:end],
+	}
 }
 
 _check_buffer_handle :: proc(result: Result, buffer: Buffer, location: runtime.Source_Code_Location) -> Result {

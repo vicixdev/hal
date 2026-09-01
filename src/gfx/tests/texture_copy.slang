@@ -7,7 +7,7 @@ struct Parameters {
 }
 
 [push_constant]
-Parameters parameters;
+Parameters* parameters;
 
 [shader("compute")]
 [numthreads(16,16,1)]

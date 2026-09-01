@@ -1,7 +1,6 @@
 package gfx
 
 import "base:runtime"
-import "core:mem"
 import "core:sync"
 import "core:slice"
 import vmem "core:mem/virtual"
@@ -107,7 +106,7 @@ _Command_Barrier :: struct {
 _Command_Dispatch :: struct {
 	pipeline:	Pipeline,
 	resource_set:	Resource_Set,
-	argument:	[]byte,
+	arguments:	Buffer,
 	group_count:	[3]int,
 }
 
@@ -136,7 +135,7 @@ _Command_End_Render_Pass :: struct {}
 _Command_Draw :: struct {
 	pipeline:	Pipeline,
 	resource_set:	Resource_Set,
-	argument:	[]byte,
+	arguments:	Buffer,
 	vertex_count:	int,
 	instance_count:	int,
 	base_vertex:	int,
@@ -145,7 +144,7 @@ _Command_Draw :: struct {
 _Command_Draw_Indexed :: struct {
 	pipeline:	Pipeline,
 	resource_set:	Resource_Set,
-	argument:	[]byte,
+	arguments:	Buffer,
 	indices:	Buffer,
 	index_count:	int,
 	instance_count:	int,
@@ -539,39 +538,14 @@ copy_texture_to_buffer :: proc(
 	return nil
 }
 
-dispatch_with_any_argument :: proc(
+dispatch_with_buffer :: proc(
 	command_buffer:		Command_Buffer,
 	compute_pipeline:	Pipeline,
-	argument:		any,
-	group_count:		[3]int,
-	location :=		#caller_location,
-) -> Result {
-	return dispatch_with_bytes_argument(command_buffer,
-		compute_pipeline,
-		mem.any_to_bytes(argument),
-		group_count,
-		location,
-	)
-}
-
-dispatch_with_bytes_argument :: proc(
-	command_buffer:		Command_Buffer,
-	compute_pipeline:	Pipeline,
-	argument:		[]byte,
+	arguments:		Buffer,
 	group_count:		[3]int,
 	location :=		#caller_location,
 ) -> (res: Result) {
 	
-	_check_condition(
-		len(argument) < 64,
-		.Invalid_Pipeline_Argument,
-		.Error,
-		"Invalid pipeline argument",
-		"The size of the pipeline argument must be at most 64 bytes (%d found).",
-		len(argument),
-		location=location,
-	) or_return
-
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
@@ -594,7 +568,7 @@ dispatch_with_bytes_argument :: proc(
 	command :=  _Command_Dispatch {
 		pipeline	= compute_pipeline,
 		resource_set	= metadata.resource_set,
-		argument	= slice.clone(argument, metadata.allocator) or_return,
+		arguments	= arguments,
 		group_count	= group_count,
 	}
 	append(&metadata.commands, command) or_return
@@ -604,9 +578,42 @@ dispatch_with_bytes_argument :: proc(
 	return nil
 }
 
+dispatch_with_ptr :: proc(
+	command_buffer:		Command_Buffer,
+	compute_pipeline:	Pipeline,
+	arguments:		Ptr($T),
+	group_count:		[3]int,
+	location :=		#caller_location,
+) -> (res: Result) {
+	return dispatch_with_buffer(
+		command_buffer,
+		compute_pipeline,
+		to_buffer(arguments),
+		group_count,
+		location,
+	)
+}
+
+dispatch_with_slice :: proc(
+	command_buffer:		Command_Buffer,
+	compute_pipeline:	Pipeline,
+	arguments:		Slice($T),
+	group_count:		[3]int,
+	location :=		#caller_location,
+) -> (res: Result) {
+	return dispatch_with_buffer(
+		command_buffer,
+		compute_pipeline,
+		to_buffer(arguments),
+		group_count,
+		location,
+	)
+}
+
 dispatch :: proc {
-	dispatch_with_bytes_argument,
-	dispatch_with_any_argument,
+	dispatch_with_buffer,
+	dispatch_with_ptr,
+	dispatch_with_slice,
 }
 
 // Emplaces a synchronization barrier in the command buffer.
@@ -879,45 +886,16 @@ end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_loca
 	return nil
 }
 
-draw_with_any_argument :: proc(
-	command_buffer:		Command_Buffer,
-	compute_pipeline:	Pipeline,
-	argument:		any,
-	vertex_count:		int,
-	instance_count :=	1,
-	base_vertex :=		0,
-	location :=		#caller_location,
-) -> Result {
-	return draw_with_bytes_argument(command_buffer,
-		compute_pipeline,
-		mem.any_to_bytes(argument),
-		vertex_count,
-		instance_count,
-		base_vertex,
-		location,
-	)
-}
-
-draw_with_bytes_argument :: proc(
+draw_with_buffer :: proc(
 	command_buffer:		Command_Buffer,
 	render_pipeline:	Pipeline,
-	argument:		[]byte,
+	arguments:		Buffer,
 	vertex_count:		int,
 	instance_count :=	1,
 	base_vertex :=		0,
 	location :=		#caller_location,
 ) -> (res: Result) {
 	
-	_check_condition(
-		len(argument) < 64,
-		.Invalid_Pipeline_Argument,
-		.Error,
-		"Invalid pipeline argument",
-		"The size of the pipeline argument must be at most 64 bytes (%d found).",
-		len(argument),
-		location=location,
-	) or_return
-
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
@@ -940,7 +918,7 @@ draw_with_bytes_argument :: proc(
 	command :=  _Command_Draw {
 		pipeline	= render_pipeline,
 		resource_set	= metadata.resource_set,
-		argument	= slice.clone(argument, metadata.allocator) or_return,
+		arguments	= arguments,
 		vertex_count	= vertex_count,
 		instance_count	= instance_count,
 		base_vertex	= base_vertex,
@@ -950,36 +928,56 @@ draw_with_bytes_argument :: proc(
 	return nil
 }
 
-draw :: proc {
-	draw_with_bytes_argument,
-	draw_with_any_argument,
-}
-
-draw_indexed_with_any_argument :: proc(
+draw_with_ptr :: proc(
 	command_buffer:		Command_Buffer,
-	compute_pipeline:	Pipeline,
-	argument:		any,
-	indices:		Buffer,
-	index_count:		int,
+	render_pipeline:	Pipeline,
+	arguments:		Ptr($T),
+	vertex_count:		int,
 	instance_count :=	1,
-	index_type :=		Index_Type.U16,
+	base_vertex :=		0,
 	location :=		#caller_location,
-) -> Result {
-	return draw_indexed_with_bytes_argument(command_buffer,
-		compute_pipeline,
-		mem.any_to_bytes(argument),
-		indices,
-		index_count,
+) -> (res: Result) {
+	return draw_with_buffer(
+		command_buffer,
+		render_pipeline,
+		to_buffer(arguments),
+		vertex_count,
 		instance_count,
-		index_type,
+		base_vertex,
 		location,
 	)
 }
 
-draw_indexed_with_bytes_argument :: proc(
+draw_with_slice :: proc(
 	command_buffer:		Command_Buffer,
 	render_pipeline:	Pipeline,
-	argument:		[]byte,
+	arguments:		Slice($T),
+	vertex_count:		int,
+	instance_count :=	1,
+	base_vertex :=		0,
+	location :=		#caller_location,
+) -> (res: Result) {
+	return draw_with_buffer(
+		command_buffer,
+		render_pipeline,
+		to_buffer(arguments),
+		vertex_count,
+		instance_count,
+		base_vertex,
+		location,
+	)
+}
+
+draw :: proc {
+	draw_with_buffer,
+	draw_with_ptr,
+	draw_with_slice,
+}
+
+draw_indexed_with_buffer :: proc(
+	command_buffer:		Command_Buffer,
+	render_pipeline:	Pipeline,
+	arguments:		Buffer,
 	indices:		Buffer,
 	index_count:		int,
 	instance_count :=	1,
@@ -987,16 +985,6 @@ draw_indexed_with_bytes_argument :: proc(
 	location :=		#caller_location,
 ) -> (res: Result) {
 	
-	_check_condition(
-		len(argument) < 64,
-		.Invalid_Pipeline_Argument,
-		.Error,
-		"Invalid pipeline argument",
-		"The size of the pipeline argument must be at most 64 bytes (%d found).",
-		len(argument),
-		location=location,
-	) or_return
-
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
@@ -1022,7 +1010,7 @@ draw_indexed_with_bytes_argument :: proc(
 	command :=  _Command_Draw_Indexed {
 		pipeline	= render_pipeline,
 		resource_set	= metadata.resource_set,
-		argument	= slice.clone(argument, metadata.allocator) or_return,
+		arguments	= arguments,
 		indices		= indices,
 		index_count	= index_count,
 		instance_count	= instance_count,
@@ -1033,9 +1021,54 @@ draw_indexed_with_bytes_argument :: proc(
 	return nil
 }
 
+draw_indexed_with_ptr :: proc(
+	command_buffer:		Command_Buffer,
+	render_pipeline:	Pipeline,
+	arguments:		Ptr($T),
+	indices:		Buffer,
+	index_count:		int,
+	instance_count :=	1,
+	index_type :=		Index_Type.U16,
+	location :=		#caller_location,
+) -> (res: Result) {
+	return draw_indexed_with_buffer(
+		command_buffer,
+		render_pipeline,
+		to_buffer(arguments),
+		indices,
+		index_count,
+		instance_count,
+		index_type,
+		location,
+	)
+}
+
+draw_indexed_with_slice :: proc(
+	command_buffer:		Command_Buffer,
+	render_pipeline:	Pipeline,
+	arguments:		Slice($T),
+	indices:		Buffer,
+	index_count:		int,
+	instance_count :=	1,
+	index_type :=		Index_Type.U16,
+	location :=		#caller_location,
+) -> (res: Result) {
+	return draw_indexed_with_buffer(
+		command_buffer,
+		render_pipeline,
+		to_buffer(arguments),
+		indices,
+		index_count,
+		instance_count,
+		index_type,
+		location,
+	)
+}
+
 draw_indexed :: proc {
-	draw_indexed_with_bytes_argument,
-	draw_indexed_with_any_argument,
+	draw_indexed_with_buffer,
+	draw_indexed_with_ptr,
+	draw_indexed_with_slice,
 }
 
 submit :: proc(

@@ -27,7 +27,7 @@ struct Fragment_Output {
 }
 
 [vk_push_constant]
-uniform Arguments arguments;
+uniform Arguments* arguments;
 
 [shader("vertex")]
 Vertex_Output vertex_main(

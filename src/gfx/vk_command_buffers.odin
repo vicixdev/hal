@@ -249,13 +249,11 @@ vk_emit_dispatch :: proc(
 	command:	_Command_Dispatch,
 ) -> Result {
 	
-	push_constant_buffer: [64]byte
-
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	push_constant_buffer = {}
-	copy(push_constant_buffer[:], command.argument)
+	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
@@ -265,8 +263,8 @@ vk_emit_dispatch :: proc(
 		vk_compute_pipeline_layout,
 		{ .COMPUTE },
 		0,
-		64,
-		raw_data(push_constant_buffer[:]),
+		8,
+		&arguments_ptr,
 	)
 	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, pipeline_metadata.vk.pipeline)
 	vk.CmdDispatch(
@@ -605,13 +603,11 @@ vk_emit_draw :: proc(
 	command:	_Command_Draw,
 ) -> Result {
 
-	push_constant_buffer: [64]byte
-
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	push_constant_buffer = {}
-	copy(push_constant_buffer[:], command.argument)
+	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
@@ -622,8 +618,8 @@ vk_emit_draw :: proc(
 		vk_render_pipeline_layout,
 		{ .VERTEX, .FRAGMENT },
 		0,
-		64,
-		raw_data(push_constant_buffer[:]),
+		size_of(arguments_ptr),
+		&arguments_ptr,
 	)
 	vk.CmdBindPipeline(metadata.vk.command_buffer, .GRAPHICS, pipeline_metadata.vk.pipeline)
 	vk.CmdDraw(
@@ -643,8 +639,6 @@ vk_emit_draw_indexed :: proc(
 	command:	_Command_Draw_Indexed,
 ) -> Result {
 
-	push_constant_buffer: [64]byte
-
 	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
@@ -652,8 +646,8 @@ vk_emit_draw_indexed :: proc(
 	_check_internal_emission_result(indices_res) or_return
 	indices_offset := _offset_from_base(command.indices, indices_metadata)
 
-	push_constant_buffer = {}
-	copy(push_constant_buffer[:], command.argument)
+	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
+	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
@@ -664,8 +658,8 @@ vk_emit_draw_indexed :: proc(
 		vk_render_pipeline_layout,
 		{ .VERTEX, .FRAGMENT },
 		0,
-		64,
-		raw_data(push_constant_buffer[:]),
+		size_of(arguments_ptr),
+		&arguments_ptr,
 	)
 	vk.CmdBindPipeline(metadata.vk.command_buffer, .GRAPHICS, pipeline_metadata.vk.pipeline)
 	vk.CmdBindIndexBuffer(

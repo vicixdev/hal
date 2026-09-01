@@ -485,16 +485,20 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 	})
 	gfx.barrier(command_buffer, { .Transfer }, { .Compute })
 	gfx.use_resources(command_buffer, resource_set)
+
+	arguments, _ := gfx.arena_alloc(&memory, Texture_Copy_Arguments)
+	arguments.contents^ = Texture_Copy_Arguments {
+		size		= { 2, 2 },
+		texture_in	= 0,
+		texture_out	= 1,
+	}
 	gfx.dispatch(
 		command_buffer,
 		pipeline,
-		Texture_Copy_Arguments {
-			size		= { 2, 2 },
-			texture_in	= 0,
-			texture_out	= 1,
-		},
+		arguments,
 		{ 1, 1, 1 },
 	)
+
 	gfx.barrier(command_buffer, { .Compute }, { .Transfer })
 	gfx.copy_texture_to_buffer(command_buffer, texture_2, gfx.Texture_Region {
 		layer_count	= 1,
@@ -610,7 +614,7 @@ generic_compute_test :: proc(t: ^testing.T) {
 	defer gfx.destroy_semaphore(semaphore)
 
 	memory: gfx.Arena
-	memory_res := gfx.create_arena(&memory, .Default, size_of(f32) * ARRAY_LENGTH * 3)
+	memory_res := gfx.create_arena(&memory, .Default, 64 * mem.Kilobyte * 3)
 	testing.expect_value(t, memory_res, nil)
 	defer gfx.destroy_arena(memory)
 
@@ -634,11 +638,14 @@ generic_compute_test :: proc(t: ^testing.T) {
 
 	command_buffer, command_buffer_res := gfx.begin_command_encoding(.Default)
 	testing.expect_value(t, command_buffer_res, nil)
-	gfx.dispatch(command_buffer, add_pipeline, Parameters {
+
+	arguments, _ := gfx.arena_alloc(&memory, Parameters)
+	arguments.contents^ = Parameters {
 		in_a	= gpu_a,
 		in_b	= gpu_b,
 		out	=  gpu_out,
-	}, { ARRAY_LENGTH / 128, 1, 1 })
+	}
+	gfx.dispatch(command_buffer, add_pipeline, arguments, { ARRAY_LENGTH / 128, 1, 1 })
 	gfx.submit(.Default, {command_buffer}, {semaphore, 1})
 
 	gfx.wait_semaphore(semaphore, 1)
@@ -731,9 +738,13 @@ draw_triangle :: proc(t: ^testing.T) {
 	}
 	command_buffer, _ := gfx.begin_command_encoding(.Default)
 	gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-	gfx.draw(command_buffer, pipeline, Parameters {
+
+	arguments, _ := gfx.arena_alloc(&default_memory, Parameters)
+	arguments.contents^ = Parameters {
 		vertices = gpu_vertices,
-	}, 3)
+	}
+	gfx.draw(command_buffer, pipeline, arguments, 3)
+
 	gfx.end_render_pass(command_buffer)
 
 	gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer })
@@ -847,9 +858,12 @@ draw_quad :: proc(t: ^testing.T) {
 	}
 	command_buffer, _ := gfx.begin_command_encoding(.Default)
 	gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-	gfx.draw_indexed(command_buffer, pipeline, Parameters {
+
+	arguments, _ := gfx.arena_alloc(&default_memory, Parameters)
+	arguments.contents^ = Parameters {
 		vertices = gpu_vertices,
-	}, indices, 6)
+	}
+	gfx.draw_indexed(command_buffer, pipeline, arguments, indices, 6)
 	gfx.end_render_pass(command_buffer)
 
 	gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer })
@@ -870,7 +884,7 @@ draw_quad :: proc(t: ^testing.T) {
 	for x in 0..<640 do for y in 0..<480 {
 		i := y * 640 + x
 
-		testing.expect_value(t, download_pixels[i], reference_pixels[i])
+		testing.expect_value(t, download_pixels.contents[i], reference_pixels[i])
 	}
 }
 
