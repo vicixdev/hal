@@ -46,6 +46,7 @@ _Command_Buffer_Metadata :: struct {
 	in_use:				bool,
 
 	resource_set:			Resource_Set,
+	depth_stencil_state:		Depth_Stencil_State,
 	semaphore_waits:		[]Semaphore_Wait,
 	commands:			[dynamic]_Command,
 
@@ -133,23 +134,25 @@ _Command_Begin_Render_Pass :: struct {
 _Command_End_Render_Pass :: struct {}
 
 _Command_Draw :: struct {
-	pipeline:	Pipeline,
-	resource_set:	Resource_Set,
-	arguments:	Buffer,
-	vertex_count:	int,
-	instance_count:	int,
-	base_vertex:	int,
+	pipeline:		Pipeline,
+	resource_set:		Resource_Set,
+	depth_stencil_state:	Depth_Stencil_State,
+	arguments:		Buffer,
+	vertex_count:		int,
+	instance_count:		int,
+	base_vertex:		int,
 }
 
 _Command_Draw_Indexed :: struct {
-	pipeline:	Pipeline,
-	resource_set:	Resource_Set,
-	arguments:	Buffer,
-	indices:	Buffer,
-	index_count:	int,
-	instance_count:	int,
-	base_vertex:	int,
-	index_type:	Index_Type,
+	pipeline:		Pipeline,
+	resource_set:		Resource_Set,
+	depth_stencil_state:	Depth_Stencil_State,
+	arguments:		Buffer,
+	indices:		Buffer,
+	index_count:		int,
+	instance_count:		int,
+	base_vertex:		int,
+	index_type:		Index_Type,
 }
 
 _Semaphore_Wait :: struct {
@@ -242,8 +245,9 @@ begin_command_encoding :: proc(
 
 	vmem.arena_free_all(&metadata.arena)
 
-	metadata.resource_set	= _default_resource_set
-	metadata.can_encode_signals = false
+	metadata.resource_set		= _default_resource_set
+	metadata.depth_stencil_state	= _default_depth_stencil_state
+	metadata.can_encode_signals	= false
 	metadata.is_encoding_render_pass = false
 	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
 
@@ -269,6 +273,23 @@ use_resources :: proc(
 	_check_resource_set_handle(resource_set_res, resource_set, location) or_return
 	
 	metadata.resource_set = resource_set
+
+	return nil
+}
+
+use_depth_stencil_state :: proc(
+	command_buffer:		Command_Buffer,
+	depth_stencil_state:	Depth_Stencil_State,
+	location :=		#caller_location,
+) -> (res: Result) {
+	
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	_, depth_stencil_res := _metadata_of(depth_stencil_state)
+	_check_depth_stencil_state_handle(depth_stencil_res, depth_stencil_state, location) or_return
+	
+	metadata.depth_stencil_state = depth_stencil_state
 
 	return nil
 }
@@ -781,7 +802,7 @@ begin_render_pass :: proc(
 			"Views referencing surfaces can only be used as color attachments. Texture view %v " +
 			"referencing surface %v is being used as a depth attachment.",
 			depth_target.view,
-			view_metadata.reference.(Surface),
+			view_metadata.reference,
 			location=location,
 		) or_return
 
@@ -826,7 +847,7 @@ begin_render_pass :: proc(
 			"Views referencing surfaces can only be used as color attachments. Texture view %v " +
 			"referencing surface %v is being used as a stencil attachment.",
 			stencil_target.view,
-			view_metadata.reference.(Surface),
+			view_metadata.reference,
 			location=location,
 		) or_return
 
@@ -916,12 +937,13 @@ draw_with_buffer :: proc(
 	)
 
 	command :=  _Command_Draw {
-		pipeline	= render_pipeline,
-		resource_set	= metadata.resource_set,
-		arguments	= arguments,
-		vertex_count	= vertex_count,
-		instance_count	= instance_count,
-		base_vertex	= base_vertex,
+		pipeline		= render_pipeline,
+		resource_set		= metadata.resource_set,
+		depth_stencil_state	= metadata.depth_stencil_state,
+		arguments		= arguments,
+		vertex_count		= vertex_count,
+		instance_count		= instance_count,
+		base_vertex		= base_vertex,
 	}
 	append(&metadata.commands, command) or_return
 
@@ -1008,13 +1030,14 @@ draw_indexed_with_buffer :: proc(
 	)
 
 	command :=  _Command_Draw_Indexed {
-		pipeline	= render_pipeline,
-		resource_set	= metadata.resource_set,
-		arguments	= arguments,
-		indices		= indices,
-		index_count	= index_count,
-		instance_count	= instance_count,
-		index_type	= index_type,
+		pipeline		= render_pipeline,
+		resource_set		= metadata.resource_set,
+		depth_stencil_state	= metadata.depth_stencil_state,
+		arguments		= arguments,
+		indices			= indices,
+		index_count		= index_count,
+		instance_count		= instance_count,
+		index_type		= index_type,
 	}
 	append(&metadata.commands, command) or_return
 

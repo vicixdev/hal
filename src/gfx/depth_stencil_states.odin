@@ -39,12 +39,14 @@ Stencil_Descriptor :: struct {
 }
 
 Depth_Stencil_Descriptor :: struct {
+	depth_enable:			bool,
 	depth_write:			bool,
 	depth_test:			Compare_Operation,
 	depth_bias:			f32,
 	depth_bias_slope_factor:	f32,
 	depth_bias_clamp:		f32,
 
+	stencil_enable:			bool,
 	stencil_front:			Stencil_Descriptor,
 	stencil_back:			Stencil_Descriptor,
 }
@@ -69,6 +71,27 @@ create_depth_stencil_state :: proc(
 ) -> (depth_stencil_state: Depth_Stencil_State, res: Result) {
 
 	handle, metadata := _add_depth_stencil_state_metadata() or_return
+
+	descriptor := descriptor
+	if !descriptor.depth_enable {
+		descriptor.depth_write	= false
+		descriptor.depth_test	= .Always
+	}
+	if !descriptor.stencil_enable {
+		descriptor.stencil_front.test		= .Always
+		descriptor.stencil_front.pass		= .Keep
+		descriptor.stencil_front.fail		= .Keep
+		descriptor.stencil_front.depth_fail	= .Keep
+		descriptor.stencil_front.read_mask	= 0xFFFFFFFF
+		descriptor.stencil_front.write_mask	= 0
+
+		descriptor.stencil_back.test		= .Always
+		descriptor.stencil_back.pass		= .Keep
+		descriptor.stencil_back.fail		= .Keep
+		descriptor.stencil_back.depth_fail	= .Keep
+		descriptor.stencil_back.read_mask	= 0xFFFFFFFF
+		descriptor.stencil_back.write_mask	= 0
+	}
 
 	metadata.desc = descriptor
 

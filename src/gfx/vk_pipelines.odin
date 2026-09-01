@@ -275,6 +275,13 @@ vk_make_render_pipeline_desc :: proc(
 		stencilAttachmentFormat	= vk_PIXEL_FORMAT_TO_VK[descriptor.stencil_format],
 	}
 
+	depth_stencil_state := new(vk.PipelineDepthStencilStateCreateInfo, _temp_allocator)
+	depth_stencil_state^ = {
+		sType	= .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+		depthTestEnable		= false,
+		stencilTestEnable	= false,
+	}
+
 	@(static)
 	dynamic_states := []vk.DynamicState {
 		.VIEWPORT,
@@ -283,8 +290,14 @@ vk_make_render_pipeline_desc :: proc(
 		.DEPTH_BOUNDS,
 		.DEPTH_TEST_ENABLE,
 		.DEPTH_WRITE_ENABLE,
-		.DEPTH_COMPARE_OP,
 		.DEPTH_BIAS,
+		.DEPTH_BIAS_ENABLE,
+		.DEPTH_COMPARE_OP,
+		.STENCIL_COMPARE_MASK,
+		.STENCIL_WRITE_MASK,
+		.STENCIL_REFERENCE,
+		.STENCIL_TEST_ENABLE,
+		.STENCIL_OP,
 	}
 	dynamic_state := new(vk.PipelineDynamicStateCreateInfo, _temp_allocator)
 	dynamic_state^ = {
@@ -303,6 +316,7 @@ vk_make_render_pipeline_desc :: proc(
 	info.pRasterizationState	= rasterization_state
 	info.pMultisampleState		= multisample_state
 	info.pColorBlendState		= color_blend_state
+	info.pDepthStencilState		= depth_stencil_state
 	info.pDynamicState		= dynamic_state
 	info.layout			= vk_render_pipeline_layout
 

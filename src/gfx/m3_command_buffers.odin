@@ -14,20 +14,21 @@ m3_Current_Encoder :: enum {
 }
 
 m3_Command_Buffer_Metadata :: struct {
-	command_buffer:		^MTL.CommandBuffer,
+	command_buffer:			^MTL.CommandBuffer,
 
-	current_encoder:	m3_Current_Encoder,
+	current_encoder:		m3_Current_Encoder,
 
-	compute_encoder:	^MTL.ComputeCommandEncoder,
-	blit_encoder:		^MTL.BlitCommandEncoder,
-	render_encoder:		^MTL.RenderCommandEncoder,
+	compute_encoder:		^MTL.ComputeCommandEncoder,
+	blit_encoder:			^MTL.BlitCommandEncoder,
+	render_encoder:			^MTL.RenderCommandEncoder,
 
-	is_resource_set_bound:	bool,
+	bound_resource_set:		Resource_Set,
+	bound_depth_stencil_state:	Depth_Stencil_State,
 
-	barrier_fence:		^MTL.Fence,
-	barrier_fence_pending:	bool,
+	barrier_fence:			^MTL.Fence,
+	barrier_fence_pending:		bool,
 
-	wait_set:		[]Fence,
+	wait_set:			[]Fence,
 }
 
 m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
@@ -188,7 +189,7 @@ m3_emit_dispatch :: proc(
 	_check_internal_emission_result(arguments_res) or_return
 
 	m3_enable_compute_encoder(metadata) or_return
-	m3_bind_resource_set(metadata) or_return
+	m3_bind_resource_set(metadata, command.resource_set) or_return
 	metadata.m3.compute_encoder->setBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
 	metadata.m3.compute_encoder->dispatchThreadgroups(
@@ -368,7 +369,8 @@ m3_emit_draw :: proc(
 	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	m3_bind_resource_set(metadata) or_return
+	m3_bind_resource_set(metadata, command.resource_set) or_return
+	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
@@ -400,7 +402,8 @@ m3_emit_draw_indexed :: proc(
 	arguments_ptr, arguments_res := gpu_address_of(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	m3_bind_resource_set(metadata) or_return
+	m3_bind_resource_set(metadata, command.resource_set) or_return
+	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
@@ -419,7 +422,8 @@ m3_emit_draw_indexed :: proc(
 m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 
 	metadata.m3.wait_set = {}	
-	metadata.m3.is_resource_set_bound = false
+	metadata.m3.bound_resource_set = {}
+	metadata.m3.bound_depth_stencil_state = {}
 	metadata.m3.barrier_fence_pending = false
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
@@ -512,16 +516,16 @@ m3_submit :: proc(
 	return nil
 }
 
-m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
+m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata, resource_set: Resource_Set) -> Result {
 	assert(metadata.m3.current_encoder != .Blit)
 	if metadata.m3.current_encoder == .None {
 		return nil
 	}
-	if metadata.m3.is_resource_set_bound {
+	if resource_set == metadata.m3.bound_resource_set {
 		return nil
 	}
 
-	resource_set_metadata, resource_set_res := _metadata_of(metadata.resource_set)
+	resource_set_metadata, resource_set_res := _metadata_of(resource_set)
 	_check_internal_emission_result(resource_set_res) or_return
 
 	#partial switch metadata.m3.current_encoder {
@@ -533,7 +537,32 @@ m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 		metadata.m3.render_encoder->setFragmentBuffer(resource_set_metadata.m3.root_buffer, 0, 1)
 	}
 
-	metadata.m3.is_resource_set_bound = true
+	metadata.m3.bound_resource_set = resource_set
+
+	return nil
+}
+
+m3_bind_depth_stencil :: proc(metadata: ^_Command_Buffer_Metadata, depth_stencil: Depth_Stencil_State) -> Result {
+	assert(metadata.m3.current_encoder == .Render)
+	if depth_stencil == metadata.m3.bound_depth_stencil_state {
+		return nil
+	}
+
+	depth_stencil_metadata, depth_stencil_res := _metadata_of(depth_stencil)
+	_check_internal_emission_result(depth_stencil_res) or_return
+
+	metadata.m3.render_encoder->setDepthStencilState(depth_stencil_metadata.m3.depth_stencil_state)
+	metadata.m3.render_encoder->setDepthBias(
+		depth_stencil_metadata.depth_bias,
+		depth_stencil_metadata.depth_bias_slope_factor,
+		depth_stencil_metadata.depth_bias_clamp,
+	)
+	metadata.m3.render_encoder->setStencilFrontReferenceValue(
+		depth_stencil_metadata.stencil_front.reference,
+		depth_stencil_metadata.stencil_back.reference,
+	)
+
+	metadata.m3.bound_depth_stencil_state = depth_stencil
 
 	return nil
 }
@@ -624,7 +653,8 @@ m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	}
 	
 	metadata.m3.current_encoder = .None
-	metadata.m3.is_resource_set_bound = false
+	metadata.m3.bound_resource_set = {}
+	metadata.m3.bound_depth_stencil_state = {}
 }
 
 m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {

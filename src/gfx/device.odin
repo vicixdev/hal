@@ -43,14 +43,15 @@ Device_Info :: struct {
 	},
 }
 
-_available_devices:	[]Device_Info
+_available_devices:		[]Device_Info
 
-_device_info:		^Device_Info
-_selected_device:	Device_Id
-_is_device_selected:	bool
+_device_info:			^Device_Info
+_selected_device:		Device_Id
+_is_device_selected:		bool
 _device_is_being_initialized:	bool
 
-_default_resource_set:	Resource_Set
+_default_resource_set:		Resource_Set
+_default_depth_stencil_state:	Depth_Stencil_State
 
 enumerate_devices :: proc(
 	location := #caller_location,
@@ -106,6 +107,22 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 	default_resource_set_res: Result
 	_default_resource_set, default_resource_set_res = create_resource_set()
 	ensure(default_resource_set_res == nil, "Could not create the default resource set. Broken implementation?")
+
+	default_depth_stencil_res: Result
+	_default_depth_stencil_state, default_depth_stencil_res = create_depth_stencil_state({
+		depth_write	= false,
+		depth_test	= .Always,
+		stencil_back	= {
+			test	= .Always,
+		},
+		stencil_front	= {
+			test	= .Always,
+		},
+	})
+	ensure(
+		default_depth_stencil_res == nil,
+		"Could not create the default depth stencil state. Broken implementation?",
+	)
 
 	_is_device_selected = true
 

@@ -17,6 +17,7 @@ vk_Command_Buffer_Metadata :: struct {
 	command_buffer_valid:		bool,
 
 	bound_resource_set:		Resource_Set,
+	bound_depth_stencil_state:	Depth_Stencil_State,
 
 	is_first_command_buffer:	bool,
 
@@ -207,6 +208,83 @@ vk_emit_copy_texture_to_buffer :: proc(
 	return nil
 }
 
+vk_use_depth_stencil_state :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	depth_stencil_state:	Depth_Stencil_State,
+) -> Result {
+	
+	if depth_stencil_state == metadata.vk.bound_depth_stencil_state {
+		return nil
+	}
+
+	depth_stencil_metadata, depth_stencil_res := _metadata_of(depth_stencil_state)
+	_check_internal_emission_result(depth_stencil_res) or_return
+
+	vk.CmdSetDepthTestEnableEXT(metadata.vk.command_buffer, cast(b32)depth_stencil_metadata.depth_enable)
+	vk.CmdSetDepthWriteEnableEXT(metadata.vk.command_buffer, cast(b32)depth_stencil_metadata.depth_write)
+	vk.CmdSetDepthCompareOpEXT(metadata.vk.command_buffer, vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.depth_test])
+	vk.CmdSetDepthBiasEnableEXT(metadata.vk.command_buffer, true)
+	vk.CmdSetDepthBias(
+		metadata.vk.command_buffer,
+		depth_stencil_metadata.depth_bias,
+		depth_stencil_metadata.depth_bias_clamp,
+		depth_stencil_metadata.depth_bias_slope_factor,
+	)
+
+	vk.CmdSetStencilTestEnableEXT(metadata.vk.command_buffer, cast(b32)depth_stencil_metadata.stencil_enable)
+	vk.CmdSetStencilOpEXT(
+		metadata.vk.command_buffer,
+		{ .FRONT },
+		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.fail],
+		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.pass],
+		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.depth_fail],
+		vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.test],
+	)
+	vk.CmdSetStencilReference(
+		metadata.vk.command_buffer,
+		{ .FRONT },
+		depth_stencil_metadata.stencil_front.reference,
+	)
+	vk.CmdSetStencilCompareMask(
+		metadata.vk.command_buffer,
+		{ .FRONT },
+		depth_stencil_metadata.stencil_front.read_mask,
+	)
+	vk.CmdSetStencilWriteMask(
+		metadata.vk.command_buffer,
+		{ .FRONT },
+		depth_stencil_metadata.stencil_front.write_mask,
+	)
+
+	vk.CmdSetStencilOpEXT(
+		metadata.vk.command_buffer,
+		{ .BACK },
+		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.fail],
+		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.pass],
+		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.depth_fail],
+		vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.test],
+	)
+	vk.CmdSetStencilReference(
+		metadata.vk.command_buffer,
+		{ .BACK },
+		depth_stencil_metadata.stencil_back.reference,
+	)
+	vk.CmdSetStencilCompareMask(
+		metadata.vk.command_buffer,
+		{ .BACK },
+		depth_stencil_metadata.stencil_back.read_mask,
+	)
+	vk.CmdSetStencilWriteMask(
+		metadata.vk.command_buffer,
+		{ .BACK },
+		depth_stencil_metadata.stencil_back.write_mask,
+	)
+
+	metadata.vk.bound_depth_stencil_state = depth_stencil_state
+
+	return nil
+}
+
 vk_use_resource_set :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	resource_set:	Resource_Set,
@@ -239,6 +317,8 @@ vk_use_resource_set :: proc(
 		0,
 		nil,
 	)
+	
+	metadata.vk.bound_resource_set = resource_set
 
 	return nil
 }
@@ -333,6 +413,8 @@ vk_emit_signal :: proc(
 	metadata.vk.pending_waits = {}
 	metadata.vk.pending_render_pass_signals = {}
 	metadata.vk.pending_render_pass_waits = {}
+	metadata.vk.bound_depth_stencil_state = {}
+	metadata.vk.bound_resource_set = {}
 	resize(&metadata.vk.pending_surface_waits, 0)
 	metadata.vk.semaphore_value += 1
 
@@ -384,6 +466,8 @@ vk_emit_begin_render_pass :: proc(
 		metadata.vk.pending_waits = {}
 		metadata.vk.pending_render_pass_signals = {}
 		metadata.vk.pending_render_pass_waits = {}
+		metadata.vk.bound_depth_stencil_state = {}
+		metadata.vk.bound_resource_set = {}
 		resize(&metadata.vk.pending_surface_waits, 0)
 		metadata.vk.semaphore_value += 1
 
@@ -612,7 +696,7 @@ vk_emit_draw :: proc(
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	vk_use_resource_set(metadata, command.resource_set)
-	vk.CmdSetDepthTestEnableEXT(metadata.vk.command_buffer, false)
+	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_render_pipeline_layout,
@@ -652,7 +736,7 @@ vk_emit_draw_indexed :: proc(
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	vk_use_resource_set(metadata, command.resource_set)
-	vk.CmdSetDepthTestEnableEXT(metadata.vk.command_buffer, false)
+	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_render_pipeline_layout,
@@ -687,6 +771,7 @@ vk_emit_commands :: proc(
 ) -> (submit_info: vk.SubmitInfo2, res: Result) {
 
 	metadata.vk.bound_resource_set = {}
+	metadata.vk.bound_depth_stencil_state = {}
 	metadata.vk.command_buffer_valid = false
 	metadata.vk.is_first_command_buffer = true
 	metadata.vk.pending_waits = {}
@@ -748,12 +833,12 @@ vk_emit_commands :: proc(
 	}
 
 	metadata.vk.semaphore_value += 1
-	metadata.vk.is_first_command_buffer = false
-	metadata.vk.pending_waits = {}
-	metadata.vk.pending_render_pass_signals = {}
-	metadata.vk.pending_render_pass_waits = {}
-	resize(&metadata.vk.pending_surface_waits, 0)
-	resize(&metadata.vk.render_pass_surface_views, 0)
+	// metadata.vk.is_first_command_buffer = false
+	// metadata.vk.pending_waits = {}
+	// metadata.vk.pending_render_pass_signals = {}
+	// metadata.vk.pending_render_pass_waits = {}
+	// resize(&metadata.vk.pending_surface_waits, 0)
+	// resize(&metadata.vk.render_pass_surface_views, 0)
 	
 	return submit_info, nil
 }

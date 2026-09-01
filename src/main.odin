@@ -12,6 +12,10 @@ import "gfx"
 surface:	gfx.Surface
 surface_format:	gfx.Pixel_Format
 
+WINDOW_SIZE :: [2]int {
+	1024, 768,
+}
+
 Camera :: struct {
 	position:	[3]f32,
 	// pitch and yaw
@@ -73,7 +77,13 @@ setup :: proc() {
 	ensure(sdl.Init({ .VIDEO }) == true)
 
 	window_flags: sdl.WindowFlags = {} when ODIN_OS != .Darwin else { .METAL }
-	window = sdl.CreateWindow("Vulkan" when gfx.TARGET_API == .Vulkan else "Metal 3", 1024, 768, window_flags)
+	window_title: cstring = "Vulkan" when gfx.TARGET_API == .Vulkan else "Metal 3"
+	window = sdl.CreateWindow(
+		window_title,
+		cast(i32)WINDOW_SIZE.x,
+		cast(i32)WINDOW_SIZE.y,
+		window_flags,
+	)
 	assert(window != nil)
 
 	gfx.init()
@@ -99,7 +109,7 @@ setup :: proc() {
 
 	surface_descriptor := gfx.Surface_Descriptor {
 		type			= .V_Sync,
-		dimensions		= { 1024, 760 },
+		dimensions		= WINDOW_SIZE,
 		frames_in_flight	= 3,
 		target			= target,
 	}
@@ -132,15 +142,43 @@ app :: proc() -> gfx.Result {
 		position:	[3]f32,
 		color:		[3]f32,
 	}
+
 	VERTICES := [?]Vertex {
-		{ { -0.5, -0.5, 0.0 }, { 1.0, 0.0, 0.0 } },
-		{ {  0.5, -0.5, 0.0 }, { 0.0, 1.0, 0.0 } },
-		{ {  0.5,  0.5, 0.0 }, { 0.0, 0.0, 1.0 } },
-		{ { -0.5,  0.5, 0.0 }, { 1.0, 1.0, 0.0 } },
+		{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0, 0.0 } },
+		{ {  1.0, -1.0, -1.0 }, { 0.0, 1.0, 0.0 } },
+		{ {  1.0,  1.0, -1.0 }, { 0.0, 0.0, 1.0 } },
+		{ { -1.0,  1.0, -1.0 }, { 1.0, 1.0, 0.0 } },
+
+		{ { -1.0, -1.0,  1.0 }, { 1.0, 0.0, 1.0 } },
+		{ {  1.0, -1.0,  1.0 }, { 0.0, 1.0, 1.0 } },
+		{ {  1.0,  1.0,  1.0 }, { 1.0, 1.0, 1.0 } },
+		{ { -1.0,  1.0,  1.0 }, { 0.0, 0.0, 0.0 } },
 	}
+
 	INDICES := [?]u16 {
-		0, 1, 2,
-		2, 3, 0,
+		// Front
+		4, 5, 6,
+		6, 7, 4,
+
+		// Back
+		0, 2, 1,
+		2, 0, 3,
+
+		// Left
+		0, 4, 7,
+		7, 3, 0,
+
+		// Right
+		1, 2, 6,
+		6, 5, 1,
+
+		// Top
+		3, 7, 6,
+		6, 2, 3,
+
+		// Bottom
+		0, 1, 5,
+		5, 4, 0,
 	}
 
 	Arguments :: struct #packed {
@@ -157,6 +195,9 @@ app :: proc() -> gfx.Result {
 	default_memory: gfx.Arena
 	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
 
+	private_memory: gfx.Arena
+	gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
+
 	frame_memory: gfx.Scratch
 	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
 
@@ -166,6 +207,26 @@ app :: proc() -> gfx.Result {
 
 	indices := gfx.arena_alloc(&default_memory, size_of(INDICES)) or_return
 	mem.copy(indices.contents, &INDICES[0], size_of(INDICES))
+
+	depth_stencil := gfx.create_depth_stencil_state(gfx.Depth_Stencil_Descriptor {
+		depth_enable	= true,
+		depth_write	= true,
+		depth_test	= .Less,
+	}) or_return
+
+	depth_buffer_descriptor := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		dimensions	= { **WINDOW_SIZE, 1 },
+		mip_count	= 1,
+		layer_count	= 1,
+		sample_count	= 1,
+		format		= .D32_Float,
+		usage		= { .Depth_Stencil_Attachment },
+	}
+	depth_buffer_size, depth_buffer_align := gfx.size_align_of(depth_buffer_descriptor) or_return
+	depth_buffer_memory := gfx.arena_alloc(&private_memory, depth_buffer_size, depth_buffer_align) or_return
+	depth_buffer := gfx.create_texture(depth_buffer_memory, depth_buffer_descriptor) or_return
+	depth_buffer_view := gfx.default_view_of(depth_buffer) or_return
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("basic", "./build", context.temp_allocator)
 	pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
@@ -181,6 +242,7 @@ app :: proc() -> gfx.Result {
 		cull		= .None,
 		sample_count	= 1,
 		color_formats	= { surface_format },
+		depth_format	= depth_buffer_descriptor.format,
 	}
 	pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
 
@@ -189,7 +251,7 @@ app :: proc() -> gfx.Result {
 
 	camera := Camera {
 		fov		= 95 * la.DEG_PER_RAD,
-		aspect		= 1024 / 768,
+		aspect		= cast(f32)WINDOW_SIZE.x / cast(f32)WINDOW_SIZE.y,
 		near		= 0.01,
 		far		= 100.0,
 	}
@@ -271,11 +333,18 @@ app :: proc() -> gfx.Result {
 					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
 				},
 			},
+			depth_attachment = gfx.Render_Attachment {
+				view		= depth_buffer_view,
+				load_operation	= .Clear,
+				store_operation	= .Store,
+				clear_value	= cast(f64)1.0,
+			},
 		}
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
+			gfx.use_depth_stencil_state(command_buffer, depth_stencil) or_return
 			args := gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args.contents^ = {
 				vertices	= gpu_vertices,
@@ -284,7 +353,7 @@ app :: proc() -> gfx.Result {
 				proj		= proj,
 			}
 			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, args, indices, 6)
+			gfx.draw_indexed(command_buffer, pipeline, args, indices, 36)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return

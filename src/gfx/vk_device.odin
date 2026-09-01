@@ -96,15 +96,13 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	vk_physical_device	= vk_device_info.physical_device
 
 	resize(&vk_enabled_device_extensions, 0)
-
-	when ODIN_OS == .Darwin {
-		if vk_device_has_extension(device_info, "VK_KHR_portability_subset") {
-			append(&vk_enabled_device_extensions, "VK_KHR_portability_subset")
-		}
+	if vk_device_has_extension(device_info, "VK_KHR_portability_subset") {
+		append(&vk_enabled_device_extensions, "VK_KHR_portability_subset")
 	}
 	append(&vk_enabled_device_extensions, "VK_KHR_dynamic_rendering")
 	append(&vk_enabled_device_extensions, "VK_KHR_synchronization2")
 	append(&vk_enabled_device_extensions, "VK_EXT_extended_dynamic_state")
+	append(&vk_enabled_device_extensions, "VK_EXT_extended_dynamic_state2")
 	append(&vk_enabled_device_extensions, "VK_KHR_swapchain")
 
 	queue_descriptors: []vk.DeviceQueueCreateInfo
@@ -175,9 +173,14 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		pNext			= &synchronization2_features,
 		extendedDynamicState	= true,
 	}
+	extended_dynamic_state_2_features := vk.PhysicalDeviceExtendedDynamicState2FeaturesEXT {
+		sType			= .PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
+		pNext			= &extended_dynamic_state_features,
+		extendedDynamicState2	= true,
+	}
 	descriptor := vk.DeviceCreateInfo {
 		sType			= .DEVICE_CREATE_INFO,
-		pNext			= &extended_dynamic_state_features,
+		pNext			= &extended_dynamic_state_2_features,
 		queueCreateInfoCount	= cast(u32)len(queue_descriptors),
 		pQueueCreateInfos	= raw_data(queue_descriptors),
 		enabledExtensionCount	= cast(u32)len(vk_enabled_device_extensions),
@@ -540,6 +543,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 	return vk_device_has_extension(info, "VK_KHR_dynamic_rendering") &&
 		vk_device_has_extension(info, "VK_KHR_synchronization2") &&
 		vk_device_has_extension(info, "VK_EXT_extended_dynamic_state") &&
+		vk_device_has_extension(info, "VK_EXT_extended_dynamic_state2") &&
 		vk_device_has_extension(info, "VK_KHR_swapchain") &&
 		vk_info.features.features.imageCubeArray == true &&
 		vk_info.features.features.samplerAnisotropy == true &&
