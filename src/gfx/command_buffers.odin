@@ -55,6 +55,11 @@ _Command_Buffer_Metadata :: struct {
 	is_encoding_render_pass:		bool,
 	render_pass_attachment_sample_count:	int,
 
+	// TODO: Implement these and validate the bound render pipeline
+	render_pass_color_formats:		[]Pixel_Format,
+	render_pass_depth_format:		Maybe(Pixel_Format),
+	render_pass_stencil_format:		Maybe(Pixel_Format),
+
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
 		m3:	m3_Command_Buffer_Metadata,

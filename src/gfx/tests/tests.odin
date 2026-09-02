@@ -4,6 +4,7 @@ package vicixdev_gfx_tests
 import "base:runtime"
 import "core:mem"
 import "core:testing"
+import la "core:math/linalg"
 import gfx ".."
 
 @(test)
@@ -872,6 +873,169 @@ draw_quad :: proc(t: ^testing.T) {
 			arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
 			arguments^ = Parameters {
 				vertices = gpu_vertices,
+			}
+			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6) or_return
+		gfx.end_render_pass(command_buffer) or_return
+
+		gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer }) or_return
+		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
+			layer_count = 1,
+			size = { **FRAMEBUFFER_SIZE, 1 },
+		}, raw_data(output)) or_return
+
+		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.wait_semaphore(semaphore, 1)
+
+		return
+	}
+
+	results_memory := acquire_test_resources()
+
+	output, res := test(&results_memory)
+	check_result(t, res)
+	test_against_reference_image(t, REFERENCE_PATH, output)
+}
+
+
+@(test)
+depth_buffer_and_depth_state :: proc(t: ^testing.T) {
+
+	FRAMEBUFFER_SIZE :: [2]int{ 640, 480 }
+
+	REFERENCE_PATH :: "./images/depth.png"
+
+	test :: proc(results_memory: ^gfx.Arena) -> (output: []Pixel, res: gfx.Result) {
+		
+		when gfx.TARGET_API == .Vulkan {
+			TRIANGLE_BYTECODE := #load("./shaders/triangle_with_transform.spv")
+		} else when gfx.TARGET_API == .Metal_3 {
+			TRIANGLE_BYTECODE := #load("./shaders/triangle_with_transform.metallib")
+		}
+
+		Vertex :: struct #packed {
+			position:	[3]f32,
+			color:		[4]f32,
+		}
+		VERTICES := [?]Vertex {
+			{ { -0.5, -0.5, 0.5 }, { 1.0, 0.0, 0.0, 1.0 } },
+			{ {  0.5, -0.5, 0.5 }, { 0.0, 1.0, 0.0, 1.0 } },
+			{ {  0.5,  0.5, 0.5 }, { 0.0, 0.0, 1.0, 1.0 } },
+			{ { -0.5,  0.5, 0.5 }, { 1.0, 1.0, 0.0, 1.0 } },
+		}
+
+		INDICES := [?]u16 {
+			0, 1, 2,
+			2, 3, 0,
+		}
+
+		Parameters :: struct #packed {
+			transform:	matrix[4,4]f32,
+			vertices:	uintptr,
+		}
+
+		default_memory: gfx.Arena
+		gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
+		defer gfx.destroy_arena(default_memory)
+
+		private_memory: gfx.Arena
+		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
+		defer gfx.destroy_arena(private_memory)
+
+		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		copy(vertices, VERTICES[:])
+		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
+
+		indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+		copy(indices, INDICES[:])
+
+		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+
+		depth_stencil := gfx.create_depth_stencil_state(gfx.Depth_Stencil_Descriptor {
+			depth_enable	= true,
+			depth_write	= true,
+			depth_test	= .Less,
+		}) or_return
+
+		pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+			vertex_stage	= {
+				bytecode	= TRIANGLE_BYTECODE[:],
+				entrypoint	= "vertex_main",
+			},
+			fragment_stage	= {
+				bytecode	= TRIANGLE_BYTECODE[:],
+				entrypoint	= "fragment_main",
+			},
+			topology	= .Triangle_List,
+			cull		= .None,
+			sample_count	= 1,
+			color_formats	= { .RGBA8_Unorm },
+			depth_format	= .D32_Float,
+		}
+		pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
+		defer gfx.destroy_pipeline(pipeline)
+
+		framebuffer_descriptor := gfx.Texture_Descriptor {
+			type		= .D2_Array,
+			format		= .RGBA8_Unorm,
+			dimensions	= { **FRAMEBUFFER_SIZE, 1 },
+			usage		= { .Color_Attachment },
+		}
+		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
+		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+
+		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
+		defer gfx.destroy_texture(framebuffer)
+		framebuffer_view := gfx.default_view_of(framebuffer) or_return
+
+		depthbuffer_descriptor := gfx.Texture_Descriptor {
+			type		= .D2_Array,
+			format		= .D32_Float,
+			dimensions	= { **FRAMEBUFFER_SIZE, 1 },
+			usage		= { .Depth_Stencil_Attachment },
+		}
+		depthbuffer_size, depthbuffer_align := gfx.size_align_of(depthbuffer_descriptor) or_return
+		depthbuffer_memory := gfx.arena_alloc(&private_memory, depthbuffer_size, depthbuffer_align) or_return
+
+		depthbuffer := gfx.create_texture(depthbuffer_memory, depthbuffer_descriptor) or_return
+		defer gfx.destroy_texture(depthbuffer)
+		depthbuffer_view := gfx.default_view_of(depthbuffer) or_return
+
+		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		defer gfx.destroy_semaphore(semaphore)
+
+		render_pass_descriptor := gfx.Render_Pass_Descriptor {
+			color_attachments = {
+				gfx.Render_Attachment {
+					view		= framebuffer_view,
+					load_operation	= .Clear,
+					store_operation	= .Store,
+					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
+				},
+			},
+			depth_attachment = gfx.Render_Attachment {
+				view		= depthbuffer_view,
+				load_operation	= .Clear,
+				store_operation	= .Store,
+				clear_value	= cast(f64)1.0,
+			},
+		}
+		command_buffer := gfx.begin_command_encoding(.Default) or_return
+		gfx.begin_render_pass(command_buffer, render_pass_descriptor) or_return
+			gfx.use_depth_stencil_state(command_buffer, depth_stencil) or_return
+
+			// FRONT - z: 0.5
+			arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+			arguments^ = Parameters {
+				transform	= 1,
+				vertices	= gpu_vertices,
+			}
+			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6) or_return
+
+			// BACK - z: 0.75
+			arguments = gfx.arena_alloc(&default_memory, Parameters) or_return
+			arguments^ = Parameters {
+				transform	= la.matrix4_translate_f32({ -0.25, -0.25, 0.25 }),
+				vertices	= gpu_vertices,
 			}
 			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6) or_return
 		gfx.end_render_pass(command_buffer) or_return
