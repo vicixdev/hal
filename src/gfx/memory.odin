@@ -1,5 +1,6 @@
-package gfx
+package vicixdev_gfx
 
+import "base:intrinsics"
 import "core:mem"
 
 Arena :: struct {
@@ -51,7 +52,9 @@ arena_alloc_raw :: proc(arena: ^Arena, size: int, align := 128) -> (address: raw
 	return
 }
 
-arena_alloc_ptr :: proc(arena: ^Arena, $T: typeid, align := 128) -> (ptr: ^T, res: Result) {
+arena_alloc_ptr :: proc(arena: ^Arena, $T: typeid, align := 128) -> (ptr: ^T, res: Result)
+	where !intrinsics.type_is_slice(T) {
+
 	address := arena_alloc_raw(arena, size_of(T), align) or_return
 	return cast(^T)address, nil
 }
@@ -105,7 +108,9 @@ scratch_alloc_raw :: proc(scratch: ^Scratch, size: int, align := 128) -> (addres
 	return
 }
 
-scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 128) -> (ptr: ^T, res: Result) {
+scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 128) -> (ptr: ^T, res: Result)
+	where !intrinsics.type_is_slice(T) {
+
 	address := scratch_alloc_raw(scratch, size_of(T), align) or_return
 	return cast(^T)address, nil
 }

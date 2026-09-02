@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import vk "vendor:vulkan"
 
@@ -7,10 +7,6 @@ vk_Fence_Signal :: struct {
 	value:	int,
 	stages:	Stages,
 }
-
-// GfxToVk conversion notes:
-//	- memory barriers are analogous to vk.PipelineBarrier
-//	- signals and waits imply a command buffer flush. 
 
 vk_Command_Buffer_Metadata :: struct {
 	command_buffer:			vk.CommandBuffer,
@@ -383,35 +379,7 @@ vk_emit_signal :: proc(
 	command:	_Command_Signal,
 ) -> Result {
 	
-	vk.EndCommandBuffer(metadata.vk.command_buffer)
-	metadata.vk.command_buffer_valid = false
-
-	waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
-	signals := vk_prepare_signal_semaphore_submit_infos(metadata, command.signals) or_return
-
-	command_buffer_info := vk.CommandBufferSubmitInfo {
-		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
-		commandBuffer	= metadata.vk.command_buffer,
-	}
-	submit_info := vk.SubmitInfo2 {
-		sType				= .SUBMIT_INFO_2,
-		waitSemaphoreInfoCount		= cast(u32)len(waits),
-		pWaitSemaphoreInfos		= raw_data(waits),
-		signalSemaphoreInfoCount	= cast(u32)len(signals),
-		pSignalSemaphoreInfos		= raw_data(signals),
-		commandBufferInfoCount		= 1,
-		pCommandBufferInfos		= &command_buffer_info,
-	}
-	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
-
-	metadata.vk.is_first_command_buffer = false
-	metadata.vk.pending_waits = {}
-	metadata.vk.pending_render_pass_signals = {}
-	metadata.vk.pending_render_pass_waits = {}
-	metadata.vk.bound_depth_stencil_state = {}
-	metadata.vk.bound_resource_set = {}
-	resize(&metadata.vk.pending_surface_waits, 0)
-	metadata.vk.semaphore_value += 1
+	vk_end_command_buffer(metadata, queue_metadata, command.signals) or_return
 
 	return nil
 }
@@ -434,42 +402,9 @@ vk_emit_begin_render_pass :: proc(
 ) -> Result {
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-
 	if metadata.vk.pending_render_pass_signals != nil {
-		vk.EndCommandBuffer(metadata.vk.command_buffer)
-		metadata.vk.command_buffer_valid = false
-
-		waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
-		signals := vk_prepare_signal_semaphore_submit_infos(metadata, {}) or_return
-
-		command_buffer_info := vk.CommandBufferSubmitInfo {
-			sType		= .COMMAND_BUFFER_SUBMIT_INFO,
-			commandBuffer	= metadata.vk.command_buffer,
-		}
-		submit_info := vk.SubmitInfo2 {
-			sType				= .SUBMIT_INFO_2,
-			waitSemaphoreInfoCount		= cast(u32)len(waits),
-			pWaitSemaphoreInfos		= raw_data(waits),
-			signalSemaphoreInfoCount	= cast(u32)len(signals),
-			pSignalSemaphoreInfos		= raw_data(signals),
-			commandBufferInfoCount		= 1,
-			pCommandBufferInfos		= &command_buffer_info,
-		}
-		vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
-
-		metadata.vk.is_first_command_buffer = false
-		metadata.vk.pending_waits = {}
-		metadata.vk.pending_render_pass_signals = {}
-		metadata.vk.pending_render_pass_waits = {}
-		metadata.vk.bound_depth_stencil_state = {}
-		metadata.vk.bound_resource_set = {}
-		resize(&metadata.vk.pending_surface_waits, 0)
-		metadata.vk.semaphore_value += 1
-
-		vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+		vk_flush_command_buffer(metadata, queue_metadata, nil) or_return
 	}
-
-	render_area: [2]int
 
 	color_attachment_infos := make(
 		[]vk.RenderingAttachmentInfo,
@@ -480,8 +415,6 @@ vk_emit_begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(attachment.view)
 		_check_internal_emission_result(view_res) or_return
 
-
-		// TODO: Figure out reductions
 		color_attachment_infos[i] = {
 			sType			= .RENDERING_ATTACHMENT_INFO,
 			imageView		= view_metadata.vk.view,
@@ -500,56 +433,47 @@ vk_emit_begin_render_pass :: proc(
 			},
 		}
 
-		switch v in view_metadata.reference {
-		case Texture:
-			texture_metadata, texture_res := _metadata_of(v)
-			assert(texture_res == nil)
-
-			render_area.x = max(render_area.x, texture_metadata.dimensions.x)
-			render_area.y = max(render_area.y, texture_metadata.dimensions.y)
-
-		case Surface:
-			surface_metadata, surface_res := _metadata_of(v)
+		surface, is_referencing_surface := view_metadata.reference.(Surface)
+		if is_referencing_surface {
+			surface_metadata, surface_res := _metadata_of(surface)
 			assert(surface_res == nil)
 
-			render_area.x = max(render_area.x, surface_metadata.dimensions.x)
-			render_area.y = max(render_area.y, surface_metadata.dimensions.y)
-
-			append(
-				&metadata.vk.pending_surface_waits,
-				view_metadata.vk.swapchain_image_semaphore,
-			) or_return
-			append(
-				&metadata.vk.render_pass_surface_views,
+			vk_prepare_surface_for_renderpass(
+				metadata,
 				attachment.view,
+				view_metadata,
+				surface,
+				surface_metadata,
 			) or_return
+		}
 
-			old_layout: vk.ImageLayout
-			if !surface_metadata.vk.has_image_been_initialized[view_metadata.vk.swapchain_image_index] {
-				old_layout = .UNDEFINED
-				surface_metadata.vk.has_image_been_initialized[view_metadata.vk.swapchain_image_index] = true
-			} else {
-				old_layout = .PRESENT_SRC_KHR
-			}
+		if attachment.resolve_view != {} {
+			resolve_view_metadata, resolve_view_res := _metadata_of(attachment.resolve_view)
+			_check_internal_emission_result(resolve_view_res) or_return
 
-			image_barrier := vk.ImageMemoryBarrier2 {
-				sType			= .IMAGE_MEMORY_BARRIER_2,
-				dstStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
-				oldLayout		= old_layout,
-				newLayout		= .GENERAL,
-				image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
-				subresourceRange	= {
-					aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
-					levelCount	= 1,
-					layerCount	= 1,
-				},
+			color_attachment_infos[i].resolveImageView	= resolve_view_metadata.vk.view
+
+			color_attachment_infos[i].resolveImageLayout	= .GENERAL
+
+			surface, is_referencing_surface = resolve_view_metadata.reference.(Surface)
+			if is_referencing_surface {
+				surface_metadata, surface_res := _metadata_of(surface)
+				assert(surface_res == nil)
+
+				vk_prepare_surface_for_renderpass(
+					metadata,
+					attachment.resolve_view,
+					resolve_view_metadata,
+					surface,
+					surface_metadata,
+				) or_return
 			}
-			dependency_info := vk.DependencyInfo {
-				sType			= .DEPENDENCY_INFO,
-				imageMemoryBarrierCount	= 1,
-				pImageMemoryBarriers	= &image_barrier,
-			}
-			vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
+		}
+
+		switch v in view_metadata.reference {
+		case Texture:
+
+		case Surface:
  		}
 	}
 
@@ -557,9 +481,6 @@ vk_emit_begin_render_pass :: proc(
 	if attachment, has_depth_attachment := command.depth_attachment.?; has_depth_attachment {
 		view_metadata, view_res := _metadata_of(attachment.view)
 		_check_internal_emission_result(view_res) or_return
-
-		texture_metadata, texture_res := _metadata_of(view_metadata.reference.(Texture))
-		assert(texture_res == nil)
 
 		depth_attachment_info = &{
 			sType			= .RENDERING_ATTACHMENT_INFO,
@@ -573,18 +494,12 @@ vk_emit_begin_render_pass :: proc(
 				},
 			},
 		}
-
-		render_area.x = max(render_area.x, texture_metadata.dimensions.x)
-		render_area.y = max(render_area.y, texture_metadata.dimensions.y)
 	}
 
 	stencil_attachment_info: ^vk.RenderingAttachmentInfo
 	if attachment, has_stencil_attachment := command.stencil_attachment.?; has_stencil_attachment {
 		view_metadata, view_res := _metadata_of(attachment.view)
 		_check_internal_emission_result(view_res) or_return
-
-		texture_metadata, texture_res := _metadata_of(view_metadata.reference.(Texture))
-		assert(texture_res == nil)
 
 		stencil_attachment_info = &{
 			sType			= .RENDERING_ATTACHMENT_INFO,
@@ -598,16 +513,13 @@ vk_emit_begin_render_pass :: proc(
 				},
 			},
 		}
-
-		render_area.x = max(render_area.x, texture_metadata.dimensions.x)
-		render_area.y = max(render_area.y, texture_metadata.dimensions.y)
 	}
 
 	rendering_info := vk.RenderingInfo {
 		sType			= .RENDERING_INFO,
 		layerCount		= 1,
 		renderArea		= {
-			extent = { cast(u32)render_area.x, cast(u32)render_area.y },
+			extent = { cast(u32)command.attachment_dimensions.x, cast(u32)command.attachment_dimensions.y },
 		},
 		colorAttachmentCount	= cast(u32)len(color_attachment_infos),
 		pColorAttachments	= raw_data(color_attachment_infos),
@@ -618,20 +530,20 @@ vk_emit_begin_render_pass :: proc(
 	vk.CmdBeginRenderingKHR(metadata.vk.command_buffer, &rendering_info)
 
 	viewport := vk.Viewport {
-		width		= cast(f32)render_area.x,
-		height		= cast(f32)render_area.y,
+		width		= cast(f32)command.attachment_dimensions.x,
+		height		= cast(f32)command.attachment_dimensions.y,
 		minDepth	= 0.0,
 		maxDepth	= 1.0,
 	}
 	vk.CmdSetViewport(metadata.vk.command_buffer, 0, 1, &viewport)
 
 	scissor := vk.Rect2D {
-		extent = { cast(u32)render_area.x, cast(u32)render_area.y },
+		extent = { cast(u32)command.attachment_dimensions.x, cast(u32)command.attachment_dimensions.y },
 	}
 	vk.CmdSetScissor(metadata.vk.command_buffer, 0, 1, &scissor)
 
-	metadata.vk.pending_render_pass_waits = command.waits
-	metadata.vk.pending_render_pass_signals = command.signals
+	metadata.vk.pending_render_pass_waits	= command.waits
+	metadata.vk.pending_render_pass_signals	= command.signals
 
 	return nil
 }
@@ -764,15 +676,15 @@ vk_emit_commands :: proc(
 	queue_metadata: ^_Queue_Metadata,
 ) -> (submit_info: vk.SubmitInfo2, res: Result) {
 
-	metadata.vk.bound_resource_set = {}
-	metadata.vk.bound_depth_stencil_state = {}
-	metadata.vk.command_buffer_valid = false
-	metadata.vk.is_first_command_buffer = true
-	metadata.vk.pending_waits = {}
-	metadata.vk.pending_render_pass_signals = {}
-	metadata.vk.pending_render_pass_waits = {}
-	metadata.vk.pending_surface_waits = make([dynamic]vk.Semaphore, metadata.allocator) or_return
-	metadata.vk.render_pass_surface_views = make([dynamic]View, metadata.allocator) or_return
+	metadata.vk.bound_resource_set		= {}
+	metadata.vk.bound_depth_stencil_state	= {}
+	metadata.vk.command_buffer_valid	= false
+	metadata.vk.is_first_command_buffer	= true
+	metadata.vk.pending_waits		= {}
+	metadata.vk.pending_render_pass_signals	= {}
+	metadata.vk.pending_render_pass_waits	= {}
+	metadata.vk.pending_surface_waits	= make([dynamic]vk.Semaphore, metadata.allocator) or_return
+	metadata.vk.render_pass_surface_views	= make([dynamic]View, metadata.allocator) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata)
 
@@ -827,13 +739,7 @@ vk_emit_commands :: proc(
 	}
 
 	metadata.vk.semaphore_value += 1
-	// metadata.vk.is_first_command_buffer = false
-	// metadata.vk.pending_waits = {}
-	// metadata.vk.pending_render_pass_signals = {}
-	// metadata.vk.pending_render_pass_waits = {}
-	// resize(&metadata.vk.pending_surface_waits, 0)
-	// resize(&metadata.vk.render_pass_surface_views, 0)
-	
+
 	return submit_info, nil
 }
 
@@ -1063,6 +969,107 @@ vk_prepare_signal_semaphore_submit_infos :: proc(
 	return signals[:], nil
 }
 
+vk_prepare_surface_for_renderpass :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	view:			View,
+	view_metadata:		^_View_Metadata,
+	surface:		Surface,
+	surface_metadata:	^_Surface_Metadata,
+) -> Result {
+	append(
+		&metadata.vk.pending_surface_waits,
+		view_metadata.vk.swapchain_image_semaphore,
+	) or_return
+	append(
+		&metadata.vk.render_pass_surface_views,
+		view,
+	) or_return
+
+	old_layout: vk.ImageLayout
+	if !surface_metadata.vk.has_image_been_initialized[view_metadata.vk.swapchain_image_index] {
+		old_layout = .UNDEFINED
+		surface_metadata.vk.has_image_been_initialized[view_metadata.vk.swapchain_image_index] = true
+	} else {
+		old_layout = .PRESENT_SRC_KHR
+	}
+
+	image_barrier := vk.ImageMemoryBarrier2 {
+		sType			= .IMAGE_MEMORY_BARRIER_2,
+		dstStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
+		oldLayout		= old_layout,
+		newLayout		= .GENERAL,
+		image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
+		subresourceRange	= {
+			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
+			levelCount	= 1,
+			layerCount	= 1,
+		},
+	}
+	dependency_info := vk.DependencyInfo {
+		sType			= .DEPENDENCY_INFO,
+		imageMemoryBarrierCount	= 1,
+		pImageMemoryBarriers	= &image_barrier,
+	}
+	vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
+
+	return nil
+}
+
+vk_flush_command_buffer :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	signals:	[]Fence,
+) -> Result {
+
+	vk_end_command_buffer(metadata, queue_metadata, signals) or_return
+	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+
+	return nil
+}
+
+vk_end_command_buffer :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	queue_metadata:	^_Queue_Metadata,
+	signals:	[]Fence,
+) -> Result {
+
+	if !metadata.vk.command_buffer_valid {
+		return nil
+	}
+
+	vk.EndCommandBuffer(metadata.vk.command_buffer)
+	metadata.vk.command_buffer_valid = false
+
+	waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
+	signals := vk_prepare_signal_semaphore_submit_infos(metadata, signals) or_return
+
+	command_buffer_info := vk.CommandBufferSubmitInfo {
+		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
+		commandBuffer	= metadata.vk.command_buffer,
+	}
+	submit_info := vk.SubmitInfo2 {
+		sType				= .SUBMIT_INFO_2,
+		waitSemaphoreInfoCount		= cast(u32)len(waits),
+		pWaitSemaphoreInfos		= raw_data(waits),
+		signalSemaphoreInfoCount	= cast(u32)len(signals),
+		pSignalSemaphoreInfos		= raw_data(signals),
+		commandBufferInfoCount		= 1,
+		pCommandBufferInfos		= &command_buffer_info,
+	}
+	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
+
+	metadata.vk.is_first_command_buffer = false
+	metadata.vk.pending_waits = {}
+	metadata.vk.pending_render_pass_signals = {}
+	metadata.vk.pending_render_pass_waits = {}
+	metadata.vk.bound_depth_stencil_state = {}
+	metadata.vk.bound_resource_set = {}
+	metadata.vk.semaphore_value += 1
+	resize(&metadata.vk.pending_surface_waits, 0)
+
+	return nil
+}
+
 vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {
 	for stage in stages {
 		flags += vk_STAGE_TO_VK[stage]
@@ -1107,6 +1114,7 @@ vk_LOAD_OPERATION_TO_VK := [Load_Operation]vk.AttachmentLoadOp {
 vk_STORE_OPERATION_TO_VK := [Store_Operation]vk.AttachmentStoreOp {
 	.Store		= .STORE,
 	.Dont_Care	= .DONT_CARE,
+	.Resolve	= .STORE,
 }
 
 @(rodata)

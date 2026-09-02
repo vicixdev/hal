@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import "core:fmt"
 import "core:sync"
@@ -179,8 +179,7 @@ vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk
 	info.initialLayout	= .UNDEFINED
 	info.sharingMode	= .EXCLUSIVE
 
-	// TODO: Implement multisampling
-	info.samples		= { ._1 }
+	info.samples		= vk_SAMPLE_COUNT_TO_VK[descriptor.sample_count]
 
 	if _is_cube_compatible(descriptor) {
 		info.flags += { .CUBE_COMPATIBLE }
@@ -330,6 +329,13 @@ vk_TEXTURE_USAGE_TO_VK := [Texture_Usage]vk.ImageUsageFlags {
 	.Depth_Stencil_Attachment	= { .DEPTH_STENCIL_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
 }
 
+@(rodata)
+vk_SAMPLE_COUNT_TO_VK := #partial[?]vk.SampleCountFlags {
+	1	= { ._1 },
+	2	= { ._2 },
+	4	= { ._4 },
+	8	= { ._8 },
+}
 
 vk_format_to_gfx_pixel_format :: proc(format: vk.Format) -> (Pixel_Format) {
 	#partial switch format {

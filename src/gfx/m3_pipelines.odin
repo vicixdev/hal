@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
@@ -178,6 +178,7 @@ m3_compile_pipeline_stage :: proc(
 		dispatch.get_global_queue(),
 		dispatch.DATA_DESTRUCTOR_DEFAULT,
 	)
+	defer bytecode_data->release()
 
 	library, library_err := m3_device->newLibraryWithData(bytecode_data)
 	if library_err != nil {

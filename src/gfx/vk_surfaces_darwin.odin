@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import vk "vendor:vulkan"
 import NS "core:sys/darwin/Foundation"

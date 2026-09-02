@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import "core:strings"
 import "core:bytes"
@@ -257,8 +257,7 @@ vk_make_render_pipeline_desc :: proc(
 	multisample_state := new(vk.PipelineMultisampleStateCreateInfo, _temp_allocator)
 	multisample_state^ = {
 		sType			= .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		// TODO: Figure multisampling out
-		rasterizationSamples	= { ._1 },
+		rasterizationSamples	= vk_SAMPLE_COUNT_TO_VK[descriptor.sample_count],
 		alphaToCoverageEnable	= cast(b32)descriptor.alpha_to_coverage,
 	}
 

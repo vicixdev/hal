@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
@@ -66,7 +66,9 @@ m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -
 	
 	textures := metadata.texture_sets[type]
 
-	metadata.m3.texture_sets[type]->release()
+	if metadata.m3.texture_sets[type] != nil {
+		metadata.m3.texture_sets[type]->release()
+	}
 
 	texture_set := m3_resource_set_heap->newBufferWithLength(
 		size_of(MTL.ResourceID) * cast(NS.UInteger)len(textures),
@@ -93,7 +95,9 @@ m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Stor
 	
 	textures := metadata.storage_texture_sets[type]
 
-	metadata.m3.storage_texture_sets[type]->release()
+	if metadata.m3.storage_texture_sets[type] != nil {
+		metadata.m3.storage_texture_sets[type]->release()
+	}
 
 	texture_set := m3_resource_set_heap->newBufferWithLength(
 		size_of(MTL.ResourceID) * cast(NS.UInteger)len(textures),
@@ -120,7 +124,9 @@ m3_set_sampler_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	
 	samplers := metadata.sampler_set
 
-	metadata.m3.sampler_set->release()
+	if metadata.m3.sampler_set != nil {
+		metadata.m3.sampler_set->release()
+	}
 
 	sampler_set := m3_resource_set_heap->newBufferWithLength(
 		size_of(MTL.ResourceID) * cast(NS.UInteger)len(samplers),

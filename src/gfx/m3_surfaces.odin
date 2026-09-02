@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import "base:runtime"
 import "core:slice"

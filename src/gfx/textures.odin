@@ -1,7 +1,8 @@
-package gfx
+package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
+import "core:slice"
 import hm "core:container/handle_map"
 
 Texture :: distinct Handle
@@ -588,6 +589,56 @@ _check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: runt
 		location=location,
 	) or_return
 
+	_check_condition(
+		slice.contains([]int{1, 2, 4, 8}, descriptor.sample_count),
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid sample count",
+		"The sample count must be 1, 2, 4, or 8. (%v found).",
+		descriptor.sample_count,
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(descriptor.type == .D1 || descriptor.type == .D3, descriptor.sample_count == 1),
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid sample count",
+		"Only `.D2` textures support multisampling. Found %v samples on %v texture.",
+		descriptor.sample_count,
+		descriptor.type,
+		location=location,
+	) or_return
+
+	_check_condition(
+		descriptor.format != .None,
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid pixel format",
+		"The pixel format cannot be `.None`.",
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(.Color_Attachment in descriptor.usage, _HAS_PIXEL_FORMAT_COLOR[descriptor.format]),
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid texture usage",
+		"In order to create a texture with the `.Color_Attachment` usage, the pixel format must contain " +
+		"color information. Pixel format %v does not contain color information.",
+		descriptor.format,
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(.Depth_Stencil_Attachment in descriptor.usage,
+			_HAS_PIXEL_FORMAT_DEPTH[descriptor.format] || _HAS_PIXEL_FORMAT_STENCIL[descriptor.format]),
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid texture usage",
+		"In order to create a texture with `.Depth_Stencil_Attachment` usage, the pixel format must contain " +
+		"depth or stencil information. Pixel format %v contains neither.",
+		descriptor.format,
+		location=location,
+	) or_return
+
 	return nil
 }
 
@@ -890,5 +941,41 @@ _COPY_TEXTURE_TO_TEXTURE_COMPATIBILITIES := [Pixel_Format][Pixel_Format]bool {
 	.D24_Unorm_S8_Uint	= #partial { .D24_Unorm_S8_Uint = true },
 	.D32_Float_S8_Uint	= #partial { .D32_Float_S8_Uint = true },
 	.D16_Unorm		= #partial { .D16_Unorm = true },
+}
+
+@(rodata)
+_HAS_PIXEL_FORMAT_COLOR := #partial [Pixel_Format]bool {
+	.R8_Unorm		= true,
+	.RG8_Unorm		= true,
+	.RGBA8_Unorm		= true,
+	.RGBA8_Srgb		= true,
+	.BGRA8_Unorm		= true,
+	.BGRA8_Srgb		= true,
+	.R16_Float		= true,
+	.RG16_Float		= true,
+	.RGBA16_Float		= true,
+	.RGBA16_Unorm		= true,
+	.R16_Unorm		= true,
+	.RG16_Unorm		= true,
+	.R32_Float		= true,
+	.RG32_Float		= true,
+	.RGBA32_Float		= true,
+	.RG11B10_Float		= true,
+	.RGB10_A2_Unorm 	= true,
+	.RGB10_A2_Uint		= true,
+}
+
+@(rodata)
+_HAS_PIXEL_FORMAT_DEPTH := #partial [Pixel_Format]bool {
+	.D32_Float		= true,
+	.D24_Unorm_S8_Uint	= true,
+	.D32_Float_S8_Uint	= true,
+	.D16_Unorm		= true,
+}
+
+@(rodata)
+_HAS_PIXEL_FORMAT_STENCIL := #partial [Pixel_Format]bool {
+	.D24_Unorm_S8_Uint	= true,
+	.D32_Float_S8_Uint	= true,
 }
 

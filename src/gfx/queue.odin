@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import "core:sync"
 import "core:mem"

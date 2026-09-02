@@ -4,8 +4,6 @@ package vicixdev_gfx_tests
 import "base:runtime"
 import "core:mem"
 import "core:testing"
-import "core:image"
-import "core:slice"
 import gfx ".."
 
 @(test)

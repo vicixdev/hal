@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import "core:fmt"
 import vk "vendor:vulkan"

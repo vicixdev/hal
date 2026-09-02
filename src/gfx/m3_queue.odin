@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import "core:sync"
 import NS "core:sys/darwin/Foundation"

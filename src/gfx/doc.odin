@@ -23,4 +23,4 @@
 			Present in older systems with dedicated GPUs. Only a small amount of device memory is directly
 			accessible from the CPU.
 */
-package gfx
+package vicixdev_gfx

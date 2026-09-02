@@ -77,6 +77,8 @@ vertices:		[]Vertex
 gpu_vertices:		uintptr
 indices:		[]u16
 
+color_buffer:		gfx.Texture
+color_buffer_view:	gfx.View
 depth_buffer:		gfx.Texture
 depth_buffer_view:	gfx.View
 depth_format:		gfx.Pixel_Format
@@ -165,12 +167,26 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 	}
 	gfx.arena_free_all(&private_memory)
 
+	color_buffer_descriptor := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		dimensions	= { **window_state.dimensions, 1 },
+		mip_count	= 1,
+		layer_count	= 1,
+		sample_count	= 4,
+		format		= surface_format,
+		usage		= { .Color_Attachment },
+	}
+	color_buffer_size, color_buffer_align := gfx.size_align_of(color_buffer_descriptor) or_return
+	color_buffer_memory := gfx.arena_alloc(&private_memory, color_buffer_size, color_buffer_align) or_return
+	color_buffer = gfx.create_texture(color_buffer_memory, color_buffer_descriptor) or_return
+	color_buffer_view = gfx.default_view_of(color_buffer) or_return
+
 	depth_buffer_descriptor := gfx.Texture_Descriptor {
 		type		= .D2_Array,
 		dimensions	= { **window_state.dimensions, 1 },
 		mip_count	= 1,
 		layer_count	= 1,
-		sample_count	= 1,
+		sample_count	= 4,
 		format		= .D32_Float,
 		usage		= { .Depth_Stencil_Attachment },
 	}
@@ -193,7 +209,7 @@ app :: proc() -> gfx.Result {
 	frame_semaphore = gfx.create_semaphore(.Cpu_Waitable) or_return
 
 	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
-	gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
+	gfx.create_arena(&private_memory, .Private, 128 * mem.Megabyte) or_return
 	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
 
 	vertices = gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
@@ -223,7 +239,7 @@ app :: proc() -> gfx.Result {
 		},
 		topology	= .Triangle_List,
 		cull		= .None,
-		sample_count	= 1,
+		sample_count	= 4,
 		color_formats	= { surface_format },
 		depth_format	= depth_format,
 	}
@@ -306,9 +322,10 @@ app :: proc() -> gfx.Result {
 		render_pass_descriptor := gfx.Render_Pass_Descriptor {
 			color_attachments = {
 				gfx.Render_Attachment {
-					view		= surface_view,
+					view		= color_buffer_view,
+					resolve_view	= surface_view,
 					load_operation	= .Clear,
-					store_operation	= .Store,
+					store_operation	= .Resolve,
 					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
 				},
 			},
@@ -332,8 +349,8 @@ app :: proc() -> gfx.Result {
 				proj		= proj,
 			}
 			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
-			gfx.draw_indexed(command_buffer, pipeline, args, raw_data(indices), 36)
-		gfx.end_render_pass(command_buffer)
+			gfx.draw_indexed(command_buffer, pipeline, args, raw_data(indices), 36) or_return
+		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return
 		gfx.present(.Default, surface_view, { frame_semaphore, frame_count }) or_return

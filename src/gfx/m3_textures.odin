@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
@@ -96,7 +96,7 @@ m3_create_view_with_descriptor :: proc(
 
 	view := texture_metadata.m3.texture->newTextureViewWithLevels(
 		m3_PIXEL_FORMAT_TO_MTL[texture_metadata.format],
-		m3_VIEW_TYPE_TO_MTL[descriptor.type],
+		m3_view_type_to_mtl(texture_metadata^, descriptor.type),
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_mip, cast(NS.UInteger)descriptor.mip_count),
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_layer, cast(NS.UInteger)descriptor.layer_count),
 	)
@@ -135,32 +135,51 @@ m3_texture_usages_to_mtl :: proc(usages: Texture_Usages) -> (mtl: MTL.TextureUsa
 }
 
 m3_texture_type_to_mtl :: proc(descriptor: Texture_Descriptor) -> MTL.TextureType {
-	switch descriptor.type {
-	case .D1:
+	switch {
+	case descriptor.type == .D1:
 		return .Type1D
 
-	case .D2_Array:
-		if descriptor.layer_count == 1 {
-			return .Type2D
-		} else {
-			return .Type2DArray
-		}
+	case descriptor.type == .D2_Array && descriptor.layer_count == 1 && descriptor.sample_count == 1:
+		return .Type2D
 
-	case .D3:
+	case descriptor.type == .D2_Array && descriptor.layer_count == 1 && descriptor.sample_count > 1:
+		return .Type2DMultisample
+
+	case descriptor.type == .D2_Array && descriptor.layer_count > 1 && descriptor.sample_count == 1:
+		return .Type2DArray
+
+	case descriptor.type == .D2_Array && descriptor.layer_count > 1 && descriptor.sample_count > 1:
+		return .Type2DMultisampleArray
+
+	case descriptor.type == .D3:
 		return .Type3D
 	}
 
-	return nil
+	unreachable()
 }
 
-@(rodata)
-m3_VIEW_TYPE_TO_MTL := [View_Type]MTL.TextureType {
-	.D1		= .Type1D,
-	.D2		= .Type2D,
-	.D3		= .Type3D,
-	.Cube		= .TypeCube,
-	.D2_Array	= .Type2DArray,
-	.Cube_Array	= .TypeCubeArray,
+m3_view_type_to_mtl :: proc(texture_metadata: _Texture_Metadata, view_type: View_Type) -> MTL.TextureType {
+	switch {
+	case view_type == .D1:
+		return .Type1D
+
+	case view_type == .D2_Array && texture_metadata.layer_count == 1 && texture_metadata.sample_count == 1:
+		return .Type2D
+
+	case view_type == .D2_Array && texture_metadata.layer_count == 1 && texture_metadata.sample_count > 1:
+		return .Type2DMultisample
+
+	case view_type == .D2_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count == 1:
+		return .Type2DArray
+
+	case view_type == .D2_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count > 1:
+		return .Type2DMultisampleArray
+
+	case view_type == .D3:
+		return .Type3D
+	}
+	
+	unreachable()
 }
 
 @(rodata)

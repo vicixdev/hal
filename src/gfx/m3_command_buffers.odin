@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 import "core:mem"
 import NS "core:sys/darwin/Foundation"
@@ -293,6 +293,13 @@ m3_emit_begin_render_pass :: proc(
 		mtl_color_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[color_attachment.load_operation])
 		mtl_color_attachment->setStoreAction(m3_STORE_OPERATION_TO_MTL[color_attachment.store_operation])
 		mtl_color_attachment->setTexture(view_metadata.m3.view)
+
+		if color_attachment.resolve_view != {} {
+			resolve_view_metadata, resolve_view_res := _metadata_of(color_attachment.resolve_view)
+			_check_internal_emission_result(resolve_view_res) or_return
+
+			mtl_color_attachment->setResolveTexture(resolve_view_metadata.m3.view)
+		}
 
 		descriptor->colorAttachments()->setObject(mtl_color_attachment, cast(NS.UInteger)i)
 	}
@@ -684,6 +691,7 @@ m3_LOAD_OPERATION_TO_MTL := [Load_Operation]MTL.LoadAction {
 m3_STORE_OPERATION_TO_MTL := [Store_Operation]MTL.StoreAction {
 	.Store		= .Store,
 	.Dont_Care	= .DontCare,
+	.Resolve	= .StoreAndMultisampleResolve,
 }
 
 @(rodata)

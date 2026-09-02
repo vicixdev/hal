@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 Load_Operation :: enum {
 	Clear,
@@ -9,6 +9,7 @@ Load_Operation :: enum {
 Store_Operation :: enum {
 	Store,
 	Dont_Care,
+	Resolve,
 }
 
 Clear_Value :: union {
@@ -19,6 +20,7 @@ Clear_Value :: union {
 
 Render_Attachment :: struct {
 	view:			View,
+	resolve_view:		View,
 	load_operation:		Load_Operation,
 	store_operation:	Store_Operation,
 	clear_value:		Clear_Value,

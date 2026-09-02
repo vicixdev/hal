@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -37,21 +37,22 @@ Index_Type :: enum {
 }
 
 _Command_Buffer_Metadata :: struct {
-	handle:				Command_Buffer,
+	handle:					Command_Buffer,
 
-	arena:				vmem.Arena,
-	allocator:			runtime.Allocator,
+	arena:					vmem.Arena,
+	allocator:				runtime.Allocator,
 
-	queue:				Queue,
-	in_use:				bool,
+	queue:					Queue,
+	in_use:					bool,
 
-	resource_set:			Resource_Set,
-	depth_stencil_state:		Depth_Stencil_State,
-	semaphore_waits:		[]Semaphore_Wait,
-	commands:			[dynamic]_Command,
+	resource_set:				Resource_Set,
+	depth_stencil_state:			Depth_Stencil_State,
+	semaphore_waits:			[]Semaphore_Wait,
+	commands:				[dynamic]_Command,
 
-	can_encode_signals:		bool,
-	is_encoding_render_pass:	bool,
+	can_encode_signals:			bool,
+	is_encoding_render_pass:		bool,
+	render_pass_attachment_sample_count:	int,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -125,10 +126,13 @@ _Command_Signal_Semaphore :: struct {
 }
 
 _Command_Begin_Render_Pass :: struct {
-	using desc:	Render_Pass_Descriptor,
+	using desc:			Render_Pass_Descriptor,
 
-	signals:	[]Render_Pass_Signal,
-	waits:		[]Render_Pass_Wait,
+	signals:			[]Render_Pass_Signal,
+	waits:				[]Render_Pass_Wait,
+
+	attachment_dimensions:		[2]int,
+	attachment_sample_count:	int,
 }
 
 _Command_End_Render_Pass :: struct {}
@@ -709,12 +713,76 @@ begin_render_pass :: proc(
 	location :=	#caller_location,
 ) -> Result {
 
+	check_attachment_dimensions_and_sample_count :: proc(
+		reference_dimensions:	^[3]int,
+		reference_samples:	^int,
+		view:			View,
+		dimensions:		[3]int,
+		samples:		int,
+		location:		runtime.Source_Code_Location,
+	) -> Result {
+
+		if reference_dimensions^ == {} {
+			reference_dimensions^ = dimensions
+		} else {
+			_check_condition(
+				reference_dimensions^ == dimensions,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid attachment dimensions",
+				"The dimensions of the provided attachment %v (%v) do not conform with the " +
+				"dimensions of the previous attachments (%v).",
+				view,
+				dimensions,
+				reference_dimensions,
+				location=location,
+			) or_return
+		}
+
+		if reference_samples^ == 0 {
+			reference_samples^ = samples
+		} else {
+			_check_condition(
+				reference_samples^ == samples,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid attachment samples",
+				"The sample count of the provided attachment %v (%v) does not conform with the " +
+				"sample count of the previous attachments (%v).",
+				view,
+				samples,
+				reference_samples^,
+				location=location,
+			) or_return
+		}
+
+		return nil
+	}
+
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	attachment_dimensions:	[3]int
+	attachment_samples:	int
 
 	for color_target in descriptor.color_attachments {
 		view_metadata, view_res := _metadata_of(color_target.view)
 		_check_view_handle(view_res, color_target.view, location) or_return
+
+		_check_condition(
+			view_metadata.type == .D2,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid view",
+			"Only views of type `.D2` can be used as renderpass attachments. View %v is of type %v.",
+			color_target.view,
+			view_metadata.type,
+			location=location,
+		) or_return
+
+		view_dimensions:	[3]int
+		view_sample_count:	int
+		view_format:		Pixel_Format
 
 		switch v in view_metadata.reference {
 		case Texture:
@@ -746,8 +814,12 @@ begin_render_pass :: proc(
 				location=location,
 			) or_return
 
+			view_dimensions		= texture_metadata.dimensions
+			view_sample_count	= texture_metadata.sample_count
+			view_format		= texture_metadata.format
+
 		case Surface:
-			_, surface_res := _metadata_of(v)
+			surface_metadata, surface_res := _metadata_of(v)
 			_check_surface_handle(surface_res, v, location) or_return
 
 			was_used := sync.atomic_exchange(&view_metadata.used, true)
@@ -761,12 +833,120 @@ begin_render_pass :: proc(
 				color_target.view,
 				location=location,
 			) or_return
+
+			view_dimensions		= { **surface_metadata.dimensions, 1 }
+			view_sample_count	= 1
+			view_format		= surface_metadata.format
+		}
+
+		check_attachment_dimensions_and_sample_count(
+			&attachment_dimensions,
+			&attachment_samples,
+			color_target.view,
+			view_dimensions,
+			view_sample_count,
+			location=location,
+		) or_return
+		assert(
+			_HAS_PIXEL_FORMAT_COLOR[view_format],
+			"The texture pixel format does not have color information. This should have been checked " +
+			"during the texture creation.",
+		)
+
+		_check_condition(
+			_impl(color_target.resolve_view != {}, attachment_samples > 1),
+			.Invalid_View,
+			.Error,
+			"Invalid resolve view",
+			"The resolve view can only be used if the sample count of the attachments is more than 1. " +
+			"The resolve view %v has been provided when the previous attachments are using 1 samples.",
+			color_target.resolve_view,
+			location=location,
+		) or_return
+
+		if color_target.resolve_view != {} {
+			resolve_view_metadata, resolve_view_res := _metadata_of(color_target.resolve_view)
+			_check_view_handle(resolve_view_res, color_target.resolve_view, location) or_return
+
+			resolve_view_dimensions:	[3]int
+			resolve_view_sample_count:	int
+			resolve_view_format:		Pixel_Format
+
+			switch v in resolve_view_metadata.reference {
+			case Texture:
+				texture_metadata, texture_res := _metadata_of(v)
+				assert(texture_res == nil)
+
+				resolve_view_dimensions		= texture_metadata.dimensions
+				resolve_view_sample_count	= texture_metadata.sample_count
+				resolve_view_format		= texture_metadata.format
+
+			case Surface:
+				surface_metadata, surface_res := _metadata_of(v)
+				assert(surface_res == nil)
+
+				was_used := sync.atomic_exchange(&resolve_view_metadata.used, true)
+				_check_condition(
+					!was_used,
+					.Invalid_View,
+					.Error,
+					"Invalid view",
+					"A view referencing a surface can only be used once as a color attachment in a " +
+					"render pass. View %s has been used multiple times.",
+					color_target.view,
+					location=location,
+				) or_return
+
+				resolve_view_dimensions		= { **surface_metadata.dimensions, 1 }
+				resolve_view_sample_count	= 1
+				resolve_view_format		= surface_metadata.format
+			}
+
+			_check_condition(
+				attachment_dimensions == resolve_view_dimensions,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid attachment dimensions",
+				"The dimensions of the provided resolve attachment %v (%v) do not conform with the " +
+				"dimensions of the previous attachments (%v).",
+				color_target.resolve_view,
+				resolve_view_dimensions,
+				attachment_dimensions,
+				location=location,
+			) or_return
+			_check_condition(
+				resolve_view_sample_count == 1,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid sample count",
+				"The sample count of a resolve attachment must be 1. The provided view %v uses %d " +
+				"samples.",
+				color_target.resolve_view,
+				resolve_view_dimensions,
+				location=location,
+			) or_return
+			assert(
+				_HAS_PIXEL_FORMAT_COLOR[view_format],
+				"The texture pixel format does not have color information. This should have been " +
+				"checked during the texture creation.",
+			)
 		}
 	}
 
 	if depth_target, has_depth_target := descriptor.depth_attachment.?; has_depth_target {
 		view_metadata, view_res := _metadata_of(depth_target.view)
 		_check_view_handle(view_res, depth_target.view, location) or_return
+
+		_check_condition(
+			view_metadata.type == .D2,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid view",
+			"Only views of type `.D2` can be used as renderpass attachments. View %v is of type %v.",
+			depth_target.view,
+			view_metadata.type,
+			location=location,
+		) or_return
 
 		reference, is_referencing_texture := view_metadata.reference.(Texture)
 		_check_condition(
@@ -807,11 +987,54 @@ begin_render_pass :: proc(
 			depth_target.clear_value,
 			location=location,
 		) or_return
+
+		check_attachment_dimensions_and_sample_count(
+			&attachment_dimensions,
+			&attachment_samples,
+			depth_target.view,
+			texture_metadata.dimensions,
+			texture_metadata.sample_count,
+			location=location,
+		) or_return
+		_check_condition(
+			_HAS_PIXEL_FORMAT_DEPTH[texture_metadata.format],
+			.Invalid_Arguments,
+			.Error,
+			"Invalid depth view",
+			"The depth attachment must reference a texture with depth information. The provided depth " +
+			"attachment (view %v) references a texture of pixel format %v, which does not contain depth " +
+			"information.",
+			depth_target.view,
+			texture_metadata.format,
+			location=location,
+		) or_return
+
+		_check_condition(
+			depth_target.resolve_view == {},
+			.Invalid_View,
+			.Error,
+			"Invalid resolve view",
+			"The depth attachment cannot specify a resolve attachment. View %v was specified.",
+			depth_target.resolve_view,
+			location=location,
+		) or_return
+
 	}
 
 	if stencil_target, has_stencil_target := descriptor.stencil_attachment.?; has_stencil_target {
 		view_metadata, view_res := _metadata_of(stencil_target.view)
 		_check_view_handle(view_res, stencil_target.view, location) or_return
+
+		_check_condition(
+			view_metadata.type == .D2,
+			.Invalid_Arguments,
+			.Error,
+			"Invalid view",
+			"Only views of type `.D2` can be used as renderpass attachments. View %v is of type %v.",
+			stencil_target.view,
+			view_metadata.type,
+			location=location,
+		) or_return
 
 		reference, is_referencing_texture := view_metadata.reference.(Texture)
 		_check_condition(
@@ -852,6 +1075,37 @@ begin_render_pass :: proc(
 			stencil_target.clear_value,
 			location=location,
 		) or_return
+
+		check_attachment_dimensions_and_sample_count(
+			&attachment_dimensions,
+			&attachment_samples,
+			stencil_target.view,
+			texture_metadata.dimensions,
+			texture_metadata.sample_count,
+			location=location,
+		) or_return
+		_check_condition(
+			_HAS_PIXEL_FORMAT_STENCIL[texture_metadata.format],
+			.Invalid_Arguments,
+			.Error,
+			"Invalid stencil view",
+			"The stencil attachment must reference a texture with stencil information. The provided stencil " +
+			"attachment (view %v) references a texture of pixel format %v, which does not contain stencil " +
+			"information.",
+			stencil_target.view,
+			texture_metadata.format,
+			location=location,
+		) or_return
+
+		_check_condition(
+			stencil_target.resolve_view == {},
+			.Invalid_View,
+			.Error,
+			"Invalid resolve view",
+			"The stencil attachment cannot specify a resolve attachment. View %v was specified.",
+			stencil_target.resolve_view,
+			location=location,
+		) or_return
 	}
 
 	command := _Command_Begin_Render_Pass {
@@ -860,11 +1114,14 @@ begin_render_pass :: proc(
 		color_attachments	= slice.clone(descriptor.color_attachments, metadata.allocator) or_return,
 		signals			= slice.clone(signals, metadata.allocator) or_return,
 		waits			= slice.clone(waits, metadata.allocator) or_return,
+		attachment_dimensions	= attachment_dimensions.xy,
+		attachment_sample_count	= attachment_samples,
 	}
 	append(&metadata.commands, command) or_return
 
-	metadata.can_encode_signals		= false
-	metadata.is_encoding_render_pass	= true
+	metadata.can_encode_signals			= false
+	metadata.is_encoding_render_pass		= true
+	metadata.render_pass_attachment_sample_count	= attachment_samples
 
 	return nil
 }
@@ -909,8 +1166,20 @@ draw :: proc(
 		render_pipeline,
 		pipeline_metadata.type,
 		location=location,
-	)
-
+	) or_return
+	_check_condition(
+		pipeline_metadata.render.sample_count == metadata.render_pass_attachment_sample_count,
+		.Invalid_Pipeline,
+		.Error,
+		"Invalid pipeline sample count",
+		"The specified pipeline %v renders with %d samples, while the render pass is using attachments with " +
+		"%d samples.",
+		render_pipeline,
+		pipeline_metadata.render.sample_count,
+		metadata.render_pass_attachment_sample_count,
+		location=location,
+	) or_return
+	
 	arguments_info, arguments_res := _address_info_of(arguments)
 	_check_address_info(arguments_res, arguments, location) or_return
 
@@ -962,7 +1231,19 @@ draw_indexed :: proc(
 		render_pipeline,
 		pipeline_metadata.type,
 		location=location,
-	)
+	) or_return
+	_check_condition(
+		pipeline_metadata.render.sample_count == metadata.render_pass_attachment_sample_count,
+		.Invalid_Pipeline,
+		.Error,
+		"Invalid pipeline sample count",
+		"The specified pipeline %v renders with %d samples, while the render pass is using attachments with " +
+		"%d samples.",
+		render_pipeline,
+		pipeline_metadata.render.sample_count,
+		metadata.render_pass_attachment_sample_count,
+		location=location,
+	) or_return
 
 	command :=  _Command_Draw_Indexed {
 		pipeline		= render_pipeline,

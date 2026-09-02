@@ -1,5 +1,5 @@
 #+build darwin
-package gfx
+package vicixdev_gfx
 
 // import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"

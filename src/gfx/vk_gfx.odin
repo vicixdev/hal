@@ -1,4 +1,4 @@
-package gfx
+package vicixdev_gfx
 
 import "base:runtime"
 import "base:intrinsics"
