@@ -15,19 +15,19 @@ WINDOW_SIZE :: [2]int {
 
 Vertex :: struct #packed {
 	position:	[3]f32,
-	color:		[3]f32,
+	color:		[4]f32,
 }
 
 VERTICES := [?]Vertex {
-	{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0, 0.0 } },
-	{ {  1.0, -1.0, -1.0 }, { 0.0, 1.0, 0.0 } },
-	{ {  1.0,  1.0, -1.0 }, { 0.0, 0.0, 1.0 } },
-	{ { -1.0,  1.0, -1.0 }, { 1.0, 1.0, 0.0 } },
+	{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0, 0.0, 0.2 } },
+	{ {  1.0, -1.0, -1.0 }, { 0.0, 1.0, 0.0, 0.4 } },
+	{ {  1.0,  1.0, -1.0 }, { 0.0, 0.0, 1.0, 0.6 } },
+	{ { -1.0,  1.0, -1.0 }, { 1.0, 1.0, 0.0, 0.8 } },
 
-	{ { -1.0, -1.0,  1.0 }, { 1.0, 0.0, 1.0 } },
-	{ {  1.0, -1.0,  1.0 }, { 0.0, 1.0, 1.0 } },
-	{ {  1.0,  1.0,  1.0 }, { 1.0, 1.0, 1.0 } },
-	{ { -1.0,  1.0,  1.0 }, { 0.0, 0.0, 0.0 } },
+	{ { -1.0, -1.0,  1.0 }, { 1.0, 0.0, 1.0, 0.8 } },
+	{ {  1.0, -1.0,  1.0 }, { 0.0, 1.0, 1.0, 0.4 } },
+	{ {  1.0,  1.0,  1.0 }, { 1.0, 1.0, 1.0, 0.6 } },
+	{ { -1.0,  1.0,  1.0 }, { 0.0, 0.0, 0.0, 0.2 } },
 }
 
 INDICES := [?]u16 {
@@ -85,7 +85,9 @@ depth_format:		gfx.Pixel_Format
 
 depth_stencil:		gfx.Depth_Stencil_State
 
+blend_state:		gfx.Blend_State
 pipeline:		gfx.Pipeline
+blend_pipeline:		gfx.Pipeline
 
 frame_semaphore:	gfx.Semaphore
 frame_count:		int
@@ -245,6 +247,33 @@ app :: proc() -> gfx.Result {
 	}
 	pipeline = gfx.create_render_pipeline(pipeline_descriptor) or_return
 
+	blend_descriptor := gfx.Blend_Descriptor {
+		color_op			= .Add,
+		source_color_factor		= .Source_Alpha,
+		destination_color_factor	= .One_Minus_Source_Alpha,
+		alpha_op			= .Add,
+		source_alpha_factor		= .One,
+		destination_alpha_factor	= .Zero,
+	}
+	blend_state = gfx.create_blend_state(blend_descriptor) or_return
+	blend_pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+		vertex_stage	= {
+			bytecode	= pipeline_bytecode,
+			entrypoint	= "vertex_main",
+		},
+		fragment_stage	= {
+			bytecode	= pipeline_bytecode,
+			entrypoint	= "fragment_main",
+		},
+		topology	= .Triangle_List,
+		cull		= .None,
+		sample_count	= 4,
+		color_formats	= { surface_format },
+		depth_format	= depth_format,
+		blend_state	= blend_state,
+	}
+	blend_pipeline = gfx.create_render_pipeline(blend_pipeline_descriptor) or_return
+
 	prev_time := time.tick_now()
 	delta_time: f32
 
@@ -325,7 +354,7 @@ app :: proc() -> gfx.Result {
 					view		= color_buffer_view,
 					resolve_view	= surface_view,
 					load_operation	= .Clear,
-					store_operation	= .Resolve,
+					store_operation	= .Store,
 					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
 				},
 			},
@@ -348,8 +377,16 @@ app :: proc() -> gfx.Result {
 				view		= view,
 				proj		= proj,
 			}
-			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
 			gfx.draw_indexed(command_buffer, pipeline, args, raw_data(indices), 36) or_return
+
+			args = gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
+			args^ = {
+				vertices	= gpu_vertices,
+				model		= la.matrix4_translate_f32({ 0.0, 0.0, -3.0}) * la.matrix4_scale_f32(0.5),
+				view		= view,
+				proj		= proj,
+			}
+			gfx.draw_indexed(command_buffer, blend_pipeline, args, raw_data(indices), 6) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return

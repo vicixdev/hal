@@ -9,7 +9,6 @@ Load_Operation :: enum {
 Store_Operation :: enum {
 	Store,
 	Dont_Care,
-	Resolve,
 }
 
 Clear_Value :: union {

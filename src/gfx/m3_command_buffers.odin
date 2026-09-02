@@ -22,8 +22,11 @@ m3_Command_Buffer_Metadata :: struct {
 	blit_encoder:			^MTL.BlitCommandEncoder,
 	render_encoder:			^MTL.RenderCommandEncoder,
 
+	bound_compute_pipeline:		Pipeline,
+	bound_render_pipeline:		Pipeline,
 	bound_resource_set:		Resource_Set,
 	bound_depth_stencil_state:	Depth_Stencil_State,
+	bound_blend_constant:		[4]f64,
 
 	barrier_fence:			^MTL.Fence,
 	barrier_fence_pending:		bool,
@@ -185,8 +188,8 @@ m3_emit_dispatch :: proc(
 
 	m3_enable_compute_encoder(metadata) or_return
 	m3_bind_resource_set(metadata, command.resource_set) or_return
+	m3_bind_compute_pipeline(metadata, command.pipeline)
 	metadata.m3.compute_encoder->setBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
-	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
 	metadata.m3.compute_encoder->dispatchThreadgroups(
 		{
 			cast(NS.Integer)command.group_count.x,
@@ -286,15 +289,18 @@ m3_emit_begin_render_pass :: proc(
 		view_metadata, view_res := _metadata_of(color_attachment.view)
 		_check_internal_emission_result(view_res) or_return
 
+		has_resolve_view := color_attachment.resolve_view != {}
+
 		mtl_color_attachment := MTL.RenderPassColorAttachmentDescriptor.alloc()->init()
 		defer mtl_color_attachment->release()
 
 		mtl_color_attachment->setClearColor(m3_clear_color_to_mtl(color_attachment.clear_value.([4]f64)))
 		mtl_color_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[color_attachment.load_operation])
-		mtl_color_attachment->setStoreAction(m3_STORE_OPERATION_TO_MTL[color_attachment.store_operation])
+		mtl_color_attachment->setStoreAction(
+			m3_store_operation_to_mtl(color_attachment.store_operation, has_resolve_view))
 		mtl_color_attachment->setTexture(view_metadata.m3.view)
 
-		if color_attachment.resolve_view != {} {
+		if has_resolve_view {
 			resolve_view_metadata, resolve_view_res := _metadata_of(color_attachment.resolve_view)
 			_check_internal_emission_result(resolve_view_res) or_return
 
@@ -313,7 +319,7 @@ m3_emit_begin_render_pass :: proc(
 
 		mtl_depth_attachment->setClearDepth(depth_attachment.clear_value.(f64))
 		mtl_depth_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[depth_attachment.load_operation])
-		mtl_depth_attachment->setStoreAction(m3_STORE_OPERATION_TO_MTL[depth_attachment.store_operation])
+		mtl_depth_attachment->setStoreAction(m3_store_operation_to_mtl(depth_attachment.store_operation, false))
 		mtl_depth_attachment->setTexture(view_metadata.m3.view)
 
 		descriptor->setDepthAttachment(mtl_depth_attachment)
@@ -330,7 +336,7 @@ m3_emit_begin_render_pass :: proc(
 		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setLoadAction(
 			m3_LOAD_OPERATION_TO_MTL[stencil_attachment.load_operation])
 		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setStoreAction(
-			m3_STORE_OPERATION_TO_MTL[stencil_attachment.store_operation])
+			m3_store_operation_to_mtl(stencil_attachment.store_operation, false))
 		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setTexture(view_metadata.m3.view)
 
 		descriptor->setStencilAttachment(mtl_stencil_attachment)
@@ -373,9 +379,10 @@ m3_emit_draw :: proc(
 
 	m3_bind_resource_set(metadata, command.resource_set) or_return
 	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
+	m3_bind_render_pipeline(metadata, command.pipeline) or_return
+	m3_bind_blend_constant(metadata, command.blend_constant) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
-	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
 	metadata.m3.render_encoder->drawPrimitivesWithInstanceCount(
 		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		cast(NS.UInteger)command.base_vertex,
@@ -405,9 +412,10 @@ m3_emit_draw_indexed :: proc(
 
 	m3_bind_resource_set(metadata, command.resource_set) or_return
 	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
+	m3_bind_render_pipeline(metadata, command.pipeline) or_return
+	m3_bind_blend_constant(metadata, command.blend_constant) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
-	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
 	metadata.m3.render_encoder->drawIndexedPrimitivesWithInstanceCount(
 		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		cast(NS.UInteger)command.index_count,
@@ -568,6 +576,68 @@ m3_bind_depth_stencil :: proc(metadata: ^_Command_Buffer_Metadata, depth_stencil
 	return nil
 }
 
+m3_bind_blend_constant :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	constant:	[4]f64,
+) -> Result {
+
+	assert(metadata.m3.current_encoder == .Render)
+	if constant == metadata.m3.bound_blend_constant {
+		return nil
+	}
+
+	metadata.m3.render_encoder->setBlendColorRed(
+		cast(f32)constant.r,
+		cast(f32)constant.g,
+		cast(f32)constant.b,
+		cast(f32)constant.a,
+	)
+
+	metadata.m3.bound_blend_constant = constant
+
+	return nil
+}
+
+m3_bind_compute_pipeline :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	pipeline:	Pipeline,
+) -> Result {
+
+	assert(metadata.m3.current_encoder == .Compute)
+	if metadata.m3.bound_compute_pipeline == pipeline {
+		return nil
+	}
+
+	pipeline_metadata, pipeline_res := _metadata_of(pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	metadata.m3.compute_encoder->setComputePipelineState(pipeline_metadata.m3.compute.pipeline)
+
+	metadata.m3.bound_compute_pipeline = pipeline
+
+	return nil
+}
+
+m3_bind_render_pipeline :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	pipeline:	Pipeline,
+) -> Result {
+
+	assert(metadata.m3.current_encoder == .Render)
+	if metadata.m3.bound_render_pipeline == pipeline {
+		return nil
+	}
+
+	pipeline_metadata, pipeline_res := _metadata_of(pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
+
+	metadata.m3.bound_render_pipeline = pipeline
+
+	return nil
+}
+
 m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	if metadata.m3.current_encoder == .Blit {
 		return nil
@@ -653,9 +723,11 @@ m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 		metadata.m3.render_encoder = nil
 	}
 	
-	metadata.m3.current_encoder = .None
-	metadata.m3.bound_resource_set = {}
-	metadata.m3.bound_depth_stencil_state = {}
+	metadata.m3.current_encoder		= .None
+	metadata.m3.bound_compute_pipeline	= {}
+	metadata.m3.bound_render_pipeline	= {}
+	metadata.m3.bound_resource_set		= {}
+	metadata.m3.bound_depth_stencil_state	= {}
 }
 
 m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {
@@ -680,18 +752,26 @@ m3_clear_color_to_mtl :: proc(clear_color: [4]f64) -> MTL.ClearColor {
 	}
 }
 
+m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target: bool) -> (action: MTL.StoreAction) {
+	switch {
+	case operation == .Dont_Care:
+		return .DontCare
+
+	case operation == .Store && !has_resolve_target:
+		return .Store
+
+	case operation == .Store && has_resolve_target:
+		return .StoreAndMultisampleResolve
+	}
+
+	unreachable()
+}
+
 @(rodata)
 m3_LOAD_OPERATION_TO_MTL := [Load_Operation]MTL.LoadAction {
 	.Clear		= .Clear,
 	.Load		= .Load,
 	.Dont_Care	= .DontCare,
-}
-
-@(rodata)
-m3_STORE_OPERATION_TO_MTL := [Store_Operation]MTL.StoreAction {
-	.Store		= .Store,
-	.Dont_Care	= .DontCare,
-	.Resolve	= .StoreAndMultisampleResolve,
 }
 
 @(rodata)

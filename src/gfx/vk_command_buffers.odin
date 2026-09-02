@@ -12,8 +12,11 @@ vk_Command_Buffer_Metadata :: struct {
 	command_buffer:			vk.CommandBuffer,
 	command_buffer_valid:		bool,
 
+	bound_compute_pipeline:		Pipeline,
+	bound_render_pipeline:	Pipeline,
 	bound_resource_set:		Resource_Set,
 	bound_depth_stencil_state:	Depth_Stencil_State,
+	bound_blend_constant:		[4]f64,
 
 	is_first_command_buffer:	bool,
 
@@ -199,6 +202,25 @@ vk_emit_copy_texture_to_buffer :: proc(
 	return nil
 }
 
+vk_use_blend_constant :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	constant:	[4]f64,
+) -> Result {
+
+	if constant == metadata.vk.bound_blend_constant {
+		return nil
+	}
+
+	vk_blend_constant := [4]f32{
+		cast(f32)constant.r, cast(f32)constant.g, cast(f32)constant.b, cast(f32)constant.a,
+	}
+	vk.CmdSetBlendConstants(metadata.vk.command_buffer, &vk_blend_constant)
+
+	metadata.vk.bound_blend_constant = constant
+
+	return nil
+}
+
 vk_use_depth_stencil_state :: proc(
 	metadata:		^_Command_Buffer_Metadata,
 	depth_stencil_state:	Depth_Stencil_State,
@@ -276,6 +298,44 @@ vk_use_depth_stencil_state :: proc(
 	return nil
 }
 
+vk_use_compute_pipeline :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	pipeline:	Pipeline,
+) -> Result {
+
+	if metadata.vk.bound_compute_pipeline == pipeline {
+		return nil
+	}
+
+	pipeline_metadata, pipeline_res := _metadata_of(pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, pipeline_metadata.vk.pipeline)
+
+	metadata.vk.bound_compute_pipeline = pipeline
+
+	return nil
+}
+
+vk_use_render_pipeline :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	pipeline:	Pipeline,
+) -> Result {
+
+	if metadata.vk.bound_render_pipeline == pipeline {
+		return nil
+	}
+
+	pipeline_metadata, pipeline_res := _metadata_of(pipeline)
+	_check_internal_emission_result(pipeline_res) or_return
+
+	vk.CmdBindPipeline(metadata.vk.command_buffer, .GRAPHICS, pipeline_metadata.vk.pipeline)
+
+	metadata.vk.bound_render_pipeline = pipeline
+
+	return nil
+}
+
 vk_use_resource_set :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	resource_set:	Resource_Set,
@@ -320,15 +380,13 @@ vk_emit_dispatch :: proc(
 	command:	_Command_Dispatch,
 ) -> Result {
 	
-	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
-	_check_internal_emission_result(pipeline_res) or_return
-
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
-	vk_use_resource_set(metadata, command.resource_set)
+	vk_use_resource_set(metadata, command.resource_set) or_return
+	vk_use_compute_pipeline(metadata, command.pipeline) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_compute_pipeline_layout,
@@ -337,7 +395,6 @@ vk_emit_dispatch :: proc(
 		8,
 		&arguments_ptr,
 	)
-	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, pipeline_metadata.vk.pipeline)
 	vk.CmdDispatch(
 		metadata.vk.command_buffer,
 		cast(u32)command.group_count.x,
@@ -594,16 +651,14 @@ vk_emit_draw :: proc(
 	command:	_Command_Draw,
 ) -> Result {
 
-	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
-	_check_internal_emission_result(pipeline_res) or_return
-
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
 	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
-	vk_use_resource_set(metadata, command.resource_set)
-	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
+	vk_use_resource_set(metadata, command.resource_set) or_return
+	vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return
+	vk_use_render_pipeline(metadata, command.pipeline) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_render_pipeline_layout,
@@ -612,7 +667,6 @@ vk_emit_draw :: proc(
 		size_of(arguments_ptr),
 		&arguments_ptr,
 	)
-	vk.CmdBindPipeline(metadata.vk.command_buffer, .GRAPHICS, pipeline_metadata.vk.pipeline)
 	vk.CmdDraw(
 		metadata.vk.command_buffer,
 		cast(u32)command.vertex_count,
@@ -630,9 +684,6 @@ vk_emit_draw_indexed :: proc(
 	command:	_Command_Draw_Indexed,
 ) -> Result {
 
-	pipeline_metadata, pipeline_res := _metadata_of(command.pipeline)
-	_check_internal_emission_result(pipeline_res) or_return
-
 	indices_metadata, indices_res := _metadata_of(command.indices.buffer)
 	_check_internal_emission_result(indices_res) or_return
 
@@ -643,6 +694,7 @@ vk_emit_draw_indexed :: proc(
 
 	vk_use_resource_set(metadata, command.resource_set)
 	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
+	vk_use_render_pipeline(metadata, command.pipeline) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_render_pipeline_layout,
@@ -651,7 +703,6 @@ vk_emit_draw_indexed :: proc(
 		size_of(arguments_ptr),
 		&arguments_ptr,
 	)
-	vk.CmdBindPipeline(metadata.vk.command_buffer, .GRAPHICS, pipeline_metadata.vk.pipeline)
 	vk.CmdBindIndexBuffer(
 		metadata.vk.command_buffer,
 		indices_metadata.vk.buffer,
@@ -678,6 +729,9 @@ vk_emit_commands :: proc(
 
 	metadata.vk.bound_resource_set		= {}
 	metadata.vk.bound_depth_stencil_state	= {}
+	metadata.vk.bound_blend_constant	= {}
+	metadata.vk.bound_compute_pipeline	= {}
+	metadata.vk.bound_render_pipeline	= {}
 	metadata.vk.command_buffer_valid	= false
 	metadata.vk.is_first_command_buffer	= true
 	metadata.vk.pending_waits		= {}
@@ -1058,13 +1112,16 @@ vk_end_command_buffer :: proc(
 	}
 	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
 
-	metadata.vk.is_first_command_buffer = false
-	metadata.vk.pending_waits = {}
+	metadata.vk.is_first_command_buffer	= false
+	metadata.vk.pending_waits		= {}
 	metadata.vk.pending_render_pass_signals = {}
-	metadata.vk.pending_render_pass_waits = {}
-	metadata.vk.bound_depth_stencil_state = {}
-	metadata.vk.bound_resource_set = {}
-	metadata.vk.semaphore_value += 1
+	metadata.vk.pending_render_pass_waits	= {}
+	metadata.vk.bound_compute_pipeline	= {}
+	metadata.vk.bound_render_pipeline	= {}
+	metadata.vk.bound_depth_stencil_state	= {}
+	metadata.vk.bound_resource_set		= {}
+	metadata.vk.bound_blend_constant	= {}
+	metadata.vk.semaphore_value		+= 1
 	resize(&metadata.vk.pending_surface_waits, 0)
 
 	return nil
@@ -1114,7 +1171,6 @@ vk_LOAD_OPERATION_TO_VK := [Load_Operation]vk.AttachmentLoadOp {
 vk_STORE_OPERATION_TO_VK := [Store_Operation]vk.AttachmentStoreOp {
 	.Store		= .STORE,
 	.Dont_Care	= .DONT_CARE,
-	.Resolve	= .STORE,
 }
 
 @(rodata)

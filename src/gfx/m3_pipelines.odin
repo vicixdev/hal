@@ -139,8 +139,6 @@ m3_render_pipeline_descriptor_to_mtl :: proc(
 
 		color_attachment->setPixelFormat(m3_PIXEL_FORMAT_TO_MTL[color_format])
 
-		mtl->colorAttachments()->setObject(color_attachment, cast(NS.UInteger)i)
-
 		if blend_metadata != nil {
 			color_attachment->setBlendingEnabled(true)
 			color_attachment->setRgbBlendOperation(m3_BLEND_OPERATION_TO_MTL[blend_metadata.color_op])
@@ -154,6 +152,8 @@ m3_render_pipeline_descriptor_to_mtl :: proc(
 			color_attachment->setDestinationAlphaBlendFactor(
 				m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_alpha_factor])
 		}
+		
+		mtl->colorAttachments()->setObject(color_attachment, cast(NS.UInteger)i)
 	}
 
 	if descriptor.depth_format != .None {

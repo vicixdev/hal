@@ -2,14 +2,14 @@ import gfx;
 
 struct Vertex {
 	float	position[3];
-	float	color[3];
+	float	color[4];
 
 	float3	get_position() {
 		return float3(position[0], position[1], position[2]);
 	}
 
-	float3	get_color() {
-		return float3(color[0], color[1], color[2]);
+	float4	get_color() {
+		return float4(color[0], color[1], color[2], color[3]);
 	}
 }
 
@@ -23,7 +23,7 @@ struct Parameters {
 
 struct Vertex_Output {
 	float4	position	: SV_Position;
-	float3	color;
+	float4	color;
 }
 
 struct Fragment_Output {
@@ -37,10 +37,8 @@ uniform Parameters* parameters;
 Vertex_Output vertex_main(
 	uint32_t index : SV_VertexID,
 ) {
-	static_assert(sizeof(Vertex) == 24, "Unxpected Vertex size.");
-
 	float3 position = parameters.vertices[index].get_position();
-	float3 color = parameters.vertices[index].get_color();
+	float4 color = parameters.vertices[index].get_color();
 
 	// clip = NORMALIZE_CLIP_COORDS * proj * view * model * position
 	float4 clip = float4(position, 1.0);
@@ -59,6 +57,6 @@ Vertex_Output vertex_main(
 Fragment_Output fragment_main(
 	Vertex_Output	input,
 ) {
-	return Fragment_Output(float4(input.color, 1.0));
+	return Fragment_Output(input.color);
 }
 

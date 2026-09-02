@@ -47,6 +47,7 @@ _Command_Buffer_Metadata :: struct {
 
 	resource_set:				Resource_Set,
 	depth_stencil_state:			Depth_Stencil_State,
+	blend_constant:				[4]f64,
 	semaphore_waits:			[]Semaphore_Wait,
 	commands:				[dynamic]_Command,
 
@@ -141,6 +142,7 @@ _Command_Draw :: struct {
 	pipeline:		Pipeline,
 	resource_set:		Resource_Set,
 	depth_stencil_state:	Depth_Stencil_State,
+	blend_constant:		[4]f64,
 	arguments:		_Address_Info,
 	vertex_count:		int,
 	instance_count:		int,
@@ -151,6 +153,7 @@ _Command_Draw_Indexed :: struct {
 	pipeline:		Pipeline,
 	resource_set:		Resource_Set,
 	depth_stencil_state:	Depth_Stencil_State,
+	blend_constant:		[4]f64,
 	arguments:		_Address_Info,
 	indices:		_Address_Info,
 	index_count:		int,
@@ -251,6 +254,7 @@ begin_command_encoding :: proc(
 
 	metadata.resource_set		= _default_resource_set
 	metadata.depth_stencil_state	= _default_depth_stencil_state
+	metadata.blend_constant		= 0
 	metadata.can_encode_signals	= false
 	metadata.is_encoding_render_pass = false
 	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
@@ -294,6 +298,20 @@ use_depth_stencil_state :: proc(
 	_check_depth_stencil_state_handle(depth_stencil_res, depth_stencil_state, location) or_return
 	
 	metadata.depth_stencil_state = depth_stencil_state
+
+	return nil
+}
+
+use_blend_constant :: proc(
+	command_buffer:		Command_Buffer,
+	blend_constant:		[4]f64,
+	location :=		#caller_location,
+) -> (res: Result) {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	metadata.blend_constant = blend_constant
 
 	return nil
 }
@@ -1187,6 +1205,7 @@ draw :: proc(
 		pipeline		= render_pipeline,
 		resource_set		= metadata.resource_set,
 		depth_stencil_state	= metadata.depth_stencil_state,
+		blend_constant		= metadata.blend_constant,
 		arguments		= arguments_info,
 		vertex_count		= vertex_count,
 		instance_count		= instance_count,
@@ -1249,6 +1268,7 @@ draw_indexed :: proc(
 		pipeline		= render_pipeline,
 		resource_set		= metadata.resource_set,
 		depth_stencil_state	= metadata.depth_stencil_state,
+		blend_constant		= metadata.blend_constant,
 		arguments		= arguments_info,
 		indices			= indices_info,
 		index_count		= index_count,
