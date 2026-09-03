@@ -12,6 +12,16 @@ static const float4x4 NORMALIZE_CLIP_COORDS = {
 	0, 0, 0, 1,
 };
 
+static const float3x3 NORMALIZE_UV_COORDS = {
+	1, 0, 0,
+	0, 1, 0,
+	0, 0, 1,
+};
+
+float3 normalize_cube_uv_coords(float3 d) {
+	return d;
+}
+
 struct Handle_Wrap<T: IOpaqueDescriptor> {
 	DescriptorHandle<T>	handle;
 }
@@ -89,6 +99,20 @@ static const float4x4 NORMALIZE_CLIP_COORDS = {
 	0,  0, 0, 1,
 };
 
+static const float3x3 NORMALIZE_UV_COORDS = {
+	1,  0, 0,
+	0, -1, 0,
+	0,  1, 1,
+};
+
+float3 normalize_cube_uv_coords(float3 d) {
+	float3 a = abs(d);
+	float3 face = step(a.yzx, a.xyz) * step(a.zxy, a.xyz);
+	// Select the dominant axis.
+	float3 flip = 1.0 - 2.0 * face;
+
+	return d * flip;
+} 
 [vk_binding(0)]
 SamplerState		sampler_set[];
 [vk_binding(1)]

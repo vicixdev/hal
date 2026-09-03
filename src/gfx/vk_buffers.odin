@@ -3,12 +3,12 @@ package vicixdev_gfx
 import "core:fmt"
 import vk "vendor:vulkan"
 
-vk_Buffer_Metadata :: struct {
+_vk_Buffer_Metadata :: struct {
 	device_memory:	vk.DeviceMemory,
 	buffer:		vk.Buffer,
 }
 
-vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: Result) {
+_vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: Result) {
 
 	memory_type: u32
 	switch type {
@@ -84,12 +84,7 @@ vk_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> (res: 
 	return nil
 }
 
-vk_dealloc :: proc(metadata: ^_Buffer_Metadata) {
-	// vk.QueueWaitIdle(_queues[.Default].vk.queue)
-	// if _device_info.properties.transfer_queue {
-	// 	vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
-	// }
-
+_vk_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 	if metadata.memory_type != .Private {
 		vk.UnmapMemory(vk_device, metadata.vk.device_memory)
 	}
@@ -98,7 +93,7 @@ vk_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 	vk.FreeMemory(vk_device, metadata.vk.device_memory, nil)
 }
 
-vk_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
+_vk_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
 	context.temp_allocator = _temp_allocator
 
 	vk_label_object(metadata.vk.buffer, .BUFFER, fmt.ctprint("%s (Buffer)", label)) or_return

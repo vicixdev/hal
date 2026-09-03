@@ -83,8 +83,8 @@ m3_select_device :: proc(device: Device_Id) -> Result {
 	defer residency_set_descriptor->release()
 
 	residency_set_descriptor->setInitialCapacity(128)
-	m3_residency_set = MTLe.Device_newResidencySetWithDescriptor(auto_cast m3_device, residency_set_descriptor, nil)
-	if m3_residency_set == nil {
+	_m3_residency_set = MTLe.Device_newResidencySetWithDescriptor(auto_cast m3_device, residency_set_descriptor, nil)
+	if _m3_residency_set == nil {
 		return .Generic_Backend_Error
 	}
 
@@ -170,8 +170,8 @@ m3_create_resource_set_heap :: proc() -> Result {
 		return .Out_Of_Gpu_Memory
 	}
 
-	m3_residency_set->addAllocation(m3_resource_set_heap)
-	m3_residency_set->commit()
+	_m3_residency_set->addAllocation(m3_resource_set_heap)
+	_m3_residency_set->commit()
 
 	return nil
 }

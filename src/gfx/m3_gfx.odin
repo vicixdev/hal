@@ -14,9 +14,9 @@ m3_pre_fini :: proc() {
 		m3_end_tracing()
 	}
 
-	if m3_residency_set != nil {
-		m3_residency_set->release()
-		m3_residency_set = nil
+	if _m3_residency_set != nil {
+		_m3_residency_set->release()
+		_m3_residency_set = nil
 	}
 
 	if m3_resource_set_heap != nil {

@@ -7,19 +7,19 @@ import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/Metal"
 
-m3_Buffer_Metadata :: struct {
+_m3_Buffer_Metadata :: struct {
 	heap:		^MTL.Heap,
 	// This buffer always points to the base of the allocation (offset 0).
 	buffer:		^MTL.Buffer,
 }
 
-m3_residency_set:	^MTLe.ResidencySet
-m3_residency_set_mutex:	sync.Mutex
+_m3_residency_set:		^MTLe.ResidencySet
+_m3_residency_set_mutex:	sync.Mutex
 
-m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result {
+_m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result {
 	NS.scoped_autoreleasepool()
 	
-	resource_options := m3_MEMORY_TO_RESOURCEOPTIONS[type]
+	resource_options := _m3_MEMORY_TO_RESOURCEOPTIONS[type]
 
 	heap_desc := MTL.HeapDescriptor.alloc()->init()
 	heap_desc->autorelease()
@@ -47,27 +47,27 @@ m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result
 	metadata.m3.heap	= heap
 	metadata.m3.buffer	= buffer
 
-	if sync.guard(&m3_residency_set_mutex) {
-		m3_residency_set->addAllocation(heap)
-		m3_residency_set->commit()
+	if sync.guard(&_m3_residency_set_mutex) {
+		_m3_residency_set->addAllocation(heap)
+		_m3_residency_set->commit()
 	}
 
 	return nil
 }
 
-m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
+_m3_dealloc :: proc(metadata: ^_Buffer_Metadata) {
 	NS.scoped_autoreleasepool()
 
-	if sync.guard(&m3_residency_set_mutex) {
-		m3_residency_set->removeAllocation(metadata.m3.heap)
-		m3_residency_set->commit()
+	if sync.guard(&_m3_residency_set_mutex) {
+		_m3_residency_set->removeAllocation(metadata.m3.heap)
+		_m3_residency_set->commit()
 	}
 
 	metadata.m3.heap->release()
 	metadata.m3.buffer->release()
 }
 
-m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
+_m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
 	NS.scoped_autoreleasepool()
 
 	heap_label := NS.String.alloc()->initWithOdinString(label)
@@ -83,7 +83,7 @@ m3_label_buffer :: proc(metadata: ^_Buffer_Metadata, label: string) -> Result {
 }
 
 @(rodata)
-m3_MEMORY_TO_RESOURCEOPTIONS := [Memory]MTL.ResourceOptions {
+_m3_MEMORY_TO_RESOURCEOPTIONS := [Memory]MTL.ResourceOptions {
 	.Default	= { .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked },
 	.Staging	= { .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked },
 	.Private	= { .StorageModePrivate, .HazardTrackingModeUntracked },

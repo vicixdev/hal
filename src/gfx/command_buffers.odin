@@ -55,10 +55,9 @@ _Command_Buffer_Metadata :: struct {
 	is_encoding_render_pass:		bool,
 	render_pass_attachment_sample_count:	int,
 
-	// TODO: Implement these and validate the bound render pipeline
 	render_pass_color_formats:		[]Pixel_Format,
-	render_pass_depth_format:		Maybe(Pixel_Format),
-	render_pass_stencil_format:		Maybe(Pixel_Format),
+	render_pass_depth_format:		Pixel_Format,
+	render_pass_stencil_format:		Pixel_Format,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -785,10 +784,14 @@ begin_render_pass :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
+	metadata.render_pass_depth_format = .None
+	metadata.render_pass_stencil_format = .None
+	metadata.render_pass_color_formats = make([]Pixel_Format, len(descriptor.color_attachments), metadata.allocator) or_return
+
 	attachment_dimensions:	[3]int
 	attachment_samples:	int
 
-	for color_target in descriptor.color_attachments {
+	for color_target, i in descriptor.color_attachments {
 		view_metadata, view_res := _metadata_of(color_target.view)
 		_check_view_handle(view_res, color_target.view, location) or_return
 
@@ -841,6 +844,8 @@ begin_render_pass :: proc(
 			view_sample_count	= texture_metadata.sample_count
 			view_format		= texture_metadata.format
 
+			metadata.render_pass_color_formats[i] = texture_metadata.format
+
 		case Surface:
 			surface_metadata, surface_res := _metadata_of(v)
 			_check_surface_handle(surface_res, v, location) or_return
@@ -860,6 +865,8 @@ begin_render_pass :: proc(
 			view_dimensions		= { **surface_metadata.dimensions, 1 }
 			view_sample_count	= 1
 			view_format		= surface_metadata.format
+
+			metadata.render_pass_color_formats[i] = surface_metadata.format
 		}
 
 		check_attachment_dimensions_and_sample_count(
@@ -948,11 +955,20 @@ begin_render_pass :: proc(
 				resolve_view_dimensions,
 				location=location,
 			) or_return
-			assert(
-				_HAS_PIXEL_FORMAT_COLOR[view_format],
-				"The texture pixel format does not have color information. This should have been " +
-				"checked during the texture creation.",
-			)
+			_check_condition(
+				view_format == resolve_view_format,
+				.Invalid_Arguments,
+				.Error,
+				"Invalid pixel format",
+				"The color attachment pixel format and its resolve pixel format must be the same. " +
+				"Color attachment %v uses pixel format %v, while the resolve attachment %v uses " +
+				"pixel format %v.",
+				color_target.view,
+				view_format,
+				color_target.resolve_view,
+				resolve_view_format,
+				location=location,
+			) or_return
 		}
 	}
 
@@ -1042,6 +1058,7 @@ begin_render_pass :: proc(
 			location=location,
 		) or_return
 
+		metadata.render_pass_depth_format = texture_metadata.format
 	}
 
 	if stencil_target, has_stencil_target := descriptor.stencil_attachment.?; has_stencil_target {
@@ -1129,6 +1146,8 @@ begin_render_pass :: proc(
 			stencil_target.resolve_view,
 			location=location,
 		) or_return
+
+		metadata.render_pass_stencil_format = texture_metadata.format
 	}
 
 	command := _Command_Begin_Render_Pass {
@@ -1175,36 +1194,14 @@ draw :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
-	_check_in_render_pass(metadata, location) or_return
-
 	pipeline_metadata, pipeline_res := _metadata_of(render_pipeline)
 	_check_pipeline_handle(pipeline_res, render_pipeline, location) or_return
 
-	_check_condition(
-		pipeline_metadata.type == .Render,
-		.Invalid_Pipeline,
-		.Error,
-		"Invalid pipeline type",
-		"A draw requires a render pipeline. The provided pipeline %v is of type %v.",
-		render_pipeline,
-		pipeline_metadata.type,
-		location=location,
-	) or_return
-	_check_condition(
-		pipeline_metadata.render.sample_count == metadata.render_pass_attachment_sample_count,
-		.Invalid_Pipeline,
-		.Error,
-		"Invalid pipeline sample count",
-		"The specified pipeline %v renders with %d samples, while the render pass is using attachments with " +
-		"%d samples.",
-		render_pipeline,
-		pipeline_metadata.render.sample_count,
-		metadata.render_pass_attachment_sample_count,
-		location=location,
-	) or_return
-	
 	arguments_info, arguments_res := _address_info_of(arguments)
 	_check_address_info(arguments_res, arguments, location) or_return
+
+	_check_in_render_pass(metadata, location) or_return
+	_check_render_pipeline_congruency(metadata, render_pipeline, pipeline_metadata, location) or_return
 
 	command :=  _Command_Draw {
 		pipeline		= render_pipeline,
@@ -1235,8 +1232,6 @@ draw_indexed :: proc(
 	metadata, metadata_res := _metadata_of(command_buffer)
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
-	_check_in_render_pass(metadata, location) or_return
-
 	pipeline_metadata, pipeline_res := _metadata_of(render_pipeline)
 	_check_pipeline_handle(pipeline_res, render_pipeline, location) or_return
 
@@ -1246,28 +1241,8 @@ draw_indexed :: proc(
 	indices_info, indices_res := _address_info_of(indices)
 	_check_address_info(indices_res, indices, location) or_return
 
-	_check_condition(
-		pipeline_metadata.type == .Render,
-		.Invalid_Pipeline,
-		.Error,
-		"Invalid pipeline type",
-		"A draw_indexed requires a render pipeline. The provided pipeline %v is of type %v.",
-		render_pipeline,
-		pipeline_metadata.type,
-		location=location,
-	) or_return
-	_check_condition(
-		pipeline_metadata.render.sample_count == metadata.render_pass_attachment_sample_count,
-		.Invalid_Pipeline,
-		.Error,
-		"Invalid pipeline sample count",
-		"The specified pipeline %v renders with %d samples, while the render pass is using attachments with " +
-		"%d samples.",
-		render_pipeline,
-		pipeline_metadata.render.sample_count,
-		metadata.render_pass_attachment_sample_count,
-		location=location,
-	) or_return
+	_check_in_render_pass(metadata, location) or_return
+	_check_render_pipeline_congruency(metadata, render_pipeline, pipeline_metadata, location) or_return
 
 	command :=  _Command_Draw_Indexed {
 		pipeline		= render_pipeline,
@@ -1564,3 +1539,126 @@ _remove_command_buffer :: proc(command_buffer: Command_Buffer) {
 	metadata.in_use = false
 }
 
+
+_check_render_pipeline_congruency :: proc(
+	metadata:		^_Command_Buffer_Metadata,
+	render_pipeline:	Pipeline,
+	pipeline_metadata:	^_Pipeline_Metadata,
+	location :=		#caller_location,
+) -> Result {
+	_check_condition(
+		pipeline_metadata.type == .Render,
+		.Invalid_Pipeline,
+		.Error,
+		"Invalid pipeline type",
+		"A draw requires a render pipeline. The provided pipeline %v is of type %v.",
+		render_pipeline,
+		pipeline_metadata.type,
+		location=location,
+	) or_return
+	_check_condition(
+		pipeline_metadata.render.sample_count == metadata.render_pass_attachment_sample_count,
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v renders with %d samples, while the render pass is using attachments with " +
+		"%d samples.",
+		render_pipeline,
+		pipeline_metadata.render.sample_count,
+		metadata.render_pass_attachment_sample_count,
+		location=location,
+	) or_return
+	_check_condition(
+		len(metadata.render_pass_color_formats) == len(pipeline_metadata.render.color_formats),
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v expects %d color attachments, while the current render pass only has %d.",
+		render_pipeline,
+		len(pipeline_metadata.render.color_formats),
+		len(metadata.render_pass_color_formats),
+		location=location,
+	) or_return
+	for color_format, i in metadata.render_pass_color_formats {
+		_check_condition(
+			color_format == pipeline_metadata.render.color_formats[i],
+			.Invalid_Pipeline,
+			.Error,
+			"Incongruent pipeline",
+			"The speficied pipeline %v expects its %dth color attachment to use the %v pixel format, " +
+			"while %dth color attachment in the current render pass uses the %v pixel format.",
+			render_pipeline,
+			i,
+			pipeline_metadata.render.color_formats[i],
+			i,
+			color_format,
+			location=location,
+		) or_return
+	}
+	_check_condition(
+		_impl(metadata.render_pass_depth_format == .None, pipeline_metadata.render.depth_format == .None),
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v expects a depth attachment, while the current render pass does not have " +
+		"one.",
+		render_pipeline,
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(pipeline_metadata.render.depth_format == .None, metadata.render_pass_depth_format == .None),
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v does not expect a depth attachment, while the current render pass does " +
+		"have one.",
+		render_pipeline,
+		location=location,
+	) or_return
+	_check_condition(
+		pipeline_metadata.render.depth_format == metadata.render_pass_depth_format,
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v does expect a depth attachment using the %v pixel format, while the " +
+		"depth attachment of the current render pass is using the %v pixel format.",
+		render_pipeline,
+		pipeline_metadata.render.depth_format,
+		metadata.render_pass_depth_format,
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(metadata.render_pass_stencil_format == .None, pipeline_metadata.render.stencil_format == .None),
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v expects a stencil attachment, while the current render pass does not have " +
+		"one.",
+		render_pipeline,
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(pipeline_metadata.render.stencil_format == .None, metadata.render_pass_stencil_format == .None),
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v does not expect a stencil attachment, while the current render pass does " +
+		"have one.",
+		render_pipeline,
+		location=location,
+	) or_return
+	_check_condition(
+		pipeline_metadata.render.stencil_format == metadata.render_pass_stencil_format,
+		.Invalid_Pipeline,
+		.Error,
+		"Incongruent pipeline",
+		"The specified pipeline %v does expect a stencil attachment using the %v pixel format, while the " +
+		"stencil attachment of the current render pass is using the %v pixel format.",
+		render_pipeline,
+		pipeline_metadata.render.stencil_format,
+		metadata.render_pass_stencil_format,
+		location=location,
+	) or_return
+	
+	return nil
+}

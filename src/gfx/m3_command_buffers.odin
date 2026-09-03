@@ -436,7 +436,7 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 	metadata.m3.barrier_fence_pending = false
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
-	MTLe.CommandBuffer_useResidencySet(auto_cast metadata.m3.command_buffer, m3_residency_set)
+	MTLe.CommandBuffer_useResidencySet(auto_cast metadata.m3.command_buffer, _m3_residency_set)
 
 	for wait in metadata.semaphore_waits {
 		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)

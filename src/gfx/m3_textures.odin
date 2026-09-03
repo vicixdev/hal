@@ -32,7 +32,7 @@ m3_create_texture :: proc(
 	NS.scoped_autoreleasepool()
 
 	mtl_desc := m3_texture_descriptor_to_mtl(descriptor)
-	mtl_desc->setResourceOptions(m3_MEMORY_TO_RESOURCEOPTIONS[buffer_metadata.memory_type])
+	mtl_desc->setResourceOptions(_m3_MEMORY_TO_RESOURCEOPTIONS[buffer_metadata.memory_type])
 
 	texture := buffer_metadata.m3.heap->newTextureWithDescriptorAndOffset(
 		mtl_desc,
@@ -174,6 +174,12 @@ m3_view_type_to_mtl :: proc(texture_metadata: _Texture_Metadata, view_type: View
 
 	case view_type == .D2_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count > 1:
 		return .Type2DMultisampleArray
+
+	case view_type == .Cube:
+		return .TypeCube
+
+	case view_type == .Cube_Array:
+		return .TypeCubeArray
 
 	case view_type == .D3:
 		return .Type3D
