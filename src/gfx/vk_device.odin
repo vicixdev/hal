@@ -105,6 +105,11 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	append(&vk_enabled_device_extensions, "VK_EXT_extended_dynamic_state2")
 	append(&vk_enabled_device_extensions, "VK_KHR_swapchain")
 
+	has_unified_image_layouts := vk_device_has_extension(device_info, "VK_KHR_unified_image_layouts")
+	if has_unified_image_layouts {
+		append(&vk_enabled_device_extensions, "VK_KHR_unified_image_layouts")
+	}
+
 	queue_descriptors: []vk.DeviceQueueCreateInfo
 
 	default_queue_priority: f32 = 0.9
@@ -142,12 +147,11 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	}
 	device_features_11 := vk.PhysicalDeviceVulkan11Features {
 		sType			= .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-		pNext			= &device_features,
 		shaderDrawParameters	= true,
 	}
+	vk_link(&device_features, &device_features_11)
 	device_features_12 := vk.PhysicalDeviceVulkan12Features {
 		sType						= .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-		pNext						= &device_features_11,
 		timelineSemaphore				= true,
 		bufferDeviceAddress				= true,
 		runtimeDescriptorArray				= true,
@@ -158,29 +162,37 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		shaderStorageImageArrayNonUniformIndexing	= true,
 		shaderSampledImageArrayNonUniformIndexing	= true,
 	}
+	vk_link(&device_features_11, &device_features_12)
 	dynamic_rendering_features := vk.PhysicalDeviceDynamicRenderingFeaturesKHR {
 		sType			= .PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
-		pNext			= &device_features_12,
 		dynamicRendering	= true,
 	}
+	vk_link(&device_features_12, &dynamic_rendering_features)
 	synchronization2_features := vk.PhysicalDeviceSynchronization2FeaturesKHR {
 		sType			= .PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
-		pNext			= &dynamic_rendering_features,
 		synchronization2	= true,
 	}
+	vk_link(&dynamic_rendering_features, &synchronization2_features)
 	extended_dynamic_state_features := vk.PhysicalDeviceExtendedDynamicStateFeaturesEXT {
 		sType			= .PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
-		pNext			= &synchronization2_features,
 		extendedDynamicState	= true,
 	}
+	vk_link(&synchronization2_features, &extended_dynamic_state_features)
 	extended_dynamic_state_2_features := vk.PhysicalDeviceExtendedDynamicState2FeaturesEXT {
 		sType			= .PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
-		pNext			= &extended_dynamic_state_features,
 		extendedDynamicState2	= true,
+	}
+	vk_link(&extended_dynamic_state_features, &extended_dynamic_state_2_features)
+	if has_unified_image_layouts {
+		unified_image_layouts_features := vk.PhysicalDeviceUnifiedImageLayoutsFeaturesKHR {
+			sType			= .PHYSICAL_DEVICE_UNIFIED_IMAGE_LAYOUTS_FEATURES_KHR,
+			unifiedImageLayouts	= true,
+		}
+		vk_link(&extended_dynamic_state_2_features, &unified_image_layouts_features)
 	}
 	descriptor := vk.DeviceCreateInfo {
 		sType			= .DEVICE_CREATE_INFO,
-		pNext			= &extended_dynamic_state_2_features,
+		pNext			= &device_features,
 		queueCreateInfoCount	= cast(u32)len(queue_descriptors),
 		pQueueCreateInfos	= raw_data(queue_descriptors),
 		enabledExtensionCount	= cast(u32)len(vk_enabled_device_extensions),
