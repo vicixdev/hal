@@ -202,6 +202,82 @@ vk_emit_copy_texture_to_buffer :: proc(
 	return nil
 }
 
+vk_emit_generate_mipmaps :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	queue_metadata: ^_Queue_Metadata,
+	command: _Command_Generate_Mipmaps,
+) -> Result {
+
+	texture_metadata, texture_res := _metadata_of(command.texture)
+	_check_internal_emission_result(texture_res) or_return
+
+	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
+
+	dimensions := texture_metadata.dimensions
+	for i in 1..<texture_metadata.mip_count {
+
+		next_dimensions := [3]int {
+			max(dimensions.x / 2, 1), max(dimensions.y / 2, 1), max(dimensions.z / 2, 1),
+		}
+
+		region := vk.ImageBlit {
+			srcSubresource	= {
+				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+				mipLevel	= cast(u32)(i - 1),
+				layerCount	= cast(u32)texture_metadata.layer_count,
+			},
+			srcOffsets	= {
+				{ 0, 0, 0 },
+				{ cast(i32)dimensions.x, cast(i32)dimensions.y, cast(i32)dimensions.z },
+			},
+			dstSubresource	= {
+				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+				mipLevel	= cast(u32)i,
+				layerCount	= cast(u32)texture_metadata.layer_count,
+			},
+			dstOffsets	= {
+				{ 0, 0, 0 },
+				{ cast(i32)next_dimensions.x, cast(i32)next_dimensions.y, cast(i32)next_dimensions.z },
+			},
+		}
+		vk.CmdBlitImage(
+			metadata.vk.command_buffer,
+			texture_metadata.vk.image,
+			.GENERAL,
+			texture_metadata.vk.image,
+			.GENERAL,
+			1,
+			&region,
+			.LINEAR,
+		)
+
+		dimensions = next_dimensions
+
+		image_barrier := vk.ImageMemoryBarrier2 {
+			sType				= .IMAGE_MEMORY_BARRIER_2,
+			srcStageMask			= { .COPY },
+			srcAccessMask			= { .TRANSFER_WRITE },
+			dstStageMask			= { .COPY },
+			dstAccessMask			= { .TRANSFER_READ },
+			image				= texture_metadata.vk.image,
+			subresourceRange		= {
+				aspectMask		= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+				baseMipLevel		= cast(u32)i,
+				levelCount		= cast(u32)1,
+				layerCount		= cast(u32)texture_metadata.layer_count,
+			},
+		}
+		dependency_info := vk.DependencyInfo {
+			sType				= .DEPENDENCY_INFO,
+			imageMemoryBarrierCount		= 1,
+			pImageMemoryBarriers		= &image_barrier,
+		}
+		vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
+	}
+
+	return nil
+}
+
 vk_use_blend_constant :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	constant:	[4]f64,
@@ -526,12 +602,6 @@ vk_emit_begin_render_pass :: proc(
 				) or_return
 			}
 		}
-
-		switch v in view_metadata.reference {
-		case Texture:
-
-		case Surface:
- 		}
 	}
 
 	depth_attachment_info: ^vk.RenderingAttachmentInfo
@@ -752,6 +822,8 @@ vk_emit_commands :: proc(
 			vk_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Texture_To_Buffer:
 			vk_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
+		case _Command_Generate_Mipmaps:
+			vk_emit_generate_mipmaps(metadata, queue_metadata, v) or_return
 		case _Command_Dispatch:
 			vk_emit_dispatch(metadata, queue_metadata, v) or_return
 		case _Command_Barrier:

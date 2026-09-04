@@ -368,7 +368,6 @@ vk_CULL_MODE_TO_VK := [Cull_Mode]vk.CullModeFlags {
 	.None			= {},
 	.Clockwise		= { .FRONT },
 	.Counter_Clockwise	= { .BACK },
-	.All			= { .FRONT, .BACK },
 }
 
 @(rodata)

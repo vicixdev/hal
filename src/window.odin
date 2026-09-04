@@ -127,6 +127,14 @@ process_events :: proc() {
 			state -= { .Just_Pressed }
 		}
 	}
+	for &state in mouse_state.buttons {
+		if .Just_Released in state {
+			state -= { .Just_Released }
+		}
+		if .Just_Pressed in state {
+			state -= { .Just_Pressed }
+		}
+	}
 
 	mouse_state.delta = {}
 

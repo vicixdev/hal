@@ -9,18 +9,24 @@ import "core:debug/trace"
 import la "core:math/linalg"
 import sdl "vendor:sdl3"
 import "vendor:stb/image"
+import ui "vendor:microui"
 import "gfx"
 
 WINDOW_SIZE :: [2]int {
 	1024, 768,
 }
 
-Vertex :: struct #packed {
+Color_Vertex :: struct #packed {
 	position:	[3]f32,
 	color:		[4]f32,
 }
 
-VERTICES := [?]Vertex {
+Textured_Vertex :: struct #packed {
+	position:	[3]f32,
+	uv:		[2]f32,
+}
+
+COLOR_VERTICES := [?]Color_Vertex {
 	{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0, 0.0, 0.2 } },
 	{ {  1.0, -1.0, -1.0 }, { 0.0, 1.0, 0.0, 0.4 } },
 	{ {  1.0,  1.0, -1.0 }, { 0.0, 0.0, 1.0, 0.6 } },
@@ -58,12 +64,92 @@ INDICES := [?]u16 {
 	5, 4, 0,
 }
 
+TEXTURED_VERTICES := [?]Textured_Vertex {
+	// Front
+	{ { -1.0, -1.0,  1.0 }, { 0.0, 0.0 } },
+	{ {  1.0, -1.0,  1.0 }, { 1.0, 0.0 } },
+	{ {  1.0,  1.0,  1.0 }, { 1.0, 1.0 } },
+	{ { -1.0,  1.0,  1.0 }, { 0.0, 1.0 } },
+
+	// Back
+	{ {  1.0, -1.0, -1.0 }, { 0.0, 0.0 } },
+	{ { -1.0, -1.0, -1.0 }, { 1.0, 0.0 } },
+	{ { -1.0,  1.0, -1.0 }, { 1.0, 1.0 } },
+	{ {  1.0,  1.0, -1.0 }, { 0.0, 1.0 } },
+
+	// Left
+	{ { -1.0, -1.0, -1.0 }, { 0.0, 0.0 } },
+	{ { -1.0, -1.0,  1.0 }, { 1.0, 0.0 } },
+	{ { -1.0,  1.0,  1.0 }, { 1.0, 1.0 } },
+	{ { -1.0,  1.0, -1.0 }, { 0.0, 1.0 } },
+
+	// Right
+	{ { 1.0, -1.0,  1.0 }, { 0.0, 0.0 } },
+	{ { 1.0, -1.0, -1.0 }, { 1.0, 0.0 } },
+	{ { 1.0,  1.0, -1.0 }, { 1.0, 1.0 } },
+	{ { 1.0,  1.0,  1.0 }, { 0.0, 1.0 } },
+
+	// Top
+	{ { -1.0,  1.0,  1.0 }, { 0.0, 0.0 } },
+	{ {  1.0,  1.0,  1.0 }, { 1.0, 0.0 } },
+	{ {  1.0,  1.0, -1.0 }, { 1.0, 1.0 } },
+	{ { -1.0,  1.0, -1.0 }, { 0.0, 1.0 } },
+
+	// Bottom
+	{ { -1.0, -1.0, -1.0 }, { 0.0, 0.0 } },
+	{ {  1.0, -1.0, -1.0 }, { 1.0, 0.0 } },
+	{ {  1.0, -1.0,  1.0 }, { 1.0, 1.0 } },
+	{ { -1.0, -1.0,  1.0 }, { 0.0, 1.0 } },
+}
+
+TEXTURED_INDICES := [?]u16 {
+	// Front
+	0, 1, 2,
+	2, 3, 0,
+
+	// Back
+	4, 5, 6,
+	6, 7, 4,
+
+	// Left
+	8, 9, 10,
+	10, 11, 8,
+
+	// Right
+	12, 13, 14,
+	14, 15, 12,
+
+	// Top
+	16, 17, 18,
+	18, 19, 16,
+
+	// Bottom
+	20, 21, 22,
+	22, 23, 20,
+}
+
 Arguments :: struct #packed {
 	model:		matrix[4,4]f32,
 	view:		matrix[4,4]f32,
 	proj:		matrix[4,4]f32,
 
 	vertices:	uintptr,
+}
+
+Textured_Arguments :: struct #packed {
+	model:		matrix[4,4]f32,
+	view:		matrix[4,4]f32,
+	proj:		matrix[4,4]f32,
+
+	vertices:	uintptr,
+	texture:	u32,
+	sampler:	u32,
+}
+
+Blit_Arguments :: struct #packed {
+	texture:	u32,
+	sampler:	u32,
+	flip_y:		b32,
 }
 
 device_info:		gfx.Device_Info
@@ -77,9 +163,12 @@ framebuffers_memory:	gfx.Arena
 staging_memory:		gfx.Scratch
 frame_memory:		gfx.Scratch
 
-vertices:		[]Vertex
-gpu_vertices:		uintptr
+color_vertices:		[]Color_Vertex
+gpu_color_vertices:	uintptr
 indices:		[]u16
+textured_vertices:	[]Textured_Vertex
+gpu_textured_vertices:	uintptr
+textured_indices:	[]u16
 
 color_buffer:		gfx.Texture
 color_buffer_view:	gfx.View
@@ -90,13 +179,18 @@ depth_format:		gfx.Pixel_Format
 depth_stencil:		gfx.Depth_Stencil_State
 depth_disabled_stencil:	gfx.Depth_Stencil_State
 
-sampler:		gfx.Sampler
+grass_texture:		gfx.Texture
+grass_view:		gfx.View
+linear_sampler:		gfx.Sampler
+nearest_sampler:	gfx.Sampler
 
 resource_set:		gfx.Resource_Set
 
 blend_state:		gfx.Blend_State
 pipeline:		gfx.Pipeline
 blend_pipeline:		gfx.Pipeline
+textured_pipeline:	gfx.Pipeline
+blit_pipeline:		gfx.Pipeline
 
 frame_semaphore:	gfx.Semaphore
 frame_count:		int
@@ -174,6 +268,7 @@ fini :: proc() {
 prepare_stuff_for_window_size :: proc() -> gfx.Result {
 	if depth_buffer != {} {
 		gfx.wait_idle(.Default)
+		gfx.wait_idle(.Transfer)
 		gfx.destroy_texture(depth_buffer)
 	}
 	gfx.arena_free_all(&framebuffers_memory)
@@ -211,6 +306,8 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 	camera.aspect	= cast(f32)window_state.dimensions.x / cast(f32)window_state.dimensions.y
 	camera.near	= 0.01
 	camera.far	= 100.0
+
+	ui_resize_screen(window_state.dimensions)
 
 	return nil
 }
@@ -360,22 +457,94 @@ draw_skybox :: proc(
 	return nil
 }
 
+create_texture :: proc(path: string, on_done: ..gfx.Semaphore_Signal) -> (texture: gfx.Texture, view: gfx.View, res: gfx.Result) {
+	channels_to_format := [?]gfx.Pixel_Format {
+		0	= .None,
+		1	= .R8_Unorm,
+		2	= .RG8_Unorm,
+		3	= .None,
+		4	= .RGBA8_Unorm,
+	}
+
+	width, height, channels: i32
+	pixels := image.load(strings.clone_to_cstring(path, context.temp_allocator), &width, &height, &channels, 0)
+
+	dimensions := [3]int{
+		cast(int)width, cast(int)height, 1,
+	}
+	texture_descriptor := gfx.Texture_Descriptor {
+		type		= .D2_Array,
+		dimensions	= dimensions,
+		mip_count	= 4,
+		format		= channels_to_format[channels],
+		usage		= { .Sampled },
+	}
+	texture_size, texture_align := gfx.size_align_of(texture_descriptor) or_return
+	texture_memory := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+	texture = gfx.create_texture(texture_memory, texture_descriptor) or_return
+	defer if res != nil do gfx.destroy_texture(texture)
+	view = gfx.default_view_of(texture) or_return
+
+	upload_buffer := gfx.scratch_alloc(&frame_memory, width * height * channels) or_return
+	mem.copy(upload_buffer, pixels, cast(int)(width * height * channels))
+
+	command_buffer := gfx.begin_command_encoding(transfer_queue()) or_return
+		texture_region := gfx.Texture_Region {
+			size		= dimensions,
+			layer_count	= 1,
+		}
+		gfx.copy_buffer_to_texture(
+			command_buffer,
+			upload_buffer,
+			texture,
+			texture_region,
+		) or_return
+		gfx.barrier(command_buffer, { .Transfer }, { .Transfer }) or_return
+		gfx.generate_mipmaps_for(command_buffer, texture) or_return
+	gfx.submit(transfer_queue(), { command_buffer }, ..on_done) or_return
+
+	return
+}
+
 app :: proc() -> gfx.Result {
 
 	frame_semaphore = gfx.create_semaphore(.Cpu_Waitable) or_return
 
-	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
-	gfx.create_arena(&framebuffers_memory, .Private, 128 * mem.Megabyte) or_return
-	gfx.create_arena(&private_memory, .Private, 128 * mem.Megabyte) or_return
-	gfx.create_scratch(&staging_memory, .Staging, 128 * mem.Megabyte) or_return
-	gfx.create_scratch(&frame_memory, .Default, 1 * mem.Megabyte) or_return
+	gfx.create_arena	(&default_memory,	.Default, 1	* mem.Megabyte) or_return
+	gfx.create_arena	(&framebuffers_memory,	.Private, 128	* mem.Megabyte) or_return
+	gfx.create_arena	(&private_memory,	.Private, 8	* mem.Megabyte) or_return
+	gfx.create_scratch	(&staging_memory,	.Staging, 16	* mem.Megabyte) or_return
+	gfx.create_scratch	(&frame_memory,		.Default, 1	* mem.Megabyte) or_return
 
-	vertices = gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
-	copy(vertices, VERTICES[:])
-	gpu_vertices = gfx.gpu_address_of(raw_data(vertices)) or_return
+	tl_track_memory("default_memory", &default_memory)
+	tl_track_memory("private_memory", &private_memory)
+	tl_track_memory("staging_memory", &staging_memory)
+	tl_track_memory("framebuffers_memory", &framebuffers_memory)
+	tl_track_memory("frame_memory", &frame_memory)
+	tl_track_internal_gfx_memory()
+
+	ui_ctx := ui_setup(
+		transfer_queue(),
+		&default_memory,
+		&private_memory,
+		&frame_memory,
+		&framebuffers_memory,
+		window_state.dimensions,
+	) or_return
+
+	color_vertices = gfx.arena_alloc(&default_memory, []Color_Vertex, len(COLOR_VERTICES)) or_return
+	copy(color_vertices, COLOR_VERTICES[:])
+	gpu_color_vertices = gfx.gpu_address_of(raw_data(color_vertices)) or_return
 
 	indices = gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
 	copy(indices, INDICES[:])
+
+	textured_vertices = gfx.arena_alloc(&default_memory, []Textured_Vertex, len(TEXTURED_VERTICES)) or_return
+	copy(textured_vertices, TEXTURED_VERTICES[:])
+	gpu_textured_vertices = gfx.gpu_address_of(raw_data(textured_vertices)) or_return
+
+	textured_indices = gfx.arena_alloc(&default_memory, []u16, len(TEXTURED_INDICES)) or_return
+	copy(textured_indices, TEXTURED_INDICES[:])
 
 	prepare_stuff_for_window_size()
 
@@ -388,10 +557,17 @@ app :: proc() -> gfx.Result {
 		depth_enable	= false,
 	}) or_return
 
-	sampler = gfx.create_sampler(gfx.Sampler_Descriptor {
+	linear_sampler = gfx.create_sampler(gfx.Sampler_Descriptor {
 		min_filter	= .Linear,
 		mag_filter	= .Linear,
-		mip_filter	= .Nearest,
+		mip_filter	= .Linear,
+		max_anisotropy	= 8,
+	}) or_return
+	nearest_sampler = gfx.create_sampler(gfx.Sampler_Descriptor {
+		min_filter	= .Linear,
+		mag_filter	= .Nearest,
+		mip_filter	= .Linear,
+		max_anisotropy	= 8,
 	}) or_return
 
 	resource_set = gfx.create_resource_set() or_return
@@ -441,6 +617,45 @@ app :: proc() -> gfx.Result {
 	}
 	blend_pipeline = gfx.create_render_pipeline(blend_pipeline_descriptor) or_return
 
+	textured_pipeline_bytecode, _ := gfx.load_bytecode_of("texture_basic", "./build", context.temp_allocator)
+	textured_pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+		vertex_stage	= {
+			bytecode	= textured_pipeline_bytecode,
+			entrypoint	= "vertex_main",
+		},
+		fragment_stage	= {
+			bytecode	= textured_pipeline_bytecode,
+			entrypoint	= "fragment_main",
+		},
+		topology	= .Triangle_List,
+		cull		= .Clockwise,
+		sample_count	= 4,
+		color_formats	= { surface_format },
+		depth_format	= depth_format,
+		blend_state	= blend_state,
+	}
+	textured_pipeline = gfx.create_render_pipeline(textured_pipeline_descriptor) or_return
+
+	blit_pipeline_bytecode, _ := gfx.load_bytecode_of("blit", "./build", context.temp_allocator)
+	blit_pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+		vertex_stage	= {
+			bytecode	= blit_pipeline_bytecode,
+			entrypoint	= "vertex_main",
+		},
+		fragment_stage	= {
+			bytecode	= blit_pipeline_bytecode,
+			entrypoint	= "fragment_main",
+		},
+		topology	= .Triangle_List,
+		cull		= .None,
+		sample_count	= 4,
+		color_formats	= { surface_format },
+		depth_format	= depth_format,
+		blend_state	= blend_state,
+	}
+	blit_pipeline = gfx.create_render_pipeline(blit_pipeline_descriptor) or_return
+
+	grass_texture, grass_view = create_texture("./res/textures/Grass.png") or_return
 	setup_skybox({
 		"./res/textures/skybox_positive_x_small.png",
 		"./res/textures/skybox_negative_x_small.png",
@@ -449,10 +664,13 @@ app :: proc() -> gfx.Result {
 		"./res/textures/skybox_positive_z_small.png",
 		"./res/textures/skybox_negative_z_small.png",
 	}) or_return
+
 	gfx.wait_idle(transfer_queue())
 
-	gfx.set_sampler_set(resource_set, { sampler }) or_return
+	gfx.set_texture_set(resource_set, .D2, { grass_view, ui_frame_buffer_view }) or_return
 	gfx.set_texture_set(resource_set, .Cube, { skybox_view }) or_return
+	gfx.set_sampler_set(resource_set, { linear_sampler, nearest_sampler }) or_return
+	gfx.set_sampler_set(resource_set, { nearest_sampler }) or_return
 
 	prev_time := time.tick_now()
 	delta_time: f32
@@ -504,6 +722,11 @@ app :: proc() -> gfx.Result {
 		if .Pressed in key_states[.Left_Shift] {
 			speed = 10.0
 		}
+		if .Just_Pressed in key_states[.Z] {
+			camera.fov	= cast(f32)la.to_radians(45.0)
+		} else if .Just_Released in key_states[.Z] {
+			camera.fov	= cast(f32)la.to_radians(95.0)
+		}
 		move_camera(&camera, input, speed, delta_time)
 
 		if mouse_state.captured || .Pressed in mouse_state.buttons[.Right] {
@@ -514,6 +737,11 @@ app :: proc() -> gfx.Result {
 		}
 
 		view, proj := get_camera_matrices(camera)
+
+		ui_tick()
+		ui.begin(ui_ctx)
+		ui_memory_tracker(ui_ctx)
+		ui.end(ui_ctx)
 
 		surface_view: gfx.View
 		for {
@@ -548,29 +776,61 @@ app :: proc() -> gfx.Result {
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
+		ui_render(command_buffer) or_return
+
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
 			gfx.use_resources(command_buffer, resource_set)
 
 			gfx.use_depth_stencil_state(command_buffer, depth_stencil) or_return
 			args := gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args^ = {
-				vertices	= gpu_vertices,
+				vertices	= gpu_color_vertices,
 				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(cube_rotation, { 0.0, 1.0, 0.0 }),
 				view		= view,
 				proj		= proj,
 			}
 			gfx.draw_indexed(command_buffer, pipeline, args, raw_data(indices), 36) or_return
 
+			tex_args := gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
+			tex_args^ = {
+				vertices	= gpu_textured_vertices,
+				model		= la.matrix4_translate_f32({ 5.0, 0.0, -5.0}) * la.matrix4_rotate_f32(cube_rotation, { 0.0, 1.0, 0.0 }),
+				view		= view,
+				proj		= proj,
+				texture		= 0,
+				sampler		= 1,
+			}
+			gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 36) or_return
+
 			draw_skybox(command_buffer, view, proj, 0, 0) or_return
 
 			args = gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args^ = {
-				vertices	= gpu_vertices,
-				model		= la.matrix4_translate_f32({ 0.0, 0.0, -3.0}) * la.matrix4_scale_f32(0.5),
+				vertices	= gpu_color_vertices,
+				model		= la.matrix4_translate_f32({ 0.0, 0.0, -10.0}) * la.matrix4_scale_f32(15.0),
 				view		= view,
 				proj		= proj,
 			}
 			gfx.draw_indexed(command_buffer, blend_pipeline, args, raw_data(indices), 6) or_return
+
+			// tex_args = gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
+			// tex_args^ = {
+			// 	vertices	= gpu_textured_vertices,
+			// 	model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_scale_f32(2.0),
+			// 	view		= view,
+			// 	proj		= proj,
+			// 	texture		= 1,
+			// 	sampler		= 0,
+			// }
+			// gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 6) or_return
+			gfx.use_depth_stencil_state(command_buffer, depth_disabled_stencil)
+			blit_args := gfx.scratch_alloc(&frame_memory, Blit_Arguments, 16) or_return
+			blit_args^ = {
+				texture	= 1,
+				sampler	= 0,
+				flip_y	= true,
+			}
+			gfx.draw(command_buffer, blit_pipeline, blit_args, 3) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return

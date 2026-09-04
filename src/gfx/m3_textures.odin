@@ -163,6 +163,12 @@ m3_view_type_to_mtl :: proc(texture_metadata: _Texture_Metadata, view_type: View
 	case view_type == .D1:
 		return .Type1D
 
+	case view_type == .D2 && texture_metadata.sample_count == 1:
+		return .Type2D
+
+	case view_type == .D2 && texture_metadata.sample_count > 1:
+		return .Type2DMultisample
+
 	case view_type == .D2_Array && texture_metadata.layer_count == 1 && texture_metadata.sample_count == 1:
 		return .Type2D
 

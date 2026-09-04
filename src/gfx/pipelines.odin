@@ -18,7 +18,6 @@ Cull_Mode :: enum {
 	None,
 	Clockwise,
 	Counter_Clockwise,
-	All,
 }
 
 Constant_Type :: enum {

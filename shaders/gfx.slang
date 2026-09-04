@@ -12,11 +12,14 @@ static const float4x4 NORMALIZE_CLIP_COORDS = {
 	0, 0, 0, 1,
 };
 
-static const float3x3 NORMALIZE_UV_COORDS = {
-	1, 0, 0,
-	0, 1, 0,
-	0, 0, 1,
-};
+float4 normalize_clip(float4 clip) {
+	return clip;
+}
+
+float2 normalize_uv(float2 uv) {
+	return uv;
+}
+
 
 float3 normalize_cube_uv_coords(float3 d) {
 	return d;
@@ -93,26 +96,21 @@ RWTexture3D storage_texture_3d_at(int index) {
 #ifdef GFX_VULKAN
 
 static const float4x4 NORMALIZE_CLIP_COORDS = {
-	1,  0, 0, 0,
-	0, -1, 0, 0,
-	0,  0, 1, 0,
-	0,  0, 0, 1,
+	1,  0,   0, 0,
+	0, -1,   0, 0,
+	0,  0, 0.5, 0,
+	0,  0, 0.5, 1,
 };
 
-static const float3x3 NORMALIZE_UV_COORDS = {
-	1,  0, 0,
-	0, -1, 0,
-	0,  1, 1,
-};
+float4 normalize_clip(float4 clip) {
+	return mul(NORMALIZE_CLIP_COORDS, clip);
+}
 
-float3 normalize_cube_uv_coords(float3 d) {
-	float3 a = abs(d);
-	float3 face = step(a.yzx, a.xyz) * step(a.zxy, a.xyz);
-	// Select the dominant axis.
-	float3 flip = 1.0 - 2.0 * face;
+float2 normalize_uv(float2 uv) {
+	// return float2(uv.x, 1.0 - uv.y);
+	return uv;
+}
 
-	return d * flip;
-} 
 [vk_binding(0)]
 SamplerState		sampler_set[];
 [vk_binding(1)]

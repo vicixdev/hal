@@ -70,6 +70,7 @@ _Command :: union {
 	_Command_Copy_Texture_To_Texture,
 	_Command_Copy_Buffer_To_Texture,
 	_Command_Copy_Texture_To_Buffer,
+	_Command_Generate_Mipmaps,
 	_Command_Dispatch,
 	_Command_Barrier,
 	_Command_Signal,
@@ -103,6 +104,10 @@ _Command_Copy_Texture_To_Buffer :: struct {
 	texture:	Texture,
 	region:		Texture_Region,
 	destination:	_Address_Info,
+}
+
+_Command_Generate_Mipmaps :: struct {
+	texture:	Texture,
 }
 
 _Command_Barrier :: struct {
@@ -589,6 +594,24 @@ copy_texture_to_buffer :: proc(
 		texture		= texture,
 		region		= region,
 		destination	= destination_info,
+	}
+	append(&metadata.commands, command) or_return
+
+	return nil
+}
+
+generate_mipmaps_for :: proc(command_buffer: Command_Buffer, texture: Texture, location := #caller_location) -> Result {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	_, texture_res := _metadata_of(texture)
+	_check_texture_handle(texture_res, texture, location) or_return
+	
+	_check_not_in_render_pass(metadata, location) or_return
+
+	command := _Command_Generate_Mipmaps {
+		texture	= texture,
 	}
 	append(&metadata.commands, command) or_return
 

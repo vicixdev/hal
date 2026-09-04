@@ -40,7 +40,7 @@ m3_sampler_descriptor_to_mtl :: proc(descriptor: Sampler_Descriptor) -> (info: ^
 	info->autorelease()
 
 	info->setMagFilter(m3_FILTER_TO_MTL[descriptor.mag_filter])
-	info->setMagFilter(m3_FILTER_TO_MTL[descriptor.min_filter])
+	info->setMinFilter(m3_FILTER_TO_MTL[descriptor.min_filter])
 	info->setMipFilter(m3_FILTER_TO_MTL_MIPMAP[descriptor.mip_filter])
 
 	info->setRAddressMode(m3_ADDRESS_MODE_TO_MTL[descriptor.address_u])

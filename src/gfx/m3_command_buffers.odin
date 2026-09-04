@@ -172,6 +172,21 @@ m3_emit_copy_texture_to_buffer :: proc(
 	return nil
 }
 
+m3_emit_generate_mipmaps :: proc(
+	metadata: ^_Command_Buffer_Metadata,
+	queue_metadata: ^_Queue_Metadata,
+	command: _Command_Generate_Mipmaps,
+) -> Result {
+
+	texture_metadata, texture_res := _metadata_of(command.texture)
+	_check_internal_emission_result(texture_res) or_return
+
+	m3_enable_blit_encoder(metadata) or_return
+	metadata.m3.blit_encoder->generateMipmapsForTexture(texture_metadata.m3.texture)
+
+	return nil
+}
+
 m3_emit_dispatch :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
@@ -463,6 +478,8 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 			m3_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Texture_To_Buffer:
 			m3_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
+		case _Command_Generate_Mipmaps:
+			m3_emit_generate_mipmaps(metadata, queue_metadata, v) or_return
 		case _Command_Dispatch:
 			m3_emit_dispatch(metadata, queue_metadata, v) or_return
 		case _Command_Barrier:
@@ -630,6 +647,18 @@ m3_bind_render_pipeline :: proc(
 
 	pipeline_metadata, pipeline_res := _metadata_of(pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
+
+
+	switch pipeline_metadata.render.cull {
+	case .None:
+		metadata.m3.render_encoder->setCullMode(.None)
+	case .Clockwise:
+		metadata.m3.render_encoder->setCullMode(.Back)
+		metadata.m3.render_encoder->setFrontFacingWinding(.CounterClockwise)
+	case .Counter_Clockwise:
+		metadata.m3.render_encoder->setCullMode(.Back)
+		metadata.m3.render_encoder->setFrontFacingWinding(.Clockwise)
+	}
 
 	metadata.m3.render_encoder->setRenderPipelineState(pipeline_metadata.m3.render.pipeline)
 
