@@ -71,7 +71,7 @@ ui_setup :: proc(
 
 	// Sampler setup
 	sampler_descriptor := gfx.Sampler_Descriptor {
-		min_filter	= .Nearest,
+		min_filter	= .Linear,
 		mag_filter	= .Nearest,
 		mip_filter	= .Linear,
 		address_u	= .Mirrored_Repeat,
@@ -194,30 +194,33 @@ ui_tick :: proc() {
 		.Middle		= .MIDDLE,
 	}
 
-	ui.input_mouse_move(&ui_context, cast(i32)mouse_state.position.x, cast(i32)mouse_state.position.y)
+	if !mouse_state.captured {
+		ui.input_mouse_move(&ui_context, cast(i32)mouse_state.position.x, cast(i32)mouse_state.position.y)
 
-	for state, button in mouse_state.buttons {
-		if button < .Left || button > .Middle {
-			continue
-		}
+		for state, button in mouse_state.buttons {
+			if button < .Left || button > .Middle {
+				continue
+			}
 
-		if .Just_Pressed in state {
-			ui.input_mouse_down(
-				&ui_context,
-				cast(i32)(mouse_state.position.x),
-				cast(i32)(mouse_state.position.y),
-				MOUSE_BUTTON_TO_UI_MOUSE[button],
-			)
-		}
-		if .Just_Released in state {
-			ui.input_mouse_up(
-				&ui_context,
-				cast(i32)(mouse_state.position.x),
-				cast(i32)(mouse_state.position.y),
-				MOUSE_BUTTON_TO_UI_MOUSE[button],
-			)
+			if .Just_Pressed in state {
+				ui.input_mouse_down(
+					&ui_context,
+					cast(i32)(mouse_state.position.x),
+					cast(i32)(mouse_state.position.y),
+					MOUSE_BUTTON_TO_UI_MOUSE[button],
+				)
+			}
+			if .Just_Released in state {
+				ui.input_mouse_up(
+					&ui_context,
+					cast(i32)(mouse_state.position.x),
+					cast(i32)(mouse_state.position.y),
+					MOUSE_BUTTON_TO_UI_MOUSE[button],
+				)
+			}
 		}
 	}
+
 }
 
 ui_render :: proc(command_buffer: gfx.Command_Buffer) -> gfx.Result {
@@ -249,10 +252,10 @@ ui_render :: proc(command_buffer: gfx.Command_Buffer) -> gfx.Result {
 
 			should_cull := construct_quad(
 				&quads[issued_quads],
+				.Rect,
 				command.rect,
 				{},
 				command.color,
-				1.0,
 				0,
 				current_clip,
 			)
@@ -272,10 +275,10 @@ ui_render :: proc(command_buffer: gfx.Command_Buffer) -> gfx.Result {
 
 			should_cull := construct_quad(
 				&quads[issued_quads],
+				.Icon,
 				command.rect,
 				icon_rect,
 				command.color,
-				0.0,
 				0,
 				current_clip,
 			)
@@ -296,21 +299,22 @@ ui_render :: proc(command_buffer: gfx.Command_Buffer) -> gfx.Result {
 
 				should_cull := construct_quad(
 					&quads[issued_quads],
+					.Icon,
 					ui.Rect{
 						**position, icon_rect.w, icon_rect.h,
 					},
 					icon_rect,
 					command.color,
-					0.0,
 					0,
 					current_clip,
 				)
+
+				position.x += icon_rect.w
 				if should_cull {
 					continue
 				}
 
 				issued_quads += 1
-				position.x += icon_rect.w
 			}
 
 		case ^ui.Command_Jump:
@@ -399,57 +403,147 @@ ui_clip_vertices :: proc(clip: ui.Rect, vertices: ^[4]ui_Vertex) -> (should_cull
 	return false
 }
 
+ui_Quad_Type :: enum {
+	Rect,
+	Icon,
+	Text,
+}
+
 construct_quad :: proc(
 	target:		^ui_Quad,
+	type:		ui_Quad_Type,
 	quad_rect:	ui.Rect,
 	icon_rect:	ui.Rect,
 	color:		ui.Color,
-	color_factor:	f32,
 	texture:	u32,
 	current_clip:	ui.Rect,
 ) -> (culled: bool) {
 
-	target.vertices = [4]ui_Vertex {
-		{
-			position	= {
-				cast(f32)quad_rect.x,
-				cast(f32)quad_rect.y,
+	switch type {
+	case .Rect:
+		target.vertices = [4]ui_Vertex {
+			{
+				position	= {
+					cast(f32)quad_rect.x,
+					cast(f32)quad_rect.y,
+				},
 			},
-			uv		= {
-				cast(f32)(icon_rect.x) / ui.DEFAULT_ATLAS_WIDTH,
-				cast(f32)(icon_rect.y) / ui.DEFAULT_ATLAS_HEIGHT,
+			{
+				position	= {
+					cast(f32)quad_rect.x + cast(f32)quad_rect.w,
+					cast(f32)quad_rect.y,
+				},
 			},
-		},
-		{
-			position	= {
-				cast(f32)quad_rect.x + cast(f32)quad_rect.w,
-				cast(f32)quad_rect.y,
+			{
+				position	= {
+					cast(f32)quad_rect.x + cast(f32)quad_rect.w,
+					cast(f32)quad_rect.y + cast(f32)quad_rect.h,
+				},
 			},
-			uv		= {
-				cast(f32)(icon_rect.x + icon_rect.w) / ui.DEFAULT_ATLAS_WIDTH,
-				cast(f32)(icon_rect.y) / ui.DEFAULT_ATLAS_HEIGHT,
+			{
+				position	= {
+					cast(f32)quad_rect.x,
+					cast(f32)quad_rect.y + cast(f32)quad_rect.h,
+				},
 			},
-		},
-		{
-			position	= {
-				cast(f32)quad_rect.x + cast(f32)quad_rect.w,
-				cast(f32)quad_rect.y + cast(f32)quad_rect.h,
+		}
+
+	case .Icon:
+		x := cast(f32)quad_rect.x + (cast(f32)quad_rect.w - cast(f32)icon_rect.w) / 2
+		y := cast(f32)quad_rect.y + (cast(f32)quad_rect.h - cast(f32)icon_rect.h) / 2
+
+		u0 := (cast(f32)icon_rect.x + 0.5) / cast(f32)ui.DEFAULT_ATLAS_WIDTH
+		v0 := (cast(f32)icon_rect.y + 0.5) / cast(f32)ui.DEFAULT_ATLAS_HEIGHT
+		u1 := (cast(f32)(icon_rect.x + icon_rect.w) - 0.5) / cast(f32)ui.DEFAULT_ATLAS_WIDTH
+		v1 := (cast(f32)(icon_rect.y + icon_rect.h) - 0.5) / cast(f32)ui.DEFAULT_ATLAS_HEIGHT
+
+		target.vertices = [4]ui_Vertex {
+			{
+				position	= {
+					x,
+					y,
+				},
+				uv		= {
+					u0,
+					v0,
+				},
 			},
-			uv		= {
-				cast(f32)(icon_rect.x + icon_rect.w) / ui.DEFAULT_ATLAS_WIDTH,
-				cast(f32)(icon_rect.y + icon_rect.h) / ui.DEFAULT_ATLAS_HEIGHT,
+			{
+				position	= {
+					x + cast(f32)icon_rect.w,
+					y,
+				},
+				uv		= {
+					u1,
+					v0,
+				},
 			},
-		},
-		{
-			position	= {
-				cast(f32)quad_rect.x,
-				cast(f32)quad_rect.y + cast(f32)quad_rect.h,
+			{
+				position	= {
+					x + cast(f32)icon_rect.w,
+					y + cast(f32)icon_rect.h,
+				},
+				uv		= {
+					u1,
+					v1,
+				},
 			},
-			uv		= {
-				cast(f32)(icon_rect.x) / ui.DEFAULT_ATLAS_WIDTH,
-				cast(f32)(icon_rect.y + icon_rect.h) / ui.DEFAULT_ATLAS_HEIGHT,
+			{
+				position	= {
+					x,
+					y + cast(f32)icon_rect.h,
+				},
+				uv		= {
+					u0,
+					v1,
+				},
 			},
-		},
+		}
+
+	case .Text:
+		target.vertices = [4]ui_Vertex {
+			{
+				position	= {
+					cast(f32)quad_rect.x,
+					cast(f32)quad_rect.y,
+				},
+				uv		= {
+					cast(f32)(icon_rect.x) / ui.DEFAULT_ATLAS_WIDTH,
+					cast(f32)(icon_rect.y) / ui.DEFAULT_ATLAS_HEIGHT,
+				},
+			},
+			{
+				position	= {
+					cast(f32)quad_rect.x + cast(f32)quad_rect.w,
+					cast(f32)quad_rect.y,
+				},
+				uv		= {
+					cast(f32)(icon_rect.x + icon_rect.w) / ui.DEFAULT_ATLAS_WIDTH,
+					cast(f32)(icon_rect.y) / ui.DEFAULT_ATLAS_HEIGHT,
+				},
+			},
+			{
+				position	= {
+					cast(f32)quad_rect.x + cast(f32)quad_rect.w,
+					cast(f32)quad_rect.y + cast(f32)quad_rect.h,
+				},
+				uv		= {
+					cast(f32)(icon_rect.x + icon_rect.w) / ui.DEFAULT_ATLAS_WIDTH,
+					cast(f32)(icon_rect.y + icon_rect.h) / ui.DEFAULT_ATLAS_HEIGHT,
+				},
+			},
+			{
+				position	= {
+					cast(f32)quad_rect.x,
+					cast(f32)quad_rect.y + cast(f32)quad_rect.h,
+				},
+				uv		= {
+					cast(f32)(icon_rect.x) / ui.DEFAULT_ATLAS_WIDTH,
+					cast(f32)(icon_rect.y + icon_rect.h) / ui.DEFAULT_ATLAS_HEIGHT,
+				},
+			},
+		}
+
 	}
 
 	should_cull := ui_clip_vertices(current_clip, &target.vertices)
@@ -461,7 +555,7 @@ construct_quad :: proc(
 		cast(f32)color.b / 255.0,
 		cast(f32)color.a / 255.0,
 	}
-	target.color_factor	= color_factor
+	target.color_factor	= type == .Rect ? 1.0 : 0.0
 
 	return should_cull
 }

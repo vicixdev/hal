@@ -682,6 +682,7 @@ app :: proc() -> gfx.Result {
 		}
 
 		process_events()
+		tl_begin_frame()
 
 		if window_state.did_resize {
 			prepare_stuff_for_window_size() or_return
@@ -835,6 +836,8 @@ app :: proc() -> gfx.Result {
 
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return
 		gfx.present(.Default, surface_view, { frame_semaphore, frame_count }) or_return
+
+		tl_end_frame()
 	}
 
 	gfx.wait_semaphore(frame_semaphore, frame_count)
@@ -857,6 +860,9 @@ main :: proc() {
 
 	setup()
 	defer fini()
+
+	tl_init_memtrack()
+	defer tl_fini_memtrack()
 
 	res := app()
 	if res != nil do log.fatalf("Example failed with error %v.", res)

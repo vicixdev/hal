@@ -5,6 +5,7 @@ import "core:mem"
 import vmem "core:mem/virtual"
 import hm "core:container/handle_map"
 import "core:container/avl"
+import emem "mem"
 
 // Features:
 //	- Vertex pooling (no explicit layout)
@@ -130,7 +131,7 @@ _initialized:		bool
 
 _global_arena:		vmem.Arena
 _global_allocator:	runtime.Allocator
-_temp_scratch:		mem.Scratch
+_temp_scratch:		emem.Scratch
 _temp_scratch_mutex:	mem.Mutex_Allocator
 _temp_allocator:	runtime.Allocator
 _generic_allocator:	runtime.Allocator
@@ -141,8 +142,9 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	vmem.arena_init_growing(&_global_arena) or_return
 	_global_allocator = vmem.arena_allocator(&_global_arena)
 
-	mem.scratch_init(&_temp_scratch, 128 * mem.Megabyte) or_return
-	mem.mutex_allocator_init(&_temp_scratch_mutex, mem.scratch_allocator(&_temp_scratch))
+	// emem.scratch_init(&_temp_scratch, 1 * mem.Megabyte) or_return
+	emem.scratch_init(&_temp_scratch, 8 * mem.Kilobyte) or_return
+	mem.mutex_allocator_init(&_temp_scratch_mutex, emem.scratch_allocator(&_temp_scratch))
 	_temp_allocator = mem.mutex_allocator(&_temp_scratch_mutex)
 
 	_generic_allocator = context.allocator
@@ -246,7 +248,7 @@ fini :: proc() {
 	}
 
 	vmem.arena_destroy(&_global_arena)
-	mem.scratch_destroy(&_temp_scratch)
+	emem.scratch_destroy(&_temp_scratch)
 
 	avl.destroy(&_address_map)
 

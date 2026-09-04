@@ -1226,6 +1226,10 @@ draw :: proc(
 	_check_in_render_pass(metadata, location) or_return
 	_check_render_pipeline_congruency(metadata, render_pipeline, pipeline_metadata, location) or_return
 
+	if vertex_count == 0 {
+		return
+	}
+
 	command :=  _Command_Draw {
 		pipeline		= render_pipeline,
 		resource_set		= metadata.resource_set,
@@ -1266,6 +1270,10 @@ draw_indexed :: proc(
 
 	_check_in_render_pass(metadata, location) or_return
 	_check_render_pipeline_congruency(metadata, render_pipeline, pipeline_metadata, location) or_return
+
+	if instance_count == 0 || index_count == 0 {
+		return
+	}
 
 	command :=  _Command_Draw_Indexed {
 		pipeline		= render_pipeline,

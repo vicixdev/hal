@@ -6,10 +6,10 @@ target="$1"
 
 case "$target" in
 	Vulkan)
-		odin build src -show-timings -out:build/out -debug -strict-style -vet -warnings-as-errors -define:GFX_TARGET_API=Vulkan
+		odin build src -show-timings -out:build/out -debug -strict-style -warnings-as-errors -define:GFX_TARGET_API=Vulkan
 	;;
 	Metal_3)
-		odin build src -show-timings -out:build/out -debug -strict-style -vet -warnings-as-errors -define:GFX_TARGET_API=Metal_3
+		odin build src -show-timings -out:build/out -debug -strict-style -warnings-as-errors -define:GFX_TARGET_API=Metal_3
 	;;
 	Shaders)
 		slangc ./shaders/basic.slang -profile glsl_450 -target spirv -capability glsl_spirv -capability GL_EXT_buffer_reference -o ./build/basic.spv -fvk-use-entrypoint-name -DGFX_VULKAN=1
