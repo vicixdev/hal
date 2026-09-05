@@ -10,7 +10,7 @@ import la "core:math/linalg"
 import sdl "vendor:sdl3"
 import "vendor:stb/image"
 import ui "vendor:microui"
-import "gfx"
+import "root:gfx"
 
 WINDOW_SIZE :: [2]int {
 	1024, 768,

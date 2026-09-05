@@ -1,7 +1,7 @@
-build/**
+tests
+.test_outputs
+**/build/**
 !build/.gitkeep
 **/.DS_Store
-
-shared/back
-tools/slang
+**/*.dSYM
 

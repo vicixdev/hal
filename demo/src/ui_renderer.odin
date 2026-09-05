@@ -1,7 +1,7 @@
 package main
 
 import ui "vendor:microui"
-import "gfx"
+import "root:gfx"
 
 ui_Vertex :: struct #packed {
 	position:	[2]f32,

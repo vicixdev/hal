@@ -8,31 +8,31 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug (lldb)",
-            "program": "${workspaceFolder}/build/out",
+            "program": "${workspaceFolder}/demo/build/out",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/demo"
         },
         {
             "type": "lldb-dap",
             "request": "launch",
             "name": "Debug (lldb-dap)",
-            "program": "${workspaceFolder}/build/out",
+            "program": "${workspaceFolder}/demo/build/out",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/demo"
         },
         {
             "type": "cppvsdbg",
             "request": "launch",
             "name": "Debug (cppvsdbg)",
-            "program": "${workspaceFolder}/build/out",
+            "program": "${workspaceFolder}/demo/build/out",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/demo"
         },
         {
             "type": "lldb",
             "request": "launch",
             "name": "Tests (lldb)",
-            "program": "${workspaceFolder}/build/tests",
+            "program": "${workspaceFolder}/tests",
             "args": [],
             "cwd": "${workspaceFolder}"
         },
@@ -40,7 +40,7 @@
             "type": "lldb-dap",
             "request": "launch",
             "name": "Tests (lldb-dap)",
-            "program": "${workspaceFolder}/build/tests",
+            "program": "${workspac;;/tests",
             "args": [],
             "cwd": "${workspaceFolder}"
         },
@@ -48,7 +48,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "name": "Tests (cppvsdbg)",
-            "program": "${workspaceFolder}/build/tests",
+            "program": "${workspaceFolder}/tests",
             "args": [],
             "cwd": "${workspaceFolder}"
         }

@@ -18,8 +18,8 @@ when ODIN_OS == .Linux {
 	vk_VULKAN_LOADER_PATHS :: []string{
 		"./libvulkan.dylib",
 		"../Frameworks/libvulkan.dylib",
+		"./demo/env/macOS/lib/libvulkan.dylib",
 		"libvulkan.dylib",
-		"./env/macOS/lib/libvulkan.dylib",
 		"/opt/homebrew/lib/libvulkan.dylib",
 	}
 } else when ODIN_OS == .Windows {
@@ -379,7 +379,7 @@ setup_vulkan_environment :: proc "contextless" () {
 
 	context = runtime.default_context()
 
-	os.set_env("VK_LAYER_PATH", "./env/macOS/etc/vulkan/explicit_layer.d")
-	os.set_env("VK_DRIVER_FILES", "./env/macOS/etc/vulkan/icd.d")
+	os.set_env("VK_LAYER_PATH", "./env/macOS/etc/vulkan/explicit_layer.d:./demo/env/macOS/etc/vulkan/explicit_layer.d")
+	os.set_env("VK_DRIVER_FILES", "./env/macOS/etc/vulkan/icd.d:./demo/env/macOS/etc/vulkan/icd.d")
 }
 

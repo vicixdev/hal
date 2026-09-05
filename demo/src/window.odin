@@ -1,7 +1,7 @@
 package main
 
 import sdl "vendor:sdl3"
-import "gfx"
+import "root:gfx"
 
 Key :: enum {
 	None,

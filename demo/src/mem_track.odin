@@ -6,8 +6,8 @@ import "core:fmt"
 import "core:strings"
 import vmem "core:mem/virtual"
 import ui "vendor:microui"
-import "gfx"
-import gmem "gfx/mem"
+import "root:gfx"
+import gmem "root:gfx/mem"
 
 tl_Tracked_Memory_Target :: union #no_nil {
 	^mem.Arena,
