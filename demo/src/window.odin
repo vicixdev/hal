@@ -101,13 +101,15 @@ Mouse_State :: struct {
 }
 
 Window_State :: struct {
-	dimensions:	[2]int,
-	did_resize:	bool,
+	dimensions:		[2]int,
+	scaled_dimensions:	[2]int,
+	did_resize:		bool,
 }
 
 window:		^sdl.Window
 window_state :=	Window_State {
-	dimensions	= WINDOW_SIZE,
+	dimensions		= WINDOW_SIZE,
+	scaled_dimensions	= WINDOW_SIZE,
 }
 
 key_states:	[Key]Key_States
@@ -169,7 +171,12 @@ process_events :: proc() {
 			}
 
 		case .WINDOW_RESIZED:
-			window_state.dimensions = { cast(int)event.window.data1, cast(int)event.window.data2 }
+			pixel_w, pixel_h: i32
+			sdl.GetWindowSizeInPixels(window, &pixel_w, &pixel_h)
+
+			window_state.dimensions = { cast(int)pixel_w, cast(int)pixel_h }
+			window_state.scaled_dimensions = { cast(int)event.window.data1, cast(int)event.window.data2 }
+
 			gfx.resize_surface(surface, window_state.dimensions)
 
 			window_state.did_resize = true

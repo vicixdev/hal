@@ -1,5 +1,6 @@
 package main
 
+import ui "shared:clay"
 import "core:time"
 import "core:slice"
 import "core:log"
@@ -9,7 +10,7 @@ import "core:debug/trace"
 import la "core:math/linalg"
 import sdl "vendor:sdl3"
 import "vendor:stb/image"
-import ui "vendor:microui"
+// import ui "vendor:microui"
 import "root:gfx"
 
 WINDOW_SIZE :: [2]int {
@@ -187,6 +188,7 @@ nearest_sampler:	gfx.Sampler
 resource_set:		gfx.Resource_Set
 
 blend_state:		gfx.Blend_State
+ui_blit_blend_state:	gfx.Blend_State
 pipeline:		gfx.Pipeline
 blend_pipeline:		gfx.Pipeline
 textured_pipeline:	gfx.Pipeline
@@ -201,6 +203,7 @@ cube_rotation:		f32
 setup :: proc() {
 	ensure(sdl.Init({ .VIDEO }) == true)
 
+	// window_flags := sdl.WindowFlags { .RESIZABLE, .HIGH_PIXEL_DENSITY }
 	window_flags := sdl.WindowFlags { .RESIZABLE }
 	when ODIN_OS == .Darwin {
 		window_flags += { .METAL }
@@ -215,11 +218,27 @@ setup :: proc() {
 	)
 	assert(window != nil)
 
+	pixel_w, pixel_h: i32
+	sdl.GetWindowSizeInPixels(window, &pixel_w, &pixel_h)
+	window_state.dimensions = { cast(int)pixel_w, cast(int)pixel_h }
+
 	gfx.init()
 
 	devices, _ := gfx.enumerate_devices()
 	log.infof("%#v", devices)
+
 	device := devices[0].id
+	when gfx.TARGET_API == .Vulkan {
+		for device_info in devices {
+			// NOTE: MoltenVK has issues with the deallocation of resources from multiple threads.
+			//	Prefer using KosmicKrisp since it does not have this problem.
+			if device_info.driver == "KosmicKrisp" {
+				device = device_info.id
+				break
+			}
+		}
+	}
+	log.debugf("Testing using device with Device_ID %d (%s - %s).", device, devices[device].name, devices[device].driver)
 
 	gfx.select_device(device)
 
@@ -506,31 +525,49 @@ create_texture :: proc(path: string, on_done: ..gfx.Semaphore_Signal) -> (textur
 	return
 }
 
-app :: proc() -> gfx.Result {
+app :: proc() -> Result {
 
 	frame_semaphore = gfx.create_semaphore(.Cpu_Waitable) or_return
 
-	gfx.create_arena	(&default_memory,	.Default, 1	* mem.Megabyte) or_return
-	gfx.create_arena	(&framebuffers_memory,	.Private, 128	* mem.Megabyte) or_return
-	gfx.create_arena	(&private_memory,	.Private, 8	* mem.Megabyte) or_return
-	gfx.create_scratch	(&staging_memory,	.Staging, 16	* mem.Megabyte) or_return
-	gfx.create_scratch	(&frame_memory,		.Default, 1	* mem.Megabyte) or_return
+	gfx.create_arena	(&default_memory,	.Default, 256	* mem.Megabyte) or_return
+	gfx.create_arena	(&framebuffers_memory,	.Private, 256	* mem.Megabyte) or_return
+	gfx.create_arena	(&private_memory,	.Private, 256	* mem.Megabyte) or_return
+	gfx.create_scratch	(&staging_memory,	.Staging, 32	* mem.Megabyte) or_return
+	gfx.create_scratch	(&frame_memory,		.Default, 32	* mem.Megabyte) or_return
 
-	tl_track_memory("default_memory", &default_memory)
-	tl_track_memory("private_memory", &private_memory)
-	tl_track_memory("staging_memory", &staging_memory)
-	tl_track_memory("framebuffers_memory", &framebuffers_memory)
-	tl_track_memory("frame_memory", &frame_memory)
-	tl_track_internal_gfx_memory()
+	// tl_track_memory("default_memory", &default_memory)
+	// tl_track_memory("private_memory", &private_memory)
+	// tl_track_memory("staging_memory", &staging_memory)
+	// tl_track_memory("framebuffers_memory", &framebuffers_memory)
+	// tl_track_memory("frame_memory", &frame_memory)
+	// tl_track_internal_gfx_memory()
 
-	ui_ctx := ui_setup(
-		transfer_queue(),
-		&default_memory,
-		&private_memory,
-		&frame_memory,
-		&framebuffers_memory,
-		window_state.dimensions,
-	) or_return
+	rd_init_resource_manager(rd_resource_manager()) or_return
+
+	tx_init(&private_memory, &default_memory, context.allocator)
+	defer tx_fini()
+
+	ui_init(window_state.dimensions, &framebuffers_memory, &frame_memory, context.allocator) or_return
+
+	// tx_register_font_root("./res/fonts/IBMPlexSans.ttf")
+	tx_register_font_root("./res/fonts/NotoSans-Regular.ttf")
+	font := tx_register_font("./res/fonts/Cairopixel.ttf", 20) or_return
+	// font3 := tx_register_font("./res/fonts/NotoSansJP.ttf", 50) or_return
+	// font4 := tx_register_font("./res/fonts/NotoSansJP.ttf", 20) or_return
+	// glyph_iter := tx_make_glyph_iterator(font3, "Hello friends!", {}) or_return
+	// font_view: gfx.View
+	// for draw_info in tx_iterate_glyph(&glyph_iter) {
+	// 	font_view = draw_info.atlas_view
+	// }
+
+	// ui_ctx := ui_setup(
+	// 	transfer_queue(),
+	// 	&default_memory,
+	// 	&private_memory,
+	// 	&frame_memory,
+	// 	&framebuffers_memory,
+	// 	window_state.dimensions,
+	// ) or_return
 
 	color_vertices = gfx.arena_alloc(&default_memory, []Color_Vertex, len(COLOR_VERTICES)) or_return
 	copy(color_vertices, COLOR_VERTICES[:])
@@ -596,9 +633,17 @@ app :: proc() -> gfx.Result {
 		destination_color_factor	= .One_Minus_Source_Alpha,
 		alpha_op			= .Add,
 		source_alpha_factor		= .One,
-		destination_alpha_factor	= .Zero,
+		destination_alpha_factor	= .One_Minus_Source_Alpha,
 	}
 	blend_state = gfx.create_blend_state(blend_descriptor) or_return
+	ui_blit_blend_state = gfx.create_blend_state(gfx.Blend_Descriptor {
+		color_op			= .Add,
+		source_color_factor		= .One,
+		destination_color_factor	= .One_Minus_Source_Alpha,
+		alpha_op			= .Add,
+		source_alpha_factor		= .One,
+		destination_alpha_factor	= .One_Minus_Source_Alpha,
+	}) or_return
 	blend_pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
 		vertex_stage	= {
 			bytecode	= pipeline_bytecode,
@@ -651,9 +696,11 @@ app :: proc() -> gfx.Result {
 		sample_count	= 4,
 		color_formats	= { surface_format },
 		depth_format	= depth_format,
-		blend_state	= blend_state,
+		blend_state	= ui_blit_blend_state,
 	}
 	blit_pipeline = gfx.create_render_pipeline(blit_pipeline_descriptor) or_return
+
+	setup_text() or_return
 
 	grass_texture, grass_view = create_texture("./res/textures/Grass.png") or_return
 	setup_skybox({
@@ -667,22 +714,26 @@ app :: proc() -> gfx.Result {
 
 	gfx.wait_idle(transfer_queue())
 
-	gfx.set_texture_set(resource_set, .D2, { grass_view, ui_frame_buffer_view }) or_return
+	// gfx.set_texture_set(resource_set, .D2, { grass_view, ui_frame_buffer_view, font_view }) or_return
+	gfx.set_texture_set(resource_set, .D2, { grass_view, grass_view }) or_return
 	gfx.set_texture_set(resource_set, .Cube, { skybox_view }) or_return
-	gfx.set_sampler_set(resource_set, { linear_sampler, nearest_sampler }) or_return
-	gfx.set_sampler_set(resource_set, { nearest_sampler }) or_return
+	gfx.set_sampler_set(resource_set, { linear_sampler, nearest_sampler, text_sampler }) or_return
+	// gfx.set_sampler_set(resource_set, { nearest_sampler }) or_return
 
 	prev_time := time.tick_now()
 	delta_time: f32
 
+	ui_semaphore := gfx.create_semaphore() or_return
+
 	for !should_quit {
 		frame_count += 1
-		if frame_count > 3 {
-			gfx.wait_semaphore(frame_semaphore, frame_count - 3)
-		}
+		// if frame_count > 3 {
+		// 	gfx.wait_semaphore(frame_semaphore, frame_count - 3)
+		// }
+		gfx.wait_semaphore(frame_semaphore, frame_count - 1)
 
 		process_events()
-		tl_begin_frame()
+		// tl_begin_frame()
 
 		if window_state.did_resize {
 			prepare_stuff_for_window_size() or_return
@@ -728,6 +779,9 @@ app :: proc() -> gfx.Result {
 		} else if .Just_Released in key_states[.Z] {
 			camera.fov	= cast(f32)la.to_radians(95.0)
 		}
+		if .Just_Pressed in key_states[.K] {
+			ui_toggle_debug_mode()
+		}
 		move_camera(&camera, input, speed, delta_time)
 
 		if mouse_state.captured || .Pressed in mouse_state.buttons[.Right] {
@@ -739,10 +793,10 @@ app :: proc() -> gfx.Result {
 
 		view, proj := get_camera_matrices(camera)
 
-		ui_tick()
-		ui.begin(ui_ctx)
-		ui_memory_tracker(ui_ctx)
-		ui.end(ui_ctx)
+		// ui_tick()
+		// ui.begin(ui_ctx)
+		// ui_memory_tracker(ui_ctx)
+		// ui.end(ui_ctx)
 
 		surface_view: gfx.View
 		for {
@@ -775,9 +829,81 @@ app :: proc() -> gfx.Result {
 			},
 		}
 
-		command_buffer := gfx.begin_command_encoding(.Default) or_return
+		rd_cycle_resource_manager(rd_resource_manager())
+		rd_apply_resource_manager_updates(rd_resource_manager())
 
-		ui_render(command_buffer) or_return
+		ui_poll_inputs()
+		if ui.UI({
+			layout	= {
+				sizing = {
+					ui.SizingFit({}),
+					ui.SizingFit({}),
+				},
+				padding	= {
+					15, 15, 15, 15,
+				},
+				childAlignment	= {
+					x	= .Left,
+					y	= .Top,
+				},
+				layoutDirection	= .TopToBottom,
+				childGap	= 50,
+			},
+			border		= {
+				// color = { 1.0, 0.0, 0.0, 1.0 },
+				// width = { 10, 10, 10, 10, 10 },
+			},
+			cornerRadius	= {
+				20, 20, 20, 20,
+			},
+			backgroundColor	= { 255.0, 0.0, 0.0, 25 },
+			
+		}) {
+			if ui.UI() {
+				ui.Text("日本語の表記体系", &{
+					wrapMode	= .Newlines,
+					textColor	= { 255, 255, 255, 255 },
+					fontSize	= 20,
+				})
+			}
+			if ui.UI() {
+				ui.Text("Damn I love spaces !", &{
+					wrapMode	= .Words,
+					fontSize	= 20,
+					textColor	= { 255, 255, 255, 255 },
+				})
+			}
+		}
+		if ui.UI({
+			layout = {
+				sizing	= {
+					width	= ui.SizingFit({}),
+					height	= ui.SizingFit({}),
+				},
+				padding = { 1, 1, 0, 1 },
+			},
+			backgroundColor	= { 20, 20, 20, 90 },
+			cornerRadius	= { 0.0, 5.0, 0.0, 0.0 },
+			floating	= {
+				zIndex		= -256,
+				attachment	= {
+					element	= .LeftBottom,
+					parent	= .LeftBottom,
+				},
+				attachTo	= .Root,
+			},
+		}) {
+			ui.Text("vicixdev_gfx demo", &{
+				wrapMode	= .Newlines,
+				textColor	= { 255, 255, 255, 255 },
+				fontSize	= 20,
+			})
+		}
+		ui_render({ ui_semaphore, frame_count })
+
+		command_buffer := gfx.begin_command_encoding(.Default, { ui_semaphore, frame_count }) or_return
+
+		tx_sync_font_textures(command_buffer) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
 			gfx.use_resources(command_buffer, resource_set)
@@ -803,8 +929,6 @@ app :: proc() -> gfx.Result {
 			}
 			gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 36) or_return
 
-			draw_skybox(command_buffer, view, proj, 0, 0) or_return
-
 			args = gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args^ = {
 				vertices	= gpu_color_vertices,
@@ -814,21 +938,26 @@ app :: proc() -> gfx.Result {
 			}
 			gfx.draw_indexed(command_buffer, blend_pipeline, args, raw_data(indices), 6) or_return
 
-			// tex_args = gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
-			// tex_args^ = {
-			// 	vertices	= gpu_textured_vertices,
-			// 	model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_scale_f32(2.0),
-			// 	view		= view,
-			// 	proj		= proj,
-			// 	texture		= 1,
-			// 	sampler		= 0,
-			// }
-			// gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 6) or_return
+			tex_args = gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
+			tex_args^ = {
+				vertices	= gpu_textured_vertices,
+				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_scale_f32(2.0),
+				view		= view,
+				proj		= proj,
+				texture		= 1,
+				sampler		= 0,
+			}
+			gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 6) or_return
+			draw_skybox(command_buffer, view, proj, 0, 0) or_return
+
+			// draw_text(command_buffer, font4, "vicixdev_gfx demo", { 5, window_state.scaled_dimensions.y - 5 }, { 255, 255, 255, 255 }, window_state.scaled_dimensions)
+
 			gfx.use_depth_stencil_state(command_buffer, depth_disabled_stencil)
-			blit_args := gfx.scratch_alloc(&frame_memory, Blit_Arguments, 16) or_return
+			gfx.use_resources(command_buffer, rd_current_resource_set_of(rd_resource_manager()))
+			blit_args := gfx.scratch_alloc(&frame_memory, Blit_Arguments) or_return
 			blit_args^ = {
-				texture	= 1,
-				sampler	= 0,
+				texture	= cast(u32)_ui.resolve_frame_buffer_resource_id,
+				sampler	= cast(u32)_ui.sampler_resource_id,
 				flip_y	= true,
 			}
 			gfx.draw(command_buffer, blit_pipeline, blit_args, 3) or_return
@@ -837,7 +966,7 @@ app :: proc() -> gfx.Result {
 		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return
 		gfx.present(.Default, surface_view, { frame_semaphore, frame_count }) or_return
 
-		tl_end_frame()
+		// tl_end_frame()
 	}
 
 	gfx.wait_semaphore(frame_semaphore, frame_count)
@@ -861,10 +990,138 @@ main :: proc() {
 	setup()
 	defer fini()
 
-	tl_init_memtrack()
-	defer tl_fini_memtrack()
+	// tl_init_memtrack()
+	// defer tl_fini_memtrack()
 
 	res := app()
 	if res != nil do log.fatalf("Example failed with error %v.", res)
+}
+
+
+Text_Vertex :: struct #packed {
+	position:	[2]f32,
+	uv:		[2]u16,
+}
+Glyph_Draw_Data :: struct #packed {
+	vertices:	[4]Text_Vertex,
+	color:		[4]u8,
+	texture:	u16,
+}
+Text_Pipeline_Arguments :: struct {
+	glyphs:		uintptr, // [^]Glyph_Draw_Data
+	screen_size:	[2]u16,
+	sampler:	u16,
+}
+
+text_pipeline:		gfx.Pipeline
+text_blend_state:	gfx.Blend_State
+text_sampler:		gfx.Sampler
+text_sampler_index:	int
+
+setup_text :: proc() -> Result {
+	bytecode := gfx.load_bytecode_of("sdf", "build", context.temp_allocator) or_return
+
+	blend_desc := gfx.Blend_Descriptor {
+		color_op			= .Add,
+		source_color_factor		= .Source_Alpha,
+		source_alpha_factor		= .One,
+		destination_color_factor	= .One_Minus_Source_Alpha,
+		destination_alpha_factor	= .One_Minus_Source_Alpha,
+	}
+	text_blend_state = gfx.create_blend_state(blend_desc) or_return
+
+	pipeline_desc := gfx.Render_Pipeline_Descriptor {
+		vertex_stage	= {
+			bytecode	= bytecode,
+			entrypoint	= "vertex_main",
+		},
+		fragment_stage	= {
+			bytecode	= bytecode,
+			entrypoint	= "fragment_main",
+		},
+		topology	= .Triangle_Strip,
+		cull		= .Counter_Clockwise,
+		sample_count	= 4,
+		color_formats	= { surface_format },
+		depth_format	= depth_format,
+		blend_state	= text_blend_state,
+	}
+	text_pipeline = gfx.create_render_pipeline(pipeline_desc) or_return
+
+	sampler_desc := gfx.Sampler_Descriptor {
+		min_filter	= .Linear,
+		mag_filter	= .Linear,
+		address_u	= .Clamp_To_Edge,
+		address_v	= .Clamp_To_Edge,
+		address_w	= .Clamp_To_Edge,
+	}
+	text_sampler = gfx.create_sampler(sampler_desc) or_return
+	text_sampler_index = rd_acquire_resource_id(rd_resource_manager(), text_sampler)
+
+	return nil
+}
+draw_text :: proc(command_buffer: gfx.Command_Buffer, font: tx_Font, text: string, position: [2]int, color: [4]u8, screen_size: [2]int) -> Result {
+	gpu_glyphs := make([dynamic]uintptr)
+	defer delete(gpu_glyphs)
+	
+	iter := tx_make_glyph_iterator(font, text, { cast(f32)position.x, cast(f32)position.y }) or_return
+	for glyph_info, cursor in tx_iterate_glyph(&iter) {
+
+		x := cursor.x + glyph_info.offset.x
+		y := cursor.y + glyph_info.offset.y
+		w := cast(f32)glyph_info.dimensions.x
+		h := cast(f32)glyph_info.dimensions.y
+
+		u0 := cast(u16)glyph_info.atlas_position.x
+		u1 := cast(u16)glyph_info.atlas_position.x + cast(u16)glyph_info.atlas_size.x
+		v0 := cast(u16)glyph_info.atlas_position.y
+		v1 := cast(u16)glyph_info.atlas_position.y + cast(u16)glyph_info.atlas_size.y
+
+		draw_data := gfx.scratch_alloc(&frame_memory, Glyph_Draw_Data) or_return
+		draw_data^ = {
+			vertices	= {
+				{
+					{ x, y },
+					{ u0, v0 },
+				},
+				{
+					{ x + w, y },
+					{ u1, v0 },
+				},
+				{
+					{ x, y + h },
+					{ u0, v1 },
+				},
+				{
+					{ x + w, y + h },
+					{ u1, v1 },
+				},
+			},
+			color		= color,
+			texture		= cast(u16)glyph_info.atlas_resource_index,
+		}
+
+		append(&gpu_glyphs, gfx.gpu_address_of(draw_data) or_return)
+	}
+
+	glyph_count := len(gpu_glyphs)
+
+	glyphs_buffer := gfx.scratch_alloc(&frame_memory, []uintptr, glyph_count) or_return
+	copy(glyphs_buffer, gpu_glyphs[:])
+
+	arguments := gfx.scratch_alloc(&frame_memory, Text_Pipeline_Arguments) or_return
+	arguments^ = {
+		glyphs		= gfx.gpu_address_of(raw_data(glyphs_buffer)) or_return,
+		screen_size	= {
+			cast(u16)screen_size.x, cast(u16)screen_size.y,
+		},
+		sampler		= cast(u16)text_sampler_index,
+	}
+
+	gfx.use_depth_stencil_state(command_buffer, depth_disabled_stencil) or_return
+	gfx.use_resources(command_buffer, rd_current_resource_set_of(rd_resource_manager())) or_return
+	gfx.draw(command_buffer, text_pipeline, arguments, 4, glyph_count) or_return
+
+	return nil
 }
 
