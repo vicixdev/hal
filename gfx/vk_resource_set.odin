@@ -53,6 +53,10 @@ vk_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -
 		binding = .Texture_Cube_Array_Sampled_Image
 	case .D3:
 		binding = .Texture_3d_Sampled_Image
+	case .D2_Multisample:
+		binding = .Texture_2d_Multisampled_Image
+	case .D2_Multisample_Array:
+		binding = .Texture_2d_Array_Multisampled_Image
 	}
 	
 	update := vk.WriteDescriptorSet {

@@ -9,9 +9,8 @@ m3_Resource_Set_Root :: struct #align(16) {
 	sampler_set:		u64,
 	texture_sets:		[View_Type]u64,
 	storage_texture_sets:	[Storage_View_Type]u64,
-	_pad:			u64,
 }
-#assert(size_of(m3_Resource_Set_Root) == 96)
+#assert(size_of(m3_Resource_Set_Root) == 112)
 
 m3_Resource_Set_Metadata :: struct {
 	texture_sets:		[View_Type]^MTL.Buffer,

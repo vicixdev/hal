@@ -6,7 +6,6 @@ import "core:slice"
 import CF "core:sys/darwin/CoreFoundation"
 import NS "core:sys/darwin/Foundation"
 import CA "vendor:darwin/QuartzCore"
-// import MTL "vendor:darwin/Metal"
 
 m3_Surface_Metadata :: struct {
 	layer:	^CA.MetalLayer,

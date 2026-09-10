@@ -30,18 +30,19 @@ struct Handle_Wrap<T: IOpaqueDescriptor> {
 }
 
 struct Resource_Set {
-	Handle_Wrap<SamplerState>*	sampler_set;
-	Handle_Wrap<Texture1D>*		texture_1d_set;
-	Handle_Wrap<Texture2D>*		texture_2d_set;
-	Handle_Wrap<Texture2DArray>*	texture_2d_array_set;
-	Handle_Wrap<TextureCube>*	texture_cube_set;
-	Handle_Wrap<TextureCubeArray>*	texture_cube_array_set;
-	Handle_Wrap<Texture3D>*		texture_3d_set;
-	Handle_Wrap<RWTexture1D>*	storage_texture_1d_set;
-	Handle_Wrap<RWTexture2D>*	storage_texture_2d_set;
-	Handle_Wrap<RWTexture2DArray>*	storage_texture_2d_array_set;
-	Handle_Wrap<RWTexture3D>*	storage_texture_3d_set;
-	uint64_t			_pad;
+	Handle_Wrap<SamplerState>*		sampler_set;
+	Handle_Wrap<Texture1D>*			texture_1d_set;
+	Handle_Wrap<Texture2D>*			texture_2d_set;
+	Handle_Wrap<Texture2DMS>*		texture_2d_multisample_set;
+	Handle_Wrap<Texture3D>*			texture_3d_set;
+	Handle_Wrap<TextureCube>*		texture_cube_set;
+	Handle_Wrap<Texture2DArray>*		texture_2d_array_set;
+	Handle_Wrap<Texture2DMSArray>*		texture_2d_multisample_array_set;
+	Handle_Wrap<TextureCubeArray>*		texture_cube_array_set;
+	Handle_Wrap<RWTexture1D>*		storage_texture_1d_set;
+	Handle_Wrap<RWTexture2D>*		storage_texture_2d_set;
+	Handle_Wrap<RWTexture2DArray>*		storage_texture_2d_array_set;
+	Handle_Wrap<RWTexture3D>*		storage_texture_3d_set;
 }
 
 [vk_binding(1, 0)]
@@ -69,6 +70,14 @@ TextureCube texture_cube_at(int index) {
 
 TextureCubeArray texture_cube_array_at(int index) {
 	return resource_set.texture_cube_array_set[index].handle;
+}
+
+Texture2DMS texture_2d_multisample_at(int index) {
+	return resource_set.texture_2d_multisample_set[index].handle;
+}
+
+Texture2DMSArray texture_2d_multisample_array_at(int index) {
+	return resource_set.texture_2d_multisample_array_set[index].handle;
 }
 
 Texture3D texture_3d_at(int index) {
@@ -132,12 +141,16 @@ TextureCubeArray	texture_cube_array_set[];
 [vk_binding(6)]
 Texture3D		texture_3d_set[];
 [vk_binding(7)]
-RWTexture1D		storage_texture_1d_set[];
+Texture2DMS		texture_2d_multisample_set[];
 [vk_binding(8)]
-RWTexture2D		storage_texture_2d_set[];
+Texture2DMSArray	texture_2d_multisample_array_set[];
 [vk_binding(9)]
-RWTexture2DArray	storage_texture_2d_array_set[];
+RWTexture1D		storage_texture_1d_set[];
 [vk_binding(10)]
+RWTexture2D		storage_texture_2d_set[];
+[vk_binding(11)]
+RWTexture2DArray	storage_texture_2d_array_set[];
+[vk_binding(12)]
 RWTexture3D		storage_texture_3d_set[];
 
 SamplerState sampler_at(int index) {
@@ -162,6 +175,14 @@ TextureCube texture_cube_at(int index) {
 
 TextureCubeArray texture_cube_array_at(int index) {
 	return texture_cube_array_set[index];
+}
+
+Texture2DMS texture_2d_multisample_at(int index) {
+	return texture_2d_multisample_set[index];
+}
+
+Texture2DMSArray texture_2d_multisample_array_at(int index) {
+	return texture_2d_multisample_array_set[index];
 }
 
 Texture3D texture_3d_at(int index) {

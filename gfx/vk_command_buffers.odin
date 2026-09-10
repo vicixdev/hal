@@ -17,6 +17,7 @@ vk_Command_Buffer_Metadata :: struct {
 	bound_resource_set:		Resource_Set,
 	bound_depth_stencil_state:	Depth_Stencil_State,
 	bound_blend_constant:		[4]f64,
+	bound_scissor:			Scissor,
 
 	is_first_command_buffer:	bool,
 
@@ -450,6 +451,37 @@ vk_use_resource_set :: proc(
 	return nil
 }
 
+vk_use_scissor :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	scissor:	Scissor,
+) -> Result {
+
+	if scissor == metadata.vk.bound_scissor {
+		return nil
+	}
+
+	vk_scissor := vk.Rect2D {
+		offset	= {
+			cast(i32)scissor.offset.x,
+			cast(i32)scissor.offset.y,
+		},
+		extent	= {
+			cast(u32)scissor.dimensions.x,
+			cast(u32)scissor.dimensions.y,
+		},
+	}
+	vk.CmdSetScissor(
+		metadata.vk.command_buffer,
+		0,
+		1,
+		&vk_scissor,
+	)
+
+	metadata.vk.bound_scissor = scissor
+
+	return nil
+}
+
 vk_emit_dispatch :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
@@ -585,6 +617,7 @@ vk_emit_begin_render_pass :: proc(
 			_check_internal_emission_result(resolve_view_res) or_return
 
 			color_attachment_infos[i].resolveImageView	= resolve_view_metadata.vk.view
+			color_attachment_infos[i].resolveMode		= { .AVERAGE }
 
 			color_attachment_infos[i].resolveImageLayout	= .GENERAL
 
@@ -692,7 +725,10 @@ vk_emit_end_render_pass :: proc(
 
 		image_barrier := vk.ImageMemoryBarrier2 {
 			sType			= .IMAGE_MEMORY_BARRIER_2,
-			dstStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
+			srcStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
+			srcAccessMask		= { .COLOR_ATTACHMENT_WRITE },
+			dstStageMask		= { .ALL_COMMANDS_KHR },
+			dstAccessMask		= {},
 			oldLayout		= .GENERAL,
 			newLayout		= .PRESENT_SRC_KHR,
 			image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
@@ -729,6 +765,7 @@ vk_emit_draw :: proc(
 	vk_use_resource_set(metadata, command.resource_set) or_return
 	vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return
 	vk_use_render_pipeline(metadata, command.pipeline) or_return
+	vk_use_scissor(metadata, command.scissor) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_render_pipeline_layout,
@@ -765,6 +802,7 @@ vk_emit_draw_indexed :: proc(
 	vk_use_resource_set(metadata, command.resource_set)
 	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
 	vk_use_render_pipeline(metadata, command.pipeline) or_return
+	vk_use_scissor(metadata, command.scissor) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
 		vk_render_pipeline_layout,
@@ -802,6 +840,7 @@ vk_emit_commands :: proc(
 	metadata.vk.bound_blend_constant	= {}
 	metadata.vk.bound_compute_pipeline	= {}
 	metadata.vk.bound_render_pipeline	= {}
+	metadata.vk.bound_scissor		= {}
 	metadata.vk.command_buffer_valid	= false
 	metadata.vk.is_first_command_buffer	= true
 	metadata.vk.pending_waits		= {}
@@ -1121,7 +1160,10 @@ vk_prepare_surface_for_renderpass :: proc(
 
 	image_barrier := vk.ImageMemoryBarrier2 {
 		sType			= .IMAGE_MEMORY_BARRIER_2,
+		srcStageMask		= { .TOP_OF_PIPE },
+		srcAccessMask		= {},
 		dstStageMask		= { .COLOR_ATTACHMENT_OUTPUT },
+		dstAccessMask		= { .COLOR_ATTACHMENT_READ, .COLOR_ATTACHMENT_WRITE },
 		oldLayout		= old_layout,
 		newLayout		= .GENERAL,
 		image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
@@ -1193,6 +1235,7 @@ vk_end_command_buffer :: proc(
 	metadata.vk.bound_depth_stencil_state	= {}
 	metadata.vk.bound_resource_set		= {}
 	metadata.vk.bound_blend_constant	= {}
+	metadata.vk.bound_scissor		= {}
 	metadata.vk.semaphore_value		+= 1
 	resize(&metadata.vk.pending_surface_waits, 0)
 

@@ -36,6 +36,11 @@ Index_Type :: enum {
 	U32,
 }
 
+Scissor :: struct {
+	offset:		[2]int,
+	dimensions:	[2]int,
+}
+
 _Command_Buffer_Metadata :: struct {
 	handle:					Command_Buffer,
 
@@ -48,6 +53,7 @@ _Command_Buffer_Metadata :: struct {
 	resource_set:				Resource_Set,
 	depth_stencil_state:			Depth_Stencil_State,
 	blend_constant:				[4]f64,
+	scissor:				Scissor,
 	semaphore_waits:			[]Semaphore_Wait,
 	commands:				[dynamic]_Command,
 
@@ -156,6 +162,7 @@ _Command_Draw :: struct {
 	vertex_count:		int,
 	instance_count:		int,
 	base_vertex:		int,
+	scissor:		Scissor,
 }
 
 _Command_Draw_Indexed :: struct {
@@ -169,6 +176,7 @@ _Command_Draw_Indexed :: struct {
 	instance_count:		int,
 	base_vertex:		int,
 	index_type:		Index_Type,
+	scissor:		Scissor,
 }
 
 _Semaphore_Wait :: struct {
@@ -264,6 +272,7 @@ begin_command_encoding :: proc(
 	metadata.resource_set		= _default_resource_set
 	metadata.depth_stencil_state	= _default_depth_stencil_state
 	metadata.blend_constant		= 0
+	metadata.scissor		= {}
 	metadata.can_encode_signals	= false
 	metadata.is_encoding_render_pass = false
 	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
@@ -1173,6 +1182,10 @@ begin_render_pass :: proc(
 		metadata.render_pass_stencil_format = texture_metadata.format
 	}
 
+	metadata.scissor = {
+		dimensions	= attachment_dimensions.xy,
+	}
+
 	command := _Command_Begin_Render_Pass {
 		depth_attachment	= descriptor.depth_attachment,
 		stencil_attachment	= descriptor.stencil_attachment,
@@ -1200,6 +1213,16 @@ end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_loca
 	append(&metadata.commands, command) or_return
 
 	metadata.is_encoding_render_pass = false
+
+	return nil
+}
+
+use_scissor :: proc(command_buffer: Command_Buffer, scissor: Scissor, location := #caller_location) -> Result {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	metadata.scissor = scissor
 
 	return nil
 }
@@ -1239,6 +1262,7 @@ draw :: proc(
 		vertex_count		= vertex_count,
 		instance_count		= instance_count,
 		base_vertex		= base_vertex,
+		scissor			= metadata.scissor,
 	}
 	append(&metadata.commands, command) or_return
 
@@ -1285,6 +1309,7 @@ draw_indexed :: proc(
 		index_count		= index_count,
 		instance_count		= instance_count,
 		index_type		= index_type,
+		scissor			= metadata.scissor,
 	}
 	append(&metadata.commands, command) or_return
 

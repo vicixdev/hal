@@ -27,6 +27,7 @@ m3_Command_Buffer_Metadata :: struct {
 	bound_resource_set:		Resource_Set,
 	bound_depth_stencil_state:	Depth_Stencil_State,
 	bound_blend_constant:		[4]f64,
+	bound_scissor:			Scissor,
 
 	barrier_fence:			^MTL.Fence,
 	barrier_fence_pending:		bool,
@@ -396,6 +397,7 @@ m3_emit_draw :: proc(
 	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
 	m3_bind_render_pipeline(metadata, command.pipeline) or_return
 	m3_bind_blend_constant(metadata, command.blend_constant) or_return
+	m3_bind_scissor(metadata, command.scissor) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->drawPrimitivesWithInstanceCount(
@@ -429,6 +431,7 @@ m3_emit_draw_indexed :: proc(
 	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
 	m3_bind_render_pipeline(metadata, command.pipeline) or_return
 	m3_bind_blend_constant(metadata, command.blend_constant) or_return
+	m3_bind_scissor(metadata, command.scissor) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->drawIndexedPrimitivesWithInstanceCount(
@@ -448,6 +451,10 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 	metadata.m3.wait_set = {}	
 	metadata.m3.bound_resource_set = {}
 	metadata.m3.bound_depth_stencil_state = {}
+	metadata.m3.bound_blend_constant = {}
+	metadata.m3.bound_compute_pipeline = {}
+	metadata.m3.bound_render_pipeline = {}
+	metadata.m3.bound_scissor = {}
 	metadata.m3.barrier_fence_pending = false
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
@@ -538,6 +545,25 @@ m3_submit :: proc(
 
 		command_buffer->commit()
 	}
+
+	return nil
+}
+
+m3_bind_scissor :: proc(metadata: ^_Command_Buffer_Metadata, scissor: Scissor) -> Result {
+
+	assert(metadata.m3.current_encoder == .Render)
+	if metadata.scissor == scissor {
+		return nil
+	}
+
+	metadata.m3.render_encoder->setScissorRect({
+		cast(NS.Integer)scissor.offset.x,
+		cast(NS.Integer)scissor.offset.y,
+		cast(NS.Integer)scissor.dimensions.x,
+		cast(NS.Integer)scissor.dimensions.y,
+	})
+
+	metadata.scissor = scissor
 
 	return nil
 }
@@ -757,6 +783,8 @@ m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	metadata.m3.bound_render_pipeline	= {}
 	metadata.m3.bound_resource_set		= {}
 	metadata.m3.bound_depth_stencil_state	= {}
+	metadata.m3.bound_blend_constant	= {}
+	metadata.m3.bound_scissor		= {}
 }
 
 m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {

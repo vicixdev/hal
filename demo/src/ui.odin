@@ -6,11 +6,6 @@ import "root:gfx"
 import "core:math"
 import ui "shared:clay"
 
-_ui_Scissors :: struct {
-	position:	[2]int,
-	dimensions:	[2]int,
-}
-
 _ui: struct {
 	error_logger:				runtime.Logger,
 	
@@ -24,7 +19,7 @@ _ui: struct {
 	frame_memory:				^gfx.Scratch,
 
 	screen_dimensions:			[2]int,
-	scissors:				_ui_Scissors,
+	scissor:				gfx.Scissor,
 
 	blend_state:				gfx.Blend_State,
 	pipeline:				gfx.Pipeline,
@@ -190,6 +185,8 @@ ui_poll_inputs :: proc() {
 			},
 			.Pressed in mouse_state.buttons[.Left],
 		)
+
+		ui.UpdateScrollContainers(true, mouse_state.scroll, 0.01)
 	} else {
 		ui.SetPointerState(
 			{ -1, -1 },
@@ -277,8 +274,44 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 			)
 
 		case .Image:
+			data := command.renderData.image
+
+			_ui_draw_image(
+				command_buffer,
+				command,
+				data,
+			)
+
 		case .ScissorStart:
+			scissor: gfx.Scissor
+			scissor.offset.x = cast(int)command.boundingBox.x
+			scissor.dimensions.x = cast(int)command.boundingBox.width
+			scissor.offset.y = _ui.screen_dimensions.y - cast(int)command.boundingBox.y - cast(int)command.boundingBox.height
+			scissor.dimensions.y = cast(int)command.boundingBox.height
+
+			if scissor.offset.x >= _ui.screen_dimensions.x || scissor.offset.x < 0 {
+				continue
+			}
+			if scissor.offset.y >= _ui.screen_dimensions.y || scissor.offset.y < 0 {
+				continue
+			}
+
+			if scissor.dimensions.x + scissor.offset.x >= _ui.screen_dimensions.x {
+				scissor.dimensions.x = _ui.screen_dimensions.x - scissor.offset.x
+			}
+			if scissor.dimensions.y + scissor.offset.y >= _ui.screen_dimensions.y {
+				scissor.dimensions.y = _ui.screen_dimensions.y - scissor.offset.y
+			}
+
+			gfx.use_scissor(command_buffer, scissor) or_return
+
 		case .ScissorEnd:
+			_ui.scissor	= {
+				{ 0, 0 },
+				_ui.screen_dimensions,
+			}
+			gfx.use_scissor(command_buffer, _ui.scissor) or_return
+
 		case .Custom:
 		}
 	}
@@ -286,6 +319,7 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 	gfx.end_render_pass(command_buffer) or_return
 	gfx.submit(.Default, { command_buffer }, ..on_done) or_return
 
+	ui_poll_inputs()
 	ui.BeginLayout()
 
 	return nil
@@ -295,7 +329,7 @@ _ui_report_error :: proc "c" (error: ui.ErrorData) {
 	context		= runtime.default_context()
 	context.logger	= _ui.error_logger
 
-	log.errorf("[CLAY - %v] %s", error.errorType, error.errorText)
+	log.errorf("[CLAY - %v] %s", error.errorType, ui.ToOdin(error.errorText))
 }
 
 _ui_measure_text :: proc "c" (
@@ -377,7 +411,7 @@ _ui_screen_to_ndc :: proc(position: [2]f32) -> [2]f32 {
 	}
 }
 
-_ui_generate_border_strips :: proc(
+_ui_generate_corner_strips :: proc(
 	vertices:	^[dynamic]_ui_Vertex,
 	center:		[2]f32,
 	corner_radius:	f32,
@@ -419,154 +453,311 @@ _ui_generate_border_strips :: proc(
 	}
 }
 
+_ui_generate_border_corner_strips :: proc(
+	vertices:	^[dynamic]_ui_Vertex,
+	center:		[2]f32,
+	radius:		f32,
+	start_width:	f32,
+	end_width:	f32,
+	start_theta:	f32,
+	end_theta:	f32,
+) {
+	
+	steps :: 16
+	dtheta := (end_theta - start_theta) / steps
+
+	circ := [2]f32 {
+		math.cos(start_theta),
+		-math.sin(start_theta),
+	}
+	prev_outer := center + (circ * radius / cast([2]f32)_ui.screen_dimensions * 2)
+	prev_inner := center + (circ * (radius - start_width) / cast([2]f32)_ui.screen_dimensions * 2)
+
+	theta := start_theta + dtheta
+	for step in 1..=steps {
+
+		outer_radius := radius
+		inner_radius := outer_radius - math.lerp(start_width, end_width, cast(f32)step / steps)
+
+		circ = [2]f32{
+			math.cos(theta),
+			-math.sin(theta),
+		}
+
+		outer := center + (circ * outer_radius / cast([2]f32)_ui.screen_dimensions * 2)
+		inner := center + (circ * inner_radius / cast([2]f32)_ui.screen_dimensions * 2)
+
+		append(vertices, _ui_Vertex {
+			position	= prev_outer,
+		})
+		append(vertices, _ui_Vertex {
+			position	= prev_inner,
+		})
+		append(vertices, _ui_Vertex {
+			position	= outer,
+		})
+		append(vertices, _ui_Vertex {
+			position	= inner,
+		})
+
+		prev_outer = outer
+		prev_inner = inner
+		theta += dtheta
+	}
+}
+
+_ui_draw_image :: proc(
+	command_buffer:	gfx.Command_Buffer,
+	command:	ui.RenderCommand,
+	data:		ui.ImageRenderData,
+) -> Result {
+	
+	vertices := [4]_ui_Vertex {
+		{
+			position	= _ui_screen_to_ndc({
+				command.boundingBox.x, command.boundingBox.y + command.boundingBox.height,
+			}),
+			uv		= {
+				0.0, 1.0,
+			},
+		},
+		{
+			position	= _ui_screen_to_ndc({
+				command.boundingBox.x + command.boundingBox.width, command.boundingBox.y + command.boundingBox.height,
+			}),
+			uv		= {
+				1.0, 1.0,
+			},
+		},
+		{
+			position	= _ui_screen_to_ndc({
+				command.boundingBox.x, command.boundingBox.y,
+			}),
+			uv		= {
+				0.0, 0.0,
+			},
+		},
+		{
+			position	= _ui_screen_to_ndc({
+				command.boundingBox.x + command.boundingBox.width, command.boundingBox.y,
+			}),
+			uv		= {
+				1.0, 0.0,
+			},
+		},
+	}
+
+	_ui_draw(
+		command_buffer,
+		.Texture,
+		vertices[:],
+		4,
+		1,
+		data.backgroundColor,
+		(cast(^int)data.imageData)^,
+		command.zIndex,
+	) or_return
+
+	return nil
+}
+
 _ui_draw_border :: proc(
 	command_buffer:	gfx.Command_Buffer,
 	command:	ui.RenderCommand,
 	data:		ui.BorderRenderData,
 ) -> Result {
 
-	outer_bottom_left := _ui_screen_to_ndc({
-		command.boundingBox.x,
-		command.boundingBox.y + command.boundingBox.height,
+	top_bottom_left := _ui_screen_to_ndc({
+		command.boundingBox.x + data.cornerRadius.topLeft,
+		command.boundingBox.y + cast(f32)data.width.top,
 	})
-	outer_bottom_right := _ui_screen_to_ndc({
-		command.boundingBox.x + command.boundingBox.width,
-		command.boundingBox.y + command.boundingBox.height,
+	top_bottom_right := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width - data.cornerRadius.topRight,
+		command.boundingBox.y + cast(f32)data.width.top,
 	})
-	outer_top_left := _ui_screen_to_ndc({
-		command.boundingBox.x,
+	top_top_left := _ui_screen_to_ndc({
+		command.boundingBox.x + data.cornerRadius.topLeft,
 		command.boundingBox.y,
 	})
-	outer_top_right := _ui_screen_to_ndc({
-		command.boundingBox.x + command.boundingBox.width,
+	top_top_right := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width - data.cornerRadius.topRight,
 		command.boundingBox.y,
 	})
 
-	inner_bottom_left := _ui_screen_to_ndc({
-		command.boundingBox.x + data.cornerRadius.bottomLeft,
+	left_bottom_left := _ui_screen_to_ndc({
+		command.boundingBox.x,
 		command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomLeft,
 	})
-	inner_bottom_right := _ui_screen_to_ndc({
-		command.boundingBox.x + command.boundingBox.width - data.cornerRadius.bottomRight,
-		command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomRight,
+	left_bottom_right := _ui_screen_to_ndc({
+		command.boundingBox.x + cast(f32)data.width.left,
+		command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomLeft,
 	})
-	inner_top_left := _ui_screen_to_ndc({
-		command.boundingBox.x + data.cornerRadius.topLeft,
+	left_top_left := _ui_screen_to_ndc({
+		command.boundingBox.x,
 		command.boundingBox.y + data.cornerRadius.topLeft,
 	})
-	inner_top_right := _ui_screen_to_ndc({
-		command.boundingBox.x + command.boundingBox.width - data.cornerRadius.topRight,
+	left_top_right := _ui_screen_to_ndc({
+		command.boundingBox.x + cast(f32)data.width.left,
+		command.boundingBox.y + data.cornerRadius.topLeft,
+	})
+
+	bottom_bottom_left := _ui_screen_to_ndc({
+		command.boundingBox.x + data.cornerRadius.bottomLeft,
+		command.boundingBox.y + command.boundingBox.height,
+	})
+	bottom_bottom_right := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width - data.cornerRadius.bottomRight,
+		command.boundingBox.y + command.boundingBox.height,
+	})
+	bottom_top_left := _ui_screen_to_ndc({
+		command.boundingBox.x + data.cornerRadius.bottomLeft,
+		command.boundingBox.y + command.boundingBox.height - cast(f32)data.width.bottom,
+	})
+	bottom_top_right := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width - data.cornerRadius.bottomRight,
+		command.boundingBox.y + command.boundingBox.height - cast(f32)data.width.bottom,
+	})
+
+	right_bottom_left := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width - cast(f32)data.width.right,
+		command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomRight,
+	})
+	right_bottom_right := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width,
+		command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomRight,
+	})
+	right_top_left := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width - cast(f32)data.width.right,
+		command.boundingBox.y + data.cornerRadius.topRight,
+	})
+	right_top_right := _ui_screen_to_ndc({
+		command.boundingBox.x + command.boundingBox.width,
 		command.boundingBox.y + data.cornerRadius.topRight,
 	})
 
 	quad_strips := make([dynamic]_ui_Vertex, context.temp_allocator)
-	// Left outer quad
-	if inner_bottom_left.x != outer_bottom_left.x || inner_top_left.x != outer_top_left.x {
-
+	// Top border quad
+	if top_bottom_left != top_top_left {
 		append(&quad_strips, _ui_Vertex {
-			position	= { outer_bottom_left.x, inner_bottom_left.y },
+			position	= top_bottom_left,
 		})
 		append(&quad_strips, _ui_Vertex {
-			position	= inner_bottom_left,
+			position	= top_bottom_right,
 		})
 		append(&quad_strips, _ui_Vertex {
-			position	= { outer_top_left.x, inner_top_left.y },
+			position	= top_top_left,
 		})
 		append(&quad_strips, _ui_Vertex {
-			position	= inner_top_left,
-		})
-	}
-	// Right outer quad
-	if inner_bottom_right.x != outer_bottom_right.x || inner_top_right.x != outer_top_right.x {
-
-		append(&quad_strips, _ui_Vertex {
-			position	= { outer_bottom_right.x, inner_bottom_right.y },
-		})
-		append(&quad_strips, _ui_Vertex {
-			position	= inner_bottom_right,
-		})
-		append(&quad_strips, _ui_Vertex {
-			position	= { outer_top_right.x, inner_top_right.y },
-		})
-		append(&quad_strips, _ui_Vertex {
-			position	= inner_top_right,
+			position	= top_top_right,
 		})
 	}
-	// Top outer quad
-	if inner_top_left.y != outer_top_left.y || inner_top_right.y != outer_top_right.y {
+	// Left border quad
+	if left_bottom_left != left_bottom_right {
 		append(&quad_strips, _ui_Vertex {
-			position	= inner_top_left,
+			position	= left_bottom_left,
 		})
 		append(&quad_strips, _ui_Vertex {
-			position	= inner_top_right,
+			position	= left_bottom_right,
 		})
 		append(&quad_strips, _ui_Vertex {
-			position	= { inner_top_left.x, outer_top_left.y },
+			position	= left_top_left,
 		})
 		append(&quad_strips, _ui_Vertex {
-			position	= { inner_top_right.x, outer_top_right.y },
-		})
-	}
-	// Bottom outer quad
-	if inner_bottom_left.y != outer_bottom_left.y || inner_bottom_right.y != outer_bottom_right.y {
-		append(&quad_strips, _ui_Vertex {
-			position	= { inner_bottom_left.x, outer_bottom_left.y },
-		})
-		append(&quad_strips, _ui_Vertex {
-			position	= { inner_bottom_right.x, outer_bottom_right.y },
-		})
-		append(&quad_strips, _ui_Vertex {
-			position	= inner_bottom_left,
-		})
-		append(&quad_strips, _ui_Vertex {
-			position	= inner_bottom_right,
+			position	= left_top_right,
 		})
 	}
-
-	border_strips := make([dynamic]_ui_Vertex, context.temp_allocator)
+	// Bottom border quad
+	if bottom_bottom_left != bottom_top_right {
+		append(&quad_strips, _ui_Vertex {
+			position	= bottom_bottom_left,
+		})
+		append(&quad_strips, _ui_Vertex {
+			position	= bottom_bottom_right,
+		})
+		append(&quad_strips, _ui_Vertex {
+			position	= bottom_top_left,
+		})
+		append(&quad_strips, _ui_Vertex {
+			position	= bottom_top_right,
+		})
+	}
+	// Right border quad
+	if right_bottom_left != bottom_bottom_right {
+		append(&quad_strips, _ui_Vertex {
+			position	= right_bottom_left,
+		})
+		append(&quad_strips, _ui_Vertex {
+			position	= right_bottom_right,
+		})
+		append(&quad_strips, _ui_Vertex {
+			position	= right_top_left,
+		})
+		append(&quad_strips, _ui_Vertex {
+			position	= right_top_right,
+		})
+	}
 	// Bottom Left border
-	if inner_bottom_left != outer_bottom_left {
-		_ui_generate_border_strips(
-			&border_strips,
-			inner_bottom_left,
+	if left_bottom_left != bottom_bottom_left {
+		_ui_generate_border_corner_strips(
+			&quad_strips,
+			_ui_screen_to_ndc({
+				command.boundingBox.x + data.cornerRadius.bottomLeft,
+				command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomLeft,
+			}),
 			data.cornerRadius.bottomLeft,
+			cast(f32)data.width.left,
+			cast(f32)data.width.bottom,
 			math.PI,
 			3.0/2.0 * math.PI,
 		)
 	}
 	// Bottom Right border
-	if inner_bottom_right != outer_bottom_right {
-		_ui_generate_border_strips(
-			&border_strips,
-			inner_bottom_right,
-			data.cornerRadius.bottomLeft,
+	if bottom_bottom_right != right_bottom_right {
+		_ui_generate_border_corner_strips(
+			&quad_strips,
+			_ui_screen_to_ndc({
+				command.boundingBox.x + command.boundingBox.width - data.cornerRadius.bottomRight,
+				command.boundingBox.y + command.boundingBox.height - data.cornerRadius.bottomRight,
+			}),
+			data.cornerRadius.bottomRight,
+			cast(f32)data.width.bottom,
+			cast(f32)data.width.right,
 			3.0/2.0 * math.PI,
 			2.0 * math.PI,
 		)
 	}
 	// Top Left border
-	if inner_top_left != outer_top_left {
-		_ui_generate_border_strips(
-			&border_strips,
-			inner_top_left,
+	if left_top_right != top_top_right {
+		_ui_generate_border_corner_strips(
+			&quad_strips,
+			_ui_screen_to_ndc({
+				command.boundingBox.x + data.cornerRadius.topLeft,
+				command.boundingBox.y + data.cornerRadius.topLeft,
+			}),
 			data.cornerRadius.topLeft,
+			cast(f32)data.width.top,
+			cast(f32)data.width.left,
 			1.0/2.0 * math.PI,
 			math.PI,
 		)
 	}
 	// Top Right border
-	if inner_top_right != outer_top_right {
-		_ui_generate_border_strips(
-			&border_strips,
-			inner_top_right,
-			data.cornerRadius.topLeft,
+	if right_top_left != top_top_left {
+		_ui_generate_border_corner_strips(
+			&quad_strips,
+			_ui_screen_to_ndc({
+				command.boundingBox.x + command.boundingBox.width - data.cornerRadius.topRight,
+				command.boundingBox.y + data.cornerRadius.topRight,
+			}),
+			data.cornerRadius.topRight,
+			cast(f32)data.width.right,
+			cast(f32)data.width.top,
 			0.0,
 			1.0/2.0 * math.PI,
 		)
 	}
 
 	_ui_draw(command_buffer, .Solid, quad_strips[:], 4, len(quad_strips) / 4, data.color, 0, command.zIndex) or_return
-	_ui_draw(command_buffer, .Solid, border_strips[:], 3, len(border_strips) / 3, data.color, 0, command.zIndex) or_return
 
 	return nil
 }
@@ -693,7 +884,7 @@ _ui_draw_rectangle :: proc(
 	border_strips := make([dynamic]_ui_Vertex, context.temp_allocator)
 	// Bottom Left border
 	if inner_bottom_left != outer_bottom_left {
-		_ui_generate_border_strips(
+		_ui_generate_corner_strips(
 			&border_strips,
 			inner_bottom_left,
 			data.cornerRadius.bottomLeft,
@@ -703,7 +894,7 @@ _ui_draw_rectangle :: proc(
 	}
 	// Bottom Right border
 	if inner_bottom_right != outer_bottom_right {
-		_ui_generate_border_strips(
+		_ui_generate_corner_strips(
 			&border_strips,
 			inner_bottom_right,
 			data.cornerRadius.bottomRight,
@@ -713,7 +904,7 @@ _ui_draw_rectangle :: proc(
 	}
 	// Top Left border
 	if inner_top_left != outer_top_left {
-		_ui_generate_border_strips(
+		_ui_generate_corner_strips(
 			&border_strips,
 			inner_top_left,
 			data.cornerRadius.topLeft,
@@ -723,7 +914,7 @@ _ui_draw_rectangle :: proc(
 	}
 	// Top Right border
 	if inner_top_right != outer_top_right {
-		_ui_generate_border_strips(
+		_ui_generate_corner_strips(
 			&border_strips,
 			inner_top_right,
 			data.cornerRadius.topRight,

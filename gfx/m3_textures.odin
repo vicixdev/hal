@@ -172,13 +172,13 @@ m3_view_type_to_mtl :: proc(texture_metadata: _Texture_Metadata, view_type: View
 	case view_type == .D2_Array && texture_metadata.layer_count == 1 && texture_metadata.sample_count == 1:
 		return .Type2D
 
-	case view_type == .D2_Array && texture_metadata.layer_count == 1 && texture_metadata.sample_count > 1:
+	case view_type == .D2_Multisample && texture_metadata.layer_count == 1 && texture_metadata.sample_count > 1:
 		return .Type2DMultisample
 
 	case view_type == .D2_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count == 1:
 		return .Type2DArray
 
-	case view_type == .D2_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count > 1:
+	case view_type == .D2_Multisample_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count > 1:
 		return .Type2DMultisampleArray
 
 	case view_type == .Cube:

@@ -170,12 +170,14 @@ vk_present :: proc(
 			sType		= .SEMAPHORE_SUBMIT_INFO,
 			semaphore	= wait.semaphore.vk.semaphore,
 			value		= cast(u64)wait.value,
+			stageMask	= { .ALL_COMMANDS },
 		}
 	}
 
 	semaphore_signal := vk.SemaphoreSubmitInfo {
 		sType		= .SEMAPHORE_SUBMIT_INFO,
 		semaphore	= image_semaphore,
+		stageMask	= { .ALL_COMMANDS },
 	}
 
 	submit_info := vk.SubmitInfo2 {

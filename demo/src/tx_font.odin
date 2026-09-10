@@ -256,7 +256,7 @@ tx_make_glyph_iterator :: proc(
 	
 	metadata, font_root := _tx_metadata_of(font) or_return
 
-	ts.ShapeBegin(font_root.ts_context, .DONT_KNOW, .DONT_KNOW)
+	ts.ShapeBegin(font_root.ts_context, .KBTS_DIRECTION_LTR, .LATIN)
 		ts.ShapePushFeature(font_root.ts_context, .kern, 0)
 		ts.ShapeUtf8(font_root.ts_context, str, .SOURCE_INDEX)
 		_ = ts.ShapePopFeature(font_root.ts_context, .kern)

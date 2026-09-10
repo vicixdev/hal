@@ -108,14 +108,14 @@ scratch_alloc_raw :: proc(scratch: ^Scratch, #any_int size: int, align := 128) -
 	return
 }
 
-scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 128) -> (ptr: ^T, res: Result)
+scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 16) -> (ptr: ^T, res: Result)
 	where !intrinsics.type_is_slice(T) {
 
 	address := scratch_alloc_raw(scratch, size_of(T), align) or_return
 	return cast(^T)address, nil
 }
 
-scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, #any_int length: int, align := 128) -> (slice: []E, res: Result) {
+scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, #any_int length: int, align := 16) -> (slice: []E, res: Result) {
 	address := scratch_alloc_raw(scratch, size_of(E) * length, align) or_return
 	return mem.slice_ptr(cast(^E)address, length), nil
 }

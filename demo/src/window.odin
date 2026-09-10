@@ -96,6 +96,7 @@ Mouse_State :: struct {
 	buttons:	[Mouse_Button]Key_States,
 	position:	[2]f32,
 	delta:		[2]f32,
+	scroll:		[2]f32,
 
 	captured:	bool,
 }
@@ -139,6 +140,7 @@ process_events :: proc() {
 	}
 
 	mouse_state.delta = {}
+	mouse_state.scroll = {}
 
 	event: sdl.Event
 	for sdl.PollEvent(&event) {
@@ -168,6 +170,12 @@ process_events :: proc() {
 			}
 			mouse_state.position = {
 				event.motion.x, event.motion.y,
+			}
+
+		case .MOUSE_WHEEL:
+			mouse_state.scroll = {
+				cast(f32)event.wheel.x,
+				cast(f32)event.wheel.y,
 			}
 
 		case .WINDOW_RESIZED:

@@ -59,10 +59,12 @@ vk_Descriptor_Binding :: enum u32 {
 	Texture_Cube_Sampled_Image		= 4,
 	Texture_Cube_Array_Sampled_Image	= 5,
 	Texture_3d_Sampled_Image		= 6,
-	Texture_1d_Storage_Image		= 7,
-	Texture_2d_Storage_Image		= 8,
-	Texture_2d_Array_Storage_Image		= 9,
-	Texture_3d_Storage_Image		= 10,
+	Texture_2d_Multisampled_Image		= 7,
+	Texture_2d_Array_Multisampled_Image	= 8,
+	Texture_1d_Storage_Image		= 9,
+	Texture_2d_Storage_Image		= 10,
+	Texture_2d_Array_Storage_Image		= 11,
+	Texture_3d_Storage_Image		= 12,
 }
 
 vk_enumerate_devices :: proc(allocator: runtime.Allocator) -> (devices: []Device_Info, res: Result) {
@@ -105,10 +107,11 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 	append(&vk_enabled_device_extensions, "VK_EXT_extended_dynamic_state2")
 	append(&vk_enabled_device_extensions, "VK_KHR_swapchain")
 
-	has_unified_image_layouts := vk_device_has_extension(device_info, "VK_KHR_unified_image_layouts")
-	if has_unified_image_layouts {
-		append(&vk_enabled_device_extensions, "VK_KHR_unified_image_layouts")
-	}
+	has_unified_image_layouts := false
+	// has_unified_image_layouts := vk_device_has_extension(device_info, "VK_KHR_unified_image_layouts")
+	// if has_unified_image_layouts {
+	// 	append(&vk_enabled_device_extensions, "VK_KHR_unified_image_layouts")
+	// }
 
 	queue_descriptors: []vk.DeviceQueueCreateInfo
 
@@ -143,6 +146,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 			shaderStorageImageArrayDynamicIndexing	= true,
 			shaderStorageImageReadWithoutFormat	= true,
 			shaderStorageImageWriteWithoutFormat	= true,
+			shaderInt16				= true,
 		},
 	}
 	device_features_11 := vk.PhysicalDeviceVulkan11Features {
@@ -161,6 +165,7 @@ vk_select_device :: proc(device: Device_Id) -> Result {
 		descriptorBindingUpdateUnusedWhilePending	= true,
 		shaderStorageImageArrayNonUniformIndexing	= true,
 		shaderSampledImageArrayNonUniformIndexing	= true,
+		shaderInt8					= true,
 	}
 	vk_link(&device_features_11, &device_features_12)
 	dynamic_rendering_features := vk.PhysicalDeviceDynamicRenderingFeaturesKHR {
@@ -315,6 +320,18 @@ vk_setup_descriptor_pool :: proc() -> Result {
 			descriptorCount		= MAX_TEXTURES_PER_SET,
 			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
 		},
+		.Texture_2d_Multisampled_Image = {
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Multisampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= MAX_TEXTURES_PER_SET,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
+		.Texture_2d_Array_Multisampled_Image = {
+			binding			= cast(u32)vk_Descriptor_Binding.Texture_2d_Array_Multisampled_Image,
+			descriptorType		= .SAMPLED_IMAGE,
+			descriptorCount		= MAX_TEXTURES_PER_SET,
+			stageFlags		= { .VERTEX, .FRAGMENT, .COMPUTE },
+		},
 		.Texture_1d_Storage_Image = {
 			binding			= cast(u32)vk_Descriptor_Binding.Texture_1d_Storage_Image,
 			descriptorType		= .STORAGE_IMAGE,
@@ -341,17 +358,19 @@ vk_setup_descriptor_pool :: proc() -> Result {
 		},
 	}
 	binding_flags := [vk_Descriptor_Binding]vk.DescriptorBindingFlags {
-		.Sampler			= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_1d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_1d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_2d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_2d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_2d_Array_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_2d_Array_Storage_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_Cube_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_Cube_Array_Sampled_Image = { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_3d_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
-		.Texture_3d_Storage_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Sampler				= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_1d_Sampled_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_1d_Storage_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Sampled_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Storage_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Array_Sampled_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Array_Storage_Image 	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Multisampled_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_2d_Array_Multisampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_Cube_Sampled_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_Cube_Array_Sampled_Image	= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_3d_Sampled_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
+		.Texture_3d_Storage_Image		= { .PARTIALLY_BOUND, .UPDATE_AFTER_BIND },
 	}
 	descriptor_set_flags_info := vk.DescriptorSetLayoutBindingFlagsCreateInfo {
 		sType		= .DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
@@ -563,6 +582,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 		vk_info.features.features.shaderStorageImageArrayDynamicIndexing == true &&
 		vk_info.features.features.shaderStorageImageReadWithoutFormat == true &&
 		vk_info.features.features.shaderStorageImageWriteWithoutFormat == true &&
+		vk_info.features.features.shaderInt16 == true &&
 		vk_info.features_11.shaderDrawParameters == true &&
 		vk_info.features_12.timelineSemaphore == true &&
 		vk_info.features_12.bufferDeviceAddress == true &&
@@ -573,6 +593,7 @@ vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) -> 
 		vk_info.features_12.descriptorBindingUpdateUnusedWhilePending == true &&
 		vk_info.features_12.shaderSampledImageArrayNonUniformIndexing == true &&
 		vk_info.features_12.shaderStorageImageArrayNonUniformIndexing == true &&
+		vk_info.features_12.shaderInt8 == true &&
 		vk_info.synchronization2_features.synchronization2 == true &&
 		vk_info.dynamic_rendering_features.dynamicRendering == true &&
 		vk_info.has_default_queue_family &&

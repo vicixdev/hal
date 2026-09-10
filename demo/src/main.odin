@@ -3,6 +3,7 @@ package main
 import ui "shared:clay"
 import "core:time"
 import "core:slice"
+import "core:fmt"
 import "core:log"
 import "core:mem"
 import "core:strings"
@@ -256,7 +257,7 @@ setup :: proc() {
 	}
 
 	surface_descriptor := gfx.Surface_Descriptor {
-		type			= .V_Sync,
+		type			= .Immediate,
 		dimensions		= window_state.dimensions,
 		frames_in_flight	= 3,
 		target			= target,
@@ -287,7 +288,9 @@ fini :: proc() {
 prepare_stuff_for_window_size :: proc() -> gfx.Result {
 	if depth_buffer != {} {
 		gfx.wait_idle(.Default)
-		gfx.wait_idle(.Transfer)
+		if gfx._device_info.properties.transfer_queue {
+			gfx.wait_idle(.Transfer)
+		}
 		gfx.destroy_texture(depth_buffer)
 	}
 	gfx.arena_free_all(&framebuffers_memory)
@@ -326,7 +329,7 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 	camera.near	= 0.01
 	camera.far	= 100.0
 
-	ui_resize_screen(window_state.dimensions)
+	ui_resize_screen(window_state.dimensions) or_return
 
 	return nil
 }
@@ -530,7 +533,7 @@ app :: proc() -> Result {
 	frame_semaphore = gfx.create_semaphore(.Cpu_Waitable) or_return
 
 	gfx.create_arena	(&default_memory,	.Default, 256	* mem.Megabyte) or_return
-	gfx.create_arena	(&framebuffers_memory,	.Private, 256	* mem.Megabyte) or_return
+	gfx.create_arena	(&framebuffers_memory,	.Private, 512	* mem.Megabyte) or_return
 	gfx.create_arena	(&private_memory,	.Private, 256	* mem.Megabyte) or_return
 	gfx.create_scratch	(&staging_memory,	.Staging, 32	* mem.Megabyte) or_return
 	gfx.create_scratch	(&frame_memory,		.Default, 32	* mem.Megabyte) or_return
@@ -700,8 +703,6 @@ app :: proc() -> Result {
 	}
 	blit_pipeline = gfx.create_render_pipeline(blit_pipeline_descriptor) or_return
 
-	setup_text() or_return
-
 	grass_texture, grass_view = create_texture("./res/textures/Grass.png") or_return
 	setup_skybox({
 		"./res/textures/skybox_positive_x_small.png",
@@ -717,7 +718,7 @@ app :: proc() -> Result {
 	// gfx.set_texture_set(resource_set, .D2, { grass_view, ui_frame_buffer_view, font_view }) or_return
 	gfx.set_texture_set(resource_set, .D2, { grass_view, grass_view }) or_return
 	gfx.set_texture_set(resource_set, .Cube, { skybox_view }) or_return
-	gfx.set_sampler_set(resource_set, { linear_sampler, nearest_sampler, text_sampler }) or_return
+	gfx.set_sampler_set(resource_set, { linear_sampler, nearest_sampler }) or_return
 	// gfx.set_sampler_set(resource_set, { nearest_sampler }) or_return
 
 	prev_time := time.tick_now()
@@ -727,10 +728,10 @@ app :: proc() -> Result {
 
 	for !should_quit {
 		frame_count += 1
-		// if frame_count > 3 {
-		// 	gfx.wait_semaphore(frame_semaphore, frame_count - 3)
-		// }
-		gfx.wait_semaphore(frame_semaphore, frame_count - 1)
+		if frame_count > 3 {
+			gfx.wait_semaphore(frame_semaphore, frame_count - 3)
+		}
+		// gfx.wait_semaphore(frame_semaphore, frame_count - 1)
 
 		process_events()
 		// tl_begin_frame()
@@ -832,74 +833,7 @@ app :: proc() -> Result {
 		rd_cycle_resource_manager(rd_resource_manager())
 		rd_apply_resource_manager_updates(rd_resource_manager())
 
-		ui_poll_inputs()
-		if ui.UI({
-			layout	= {
-				sizing = {
-					ui.SizingFit({}),
-					ui.SizingFit({}),
-				},
-				padding	= {
-					15, 15, 15, 15,
-				},
-				childAlignment	= {
-					x	= .Left,
-					y	= .Top,
-				},
-				layoutDirection	= .TopToBottom,
-				childGap	= 50,
-			},
-			border		= {
-				// color = { 1.0, 0.0, 0.0, 1.0 },
-				// width = { 10, 10, 10, 10, 10 },
-			},
-			cornerRadius	= {
-				20, 20, 20, 20,
-			},
-			backgroundColor	= { 255.0, 0.0, 0.0, 25 },
-			
-		}) {
-			if ui.UI() {
-				ui.Text("日本語の表記体系", &{
-					wrapMode	= .Newlines,
-					textColor	= { 255, 255, 255, 255 },
-					fontSize	= 20,
-				})
-			}
-			if ui.UI() {
-				ui.Text("Damn I love spaces !", &{
-					wrapMode	= .Words,
-					fontSize	= 20,
-					textColor	= { 255, 255, 255, 255 },
-				})
-			}
-		}
-		if ui.UI({
-			layout = {
-				sizing	= {
-					width	= ui.SizingFit({}),
-					height	= ui.SizingFit({}),
-				},
-				padding = { 1, 1, 0, 1 },
-			},
-			backgroundColor	= { 20, 20, 20, 90 },
-			cornerRadius	= { 0.0, 5.0, 0.0, 0.0 },
-			floating	= {
-				zIndex		= -256,
-				attachment	= {
-					element	= .LeftBottom,
-					parent	= .LeftBottom,
-				},
-				attachTo	= .Root,
-			},
-		}) {
-			ui.Text("vicixdev_gfx demo", &{
-				wrapMode	= .Newlines,
-				textColor	= { 255, 255, 255, 255 },
-				fontSize	= 20,
-			})
-		}
-		ui_render({ ui_semaphore, frame_count })
+		do_ui(delta_time, { ui_semaphore, frame_count }) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default, { ui_semaphore, frame_count }) or_return
 
@@ -997,131 +931,125 @@ main :: proc() {
 	if res != nil do log.fatalf("Example failed with error %v.", res)
 }
 
-
-Text_Vertex :: struct #packed {
-	position:	[2]f32,
-	uv:		[2]u16,
-}
-Glyph_Draw_Data :: struct #packed {
-	vertices:	[4]Text_Vertex,
-	color:		[4]u8,
-	texture:	u16,
-}
-Text_Pipeline_Arguments :: struct {
-	glyphs:		uintptr, // [^]Glyph_Draw_Data
-	screen_size:	[2]u16,
-	sampler:	u16,
-}
-
-text_pipeline:		gfx.Pipeline
-text_blend_state:	gfx.Blend_State
-text_sampler:		gfx.Sampler
-text_sampler_index:	int
-
-setup_text :: proc() -> Result {
-	bytecode := gfx.load_bytecode_of("sdf", "build", context.temp_allocator) or_return
-
-	blend_desc := gfx.Blend_Descriptor {
-		color_op			= .Add,
-		source_color_factor		= .Source_Alpha,
-		source_alpha_factor		= .One,
-		destination_color_factor	= .One_Minus_Source_Alpha,
-		destination_alpha_factor	= .One_Minus_Source_Alpha,
-	}
-	text_blend_state = gfx.create_blend_state(blend_desc) or_return
-
-	pipeline_desc := gfx.Render_Pipeline_Descriptor {
-		vertex_stage	= {
-			bytecode	= bytecode,
-			entrypoint	= "vertex_main",
-		},
-		fragment_stage	= {
-			bytecode	= bytecode,
-			entrypoint	= "fragment_main",
-		},
-		topology	= .Triangle_Strip,
-		cull		= .Counter_Clockwise,
-		sample_count	= 4,
-		color_formats	= { surface_format },
-		depth_format	= depth_format,
-		blend_state	= text_blend_state,
-	}
-	text_pipeline = gfx.create_render_pipeline(pipeline_desc) or_return
-
-	sampler_desc := gfx.Sampler_Descriptor {
-		min_filter	= .Linear,
-		mag_filter	= .Linear,
-		address_u	= .Clamp_To_Edge,
-		address_v	= .Clamp_To_Edge,
-		address_w	= .Clamp_To_Edge,
-	}
-	text_sampler = gfx.create_sampler(sampler_desc) or_return
-	text_sampler_index = rd_acquire_resource_id(rd_resource_manager(), text_sampler)
-
-	return nil
-}
-draw_text :: proc(command_buffer: gfx.Command_Buffer, font: tx_Font, text: string, position: [2]int, color: [4]u8, screen_size: [2]int) -> Result {
-	gpu_glyphs := make([dynamic]uintptr)
-	defer delete(gpu_glyphs)
-	
-	iter := tx_make_glyph_iterator(font, text, { cast(f32)position.x, cast(f32)position.y }) or_return
-	for glyph_info, cursor in tx_iterate_glyph(&iter) {
-
-		x := cursor.x + glyph_info.offset.x
-		y := cursor.y + glyph_info.offset.y
-		w := cast(f32)glyph_info.dimensions.x
-		h := cast(f32)glyph_info.dimensions.y
-
-		u0 := cast(u16)glyph_info.atlas_position.x
-		u1 := cast(u16)glyph_info.atlas_position.x + cast(u16)glyph_info.atlas_size.x
-		v0 := cast(u16)glyph_info.atlas_position.y
-		v1 := cast(u16)glyph_info.atlas_position.y + cast(u16)glyph_info.atlas_size.y
-
-		draw_data := gfx.scratch_alloc(&frame_memory, Glyph_Draw_Data) or_return
-		draw_data^ = {
-			vertices	= {
-				{
-					{ x, y },
-					{ u0, v0 },
-				},
-				{
-					{ x + w, y },
-					{ u1, v0 },
-				},
-				{
-					{ x, y + h },
-					{ u0, v1 },
-				},
-				{
-					{ x + w, y + h },
-					{ u1, v1 },
-				},
+do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
+	if ui.UI({
+		id	= ui.ID("Stats_Widget"),
+		layout	= {
+			sizing = {
+				ui.SizingFit({ min = 100.0 }),
+				ui.SizingFit({}),
 			},
-			color		= color,
-			texture		= cast(u16)glyph_info.atlas_resource_index,
-		}
-
-		append(&gpu_glyphs, gfx.gpu_address_of(draw_data) or_return)
-	}
-
-	glyph_count := len(gpu_glyphs)
-
-	glyphs_buffer := gfx.scratch_alloc(&frame_memory, []uintptr, glyph_count) or_return
-	copy(glyphs_buffer, gpu_glyphs[:])
-
-	arguments := gfx.scratch_alloc(&frame_memory, Text_Pipeline_Arguments) or_return
-	arguments^ = {
-		glyphs		= gfx.gpu_address_of(raw_data(glyphs_buffer)) or_return,
-		screen_size	= {
-			cast(u16)screen_size.x, cast(u16)screen_size.y,
+			padding	= ui.PaddingAll(5),
+			childAlignment	= {
+				x	= .Left,
+				y	= .Top,
+			},
+			layoutDirection	= .TopToBottom,
+			childGap	= 5,
 		},
-		sampler		= cast(u16)text_sampler_index,
+		cornerRadius	= {
+			0, 0, 0, 10,
+		},
+		backgroundColor	= { 20, 20, 20, 90 },
+		floating = {
+			zIndex		= -256,
+			attachTo	= .Root,
+			attachment	= {
+				element	= .LeftTop,
+				parent	= .LeftTop,
+			},
+			pointerCaptureMode = .Passthrough,
+		},
+	}) {
+		ui.Text(gfx.TARGET_API_STRING, &{
+			textColor	= { 25, 255, 25, 255 } when gfx.TARGET_API == .Metal_3 else { 255, 25, 25, 255 },
+			fontSize	= 20,
+		})
+
+		if ui.UI({
+			id	= ui.ID_LOCAL("Grid"),
+			layout	= {
+				sizing = {
+					ui.SizingGrow({}),
+					ui.SizingGrow({}),
+				},
+				layoutDirection	= .LeftToRight,
+			},
+		}) {
+			if ui.UI({
+				id	= ui.ID_LOCAL("Labels"),
+				layout	= {
+					sizing = {
+						ui.SizingPercent(0.30),
+						ui.SizingGrow({}),
+					},
+					layoutDirection	= .TopToBottom,
+				},
+			}) {
+				ui.Text("FPS:", &{
+					textColor	= { 255, 255, 255, 255 },
+					fontSize	= 20,
+				})
+				ui.Text("MS:", &{
+					textColor	= { 255, 255, 255, 255 },
+					fontSize	= 20,
+				})
+			
+			}
+			if ui.UI({
+				id	= ui.ID_LOCAL("Stats"),
+				layout	= {
+					sizing = {
+						ui.SizingGrow({}),
+						ui.SizingGrow({}),
+					},
+					layoutDirection	= .TopToBottom,
+					childAlignment	= {
+						.Right,
+						.Top,
+					},
+				},
+			}) {
+				ui.TextDynamic(fmt.tprintf("%.2f", 1.0/delta_time), &{
+					textColor	= { 255, 255, 255, 255 },
+					fontSize	= 20,
+				})
+				ui.TextDynamic(fmt.tprintf("%.2f", delta_time * 1000.0), &{
+					textColor	= { 255, 255, 255, 255 },
+					fontSize	= 20,
+				})
+			}
+		}
 	}
 
-	gfx.use_depth_stencil_state(command_buffer, depth_disabled_stencil) or_return
-	gfx.use_resources(command_buffer, rd_current_resource_set_of(rd_resource_manager())) or_return
-	gfx.draw(command_buffer, text_pipeline, arguments, 4, glyph_count) or_return
+	if ui.UI({
+		id		= ui.ID("Demo_Widget"),
+		layout		= {
+			sizing	= {
+				width	= ui.SizingFit({}),
+				height	= ui.SizingFit({}),
+			},
+			padding = { 3, 3, 0, 1 },
+		},
+		backgroundColor	= { 20, 20, 20, 90 },
+		cornerRadius	= { 0.0, 5.0, 0.0, 0.0 },
+		floating	= {
+			zIndex		= -256,
+			attachment	= {
+				element	= .LeftBottom,
+				parent	= .LeftBottom,
+			},
+			attachTo	= .Root,
+		},
+	}) {
+		ui.Text("vicixdev_gfx demo", &{
+			wrapMode	= .Newlines,
+			textColor	= { 255, 255, 255, 255 },
+			fontSize	= 20,
+		})
+	}
+	
+	ui_render(..on_done) or_return
 
 	return nil
 }
-

@@ -17,9 +17,11 @@ Texture_Type :: enum {
 View_Type :: enum {
 	D1,
 	D2,
+	D2_Multisample,
 	D3,
 	Cube,
 	D2_Array,
+	D2_Multisample_Array,
 	Cube_Array,
 }
 
@@ -661,14 +663,16 @@ _check_view_descriptor :: proc(
 		_impl(texture_descriptor.type == .D2_Array,
 			descriptor.type == .D2 ||
 			descriptor.type == .D2_Array ||
+			descriptor.type == .D2_Multisample ||
+			descriptor.type == .D2_Multisample_Array ||
 			descriptor.type == .Cube ||
 			descriptor.type == .Cube_Array,
 		),
 		.Invalid_Descriptor,
 		.Error,
 		"Invalid view type",
-		"If the texture type is `.D2`, then the view must be of type `.D2`, `.D2_Array`, `.Cube` or " +
-		"`.Cube_Array`. (%v found).",
+		"If the texture type is `.D2`, then the view must be of type `.D2`, `.D2_Array`, `.D2_Multisample`, " +
+		"`.D2_Multisample_Array` `.Cube` or `.Cube_Array`. (%v found).",
 		descriptor.type,
 		location=location,
 	) or_return
@@ -678,6 +682,19 @@ _check_view_descriptor :: proc(
 		.Error,
 		"Invalid view type",
 		"If the texture type is `.D3`, then the view must also be of type `.D3`. (%v found).",
+		descriptor.type,
+		location=location,
+	) or_return
+	_check_condition(
+		_impl(
+			texture_descriptor.sample_count > 1,
+			descriptor.type == .D2_Multisample_Array || descriptor.type == .D2_Multisample,
+		),
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid view type",
+		"If the texture has multiple samples, the view must be of type `.D2_Multisample` or " +
+		"`.D2_Multisample_Array`. (%v found).",
 		descriptor.type,
 		location=location,
 	) or_return

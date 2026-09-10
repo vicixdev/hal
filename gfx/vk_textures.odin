@@ -259,12 +259,14 @@ vk_TEXTURE_TYPE_TO_VK := [Texture_Type]vk.ImageType {
 
 @(rodata)
 vk_VIEW_TYPE_TO_VK := [View_Type]vk.ImageViewType {
-	.D1		= .D1,
-	.D2		= .D2,
-	.D3		= .D3,
-	.Cube		= .CUBE,
-	.D2_Array	= .D2_ARRAY,
-	.Cube_Array	= .CUBE_ARRAY,
+	.D1			= .D1,
+	.D2			= .D2,
+	.D3			= .D3,
+	.Cube			= .CUBE,
+	.D2_Array		= .D2_ARRAY,
+	.Cube_Array		= .CUBE_ARRAY,
+	.D2_Multisample		= .D2,
+	.D2_Multisample_Array	= .D2_ARRAY,
 }
 
 @(rodata)
