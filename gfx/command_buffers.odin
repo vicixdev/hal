@@ -71,7 +71,6 @@ _Command_Buffer_Metadata :: struct {
 	render_pass_depth_format:		Pixel_Format,
 	render_pass_stencil_format:		Pixel_Format,
 
-	used_surface_views:			[dynamic]View,
 	used_surface_semaphores:		[dynamic]Semaphore,
 
 	using platform:	struct #raw_union {
@@ -274,7 +273,6 @@ begin_command_encoding :: proc(
 	metadata.scissor		= {}
 	metadata.is_encoding_render_pass = false
 	metadata.synchronization_group	= {}
-	metadata.used_surface_views	= make([dynamic]View, metadata.allocator) or_return
 	metadata.used_surface_semaphores = make([dynamic]Semaphore, metadata.allocator) or_return
 	metadata.commands		= make([dynamic]_Command, metadata.allocator) or_return
 
@@ -871,8 +869,6 @@ begin_render_pass :: proc(
 			view_format		= surface_metadata.format
 
 			metadata.render_pass_color_formats[i] = surface_metadata.format
-
-			append(&metadata.used_surface_views, color_target.view) or_return
 		}
 
 		check_attachment_dimensions_and_sample_count(
@@ -1350,9 +1346,6 @@ submit :: proc(
 
 		for semaphore in command_buffer_metadata.used_surface_semaphores {
 			destroy_semaphore(semaphore)
-		}
-		for view in command_buffer_metadata.used_surface_views {
-			_destroy_surface_view(view)
 		}
 
 		_remove_command_buffer(command_buffer)

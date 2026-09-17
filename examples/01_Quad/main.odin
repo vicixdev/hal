@@ -5,7 +5,7 @@ import "core:log"
 import "core:mem"
 import "core:debug/trace"
 import "vendor:glfw"
-import "../../src/gfx"
+import "../../gfx"
 
 window:		glfw.WindowHandle
 surface:	gfx.Surface
@@ -89,7 +89,7 @@ app :: proc() -> gfx.Result {
 		vertices:	uintptr,
 	}
 
-	frame_semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+	frame_semaphore := gfx.create_semaphore(.Cpu) or_return
 	framecount: int
 
 	default_memory: gfx.Arena
@@ -128,9 +128,10 @@ app :: proc() -> gfx.Result {
 		}
 
 		surface_view: gfx.View
+		surface_semaphore: gfx.Semaphore
 		for {
 			surface_view_res: gfx.Result
-			surface_view, surface_view_res = gfx.acquire_surface_view(surface)
+			surface_view, surface_semaphore, surface_view_res = gfx.acquire_surface_view(surface)
 			if surface_view_res == .Surface_Unavailable {
 				continue
 			} else if surface_view_res == nil {
@@ -158,11 +159,19 @@ app :: proc() -> gfx.Result {
 			arguments^ = Arguments {
 				vertices = gpu_vertices,
 			}
-			// TODO: Check for renderpass attachment and pipeline pixel formats compatibility
 			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6)
 		gfx.end_render_pass(command_buffer)
 
-		gfx.submit(.Default, { command_buffer }, { frame_semaphore, framecount }) or_return
+		gfx.synchronize(command_buffer, {
+			wait = {
+				{ surface_semaphore, 0, {} },
+			},
+			signal = {
+				{ frame_semaphore, framecount, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
+
 		gfx.present(.Default, surface_view, { frame_semaphore, framecount }) or_return
 	}
 
