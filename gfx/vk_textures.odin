@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import "core:fmt"
@@ -13,7 +19,6 @@ vk_View_Metadata	:: struct {
 
 	// If referencing a surface.
 	swapchain_image_index:	u32,
-	swapchain_image_semaphore:	vk.Semaphore,
 }
 
 vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) {

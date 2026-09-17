@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import "base:runtime"
@@ -14,21 +20,18 @@ Command_Buffer :: bit_field u64 {
 Semaphore_Wait :: struct {
 	semaphore:	Semaphore,
 	value:		int,
+	before:		Stages,
 }
 
 Semaphore_Signal :: struct {
 	semaphore:	Semaphore,
 	value:		int,
-}
-
-Render_Pass_Wait :: struct {
-	fences:		[]Fence,
-	before:		Stages,
-}
-
-Render_Pass_Signal :: struct {
-	fences:		[]Fence,
 	after:		Stages,
+}
+
+Synchronization_Group :: struct {
+	wait:	[]Semaphore_Wait,
+	signal:	[]Semaphore_Signal,
 }
 
 Index_Type :: enum {
@@ -47,6 +50,8 @@ _Command_Buffer_Metadata :: struct {
 	arena:					vmem.Arena,
 	allocator:				runtime.Allocator,
 
+	// TODO: Make the command buffer be just a "list of commands". Don't associate it to the queue until the submit
+	//	operation.
 	queue:					Queue,
 	in_use:					bool,
 
@@ -54,16 +59,20 @@ _Command_Buffer_Metadata :: struct {
 	depth_stencil_state:			Depth_Stencil_State,
 	blend_constant:				[4]f64,
 	scissor:				Scissor,
-	semaphore_waits:			[]Semaphore_Wait,
-	commands:				[dynamic]_Command,
+	synchronization_group:			Synchronization_Group,
 
-	can_encode_signals:			bool,
+	commands:				[dynamic]_Command,
+	last_command:				[Stage]int, // index of: commands
+
 	is_encoding_render_pass:		bool,
 	render_pass_attachment_sample_count:	int,
 
 	render_pass_color_formats:		[]Pixel_Format,
 	render_pass_depth_format:		Pixel_Format,
 	render_pass_stencil_format:		Pixel_Format,
+
+	used_surface_views:			[dynamic]View,
+	used_surface_semaphores:		[dynamic]Semaphore,
 
 	using platform:	struct #raw_union {
 		vk:	vk_Command_Buffer_Metadata,
@@ -79,8 +88,6 @@ _Command :: union {
 	_Command_Generate_Mipmaps,
 	_Command_Dispatch,
 	_Command_Barrier,
-	_Command_Signal,
-	_Command_Wait,
 	_Command_Begin_Render_Pass,
 	_Command_End_Render_Pass,
 	_Command_Draw,
@@ -128,14 +135,6 @@ _Command_Dispatch :: struct {
 	group_count:	[3]int,
 }
 
-_Command_Signal :: struct {
-	signals:	[]Fence,
-}
-
-_Command_Wait :: struct {
-	waits:		[]Fence,
-}
-
 _Command_Signal_Semaphore :: struct {
 	semaphore:	Semaphore,
 	value:		int,
@@ -143,9 +142,6 @@ _Command_Signal_Semaphore :: struct {
 
 _Command_Begin_Render_Pass :: struct {
 	using desc:			Render_Pass_Descriptor,
-
-	signals:			[]Render_Pass_Signal,
-	waits:				[]Render_Pass_Wait,
 
 	attachment_dimensions:		[2]int,
 	attachment_sample_count:	int,
@@ -244,18 +240,12 @@ _destroy_command_buffer :: proc(
 }
 
 begin_command_encoding :: proc(
-	queue:		Queue,
-	waits:		..Semaphore_Wait,
-	location	:= #caller_location,
+	queue:			Queue,
+	location		:= #caller_location,
 ) -> (command_buffer: Command_Buffer, res: Result) {
 
 	_check_queue_validity(queue, location)
 	
-	for wait in waits {
-		_, semaphore_res := _metadata_of(wait.semaphore)
-		_check_semaphore_handle(semaphore_res, wait.semaphore, location) or_return
-	}
-
 	handle, metadata, add_res := _add_command_buffer(queue)
 	_check_result(
 		add_res,
@@ -269,21 +259,55 @@ begin_command_encoding :: proc(
 
 	vmem.arena_free_all(&metadata.arena)
 
+	metadata.last_command		= {
+		.Transfer		= -1,
+		.Compute		= -1,
+		.Vertex			= -1,
+		.Fragment		= -1,
+		.Color_Attachment	= -1,
+		.Depth_Stencil_Attachment = -1,
+	}
+
 	metadata.resource_set		= _default_resource_set
 	metadata.depth_stencil_state	= _default_depth_stencil_state
 	metadata.blend_constant		= 0
 	metadata.scissor		= {}
-	metadata.can_encode_signals	= false
 	metadata.is_encoding_render_pass = false
-	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
-
-	if len(waits) > 0 {
-		metadata.semaphore_waits = slice.clone(waits, metadata.allocator) or_return
-	} else {
-		metadata.semaphore_waits = {}
-	}
+	metadata.synchronization_group	= {}
+	metadata.used_surface_views	= make([dynamic]View, metadata.allocator) or_return
+	metadata.used_surface_semaphores = make([dynamic]Semaphore, metadata.allocator) or_return
+	metadata.commands		= make([dynamic]_Command, metadata.allocator) or_return
 
 	return handle, nil
+}
+
+synchronize :: proc(
+	command_buffer: Command_Buffer,
+	synchronization_group: Synchronization_Group,
+	location := #caller_location,
+) -> (res: Result) {
+
+	metadata, metadata_res := _metadata_of(command_buffer)
+	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
+
+	synchronization := _clone_and_normalize_synchronization_group(synchronization_group, metadata.allocator)
+
+	for wait in synchronization.wait {
+		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
+		_check_semaphore_handle(semaphore_res, wait.semaphore, location) or_return
+
+		if semaphore_metadata.type == .Surface {
+			append(&metadata.used_surface_semaphores, wait.semaphore) or_return
+		}
+	}
+	for signal in synchronization.signal {
+		_, semaphore_res := _metadata_of(signal.semaphore)
+		_check_semaphore_handle(semaphore_res, signal.semaphore, location) or_return
+	}
+
+	metadata.synchronization_group	= _clone_syncronization_group(synchronization_group, metadata.allocator)
+
+	return nil
 }
 
 use_resources :: proc(
@@ -416,7 +440,7 @@ mem_copy :: proc(
 	}
 	append(&metadata.commands, command)
 
-	metadata.can_encode_signals = true
+	_set_last_command_of(metadata, .Transfer)
 
 	return nil
 }
@@ -484,7 +508,7 @@ copy_texture_to_texture :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
-	metadata.can_encode_signals = true
+	_set_last_command_of(metadata, .Transfer)
 
 	return nil
 }
@@ -546,6 +570,8 @@ copy_buffer_to_texture :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
+	_set_last_command_of(metadata, .Transfer)
+
 	return nil
 }
 
@@ -606,6 +632,8 @@ copy_texture_to_buffer :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
+	_set_last_command_of(metadata, .Transfer)
+
 	return nil
 }
 
@@ -623,6 +651,9 @@ generate_mipmaps_for :: proc(command_buffer: Command_Buffer, texture: Texture, l
 		texture	= texture,
 	}
 	append(&metadata.commands, command) or_return
+
+	// NOTE: Both in Metal and in Vulkan, the generate mipmaps command is done via blit operations, thus .Transfer.
+	_set_last_command_of(metadata, .Transfer)
 
 	return nil
 }
@@ -665,7 +696,7 @@ dispatch :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
-	metadata.can_encode_signals = true
+	_set_last_command_of(metadata, .Compute)
 
 	return nil
 }
@@ -699,71 +730,12 @@ barrier	:: proc(
 	}
 	append(&metadata.commands, command) or_return
 
-	metadata.can_encode_signals = false
-
-	return nil
-}
-
-signal :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #caller_location) -> Result {
-	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
-
-	_check_not_in_render_pass(metadata, location) or_return
-
-	_check_condition(
-		metadata.can_encode_signals,
-		.Invalid_Arguments,
-		.Error,
-		"Invalid signal operation",
-		"A signal operation can be issued only after other commands have been encoded in the command buffer " +
-		"after the last signal, wait and barrier. A signal to fences %v on command buffer %v has been issued " +
-		"while no commands are present after the last signal, wait or barrier.",
-		fences,
-		command_buffer,
-		location=location,
-	) or_return
-
-	for fence in fences {
-		_, fence_res := _metadata_of(fence)
-		_check_fence_handle(fence_res, fence, location) or_return
-	}
-
-	command := _Command_Signal {
-		signals = slice.clone(fences, metadata.allocator) or_return,
-	}
-	append(&metadata.commands, command) or_return
-
-	metadata.can_encode_signals = false
-
-	return nil
-}
-
-wait :: proc(command_buffer: Command_Buffer, fences: ..Fence, location := #caller_location) -> Result {
-	metadata, metadata_res := _metadata_of(command_buffer)
-	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
-
-	_check_not_in_render_pass(metadata, location) or_return
-
-	for fence in fences {
-		_, fence_res := _metadata_of(fence)
-		_check_fence_handle(fence_res, fence, location) or_return
-	}
-
-	command := _Command_Wait {
-		waits = slice.clone(fences, metadata.allocator) or_return,
-	}
-	append(&metadata.commands, command) or_return
-
-	metadata.can_encode_signals = false
-
 	return nil
 }
 
 begin_render_pass :: proc(
 	command_buffer:	Command_Buffer,
 	descriptor:	Render_Pass_Descriptor,
-	signals:	[]Render_Pass_Signal	= {},
-	waits:		[]Render_Pass_Wait	= {},
 	location :=	#caller_location,
 ) -> Result {
 
@@ -899,6 +871,8 @@ begin_render_pass :: proc(
 			view_format		= surface_metadata.format
 
 			metadata.render_pass_color_formats[i] = surface_metadata.format
+
+			append(&metadata.used_surface_views, color_target.view) or_return
 		}
 
 		check_attachment_dimensions_and_sample_count(
@@ -1190,14 +1164,11 @@ begin_render_pass :: proc(
 		depth_attachment	= descriptor.depth_attachment,
 		stencil_attachment	= descriptor.stencil_attachment,
 		color_attachments	= slice.clone(descriptor.color_attachments, metadata.allocator) or_return,
-		signals			= slice.clone(signals, metadata.allocator) or_return,
-		waits			= slice.clone(waits, metadata.allocator) or_return,
 		attachment_dimensions	= attachment_dimensions.xy,
 		attachment_sample_count	= attachment_samples,
 	}
 	append(&metadata.commands, command) or_return
 
-	metadata.can_encode_signals			= false
 	metadata.is_encoding_render_pass		= true
 	metadata.render_pass_attachment_sample_count	= attachment_samples
 
@@ -1211,6 +1182,17 @@ end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_loca
 
 	command := _Command_End_Render_Pass {}
 	append(&metadata.commands, command) or_return
+
+	// NOTE: This is actually not strictly correct, but since the last commands are only used by Metal and signal
+	//	operations are always applied at the end of the current encoder, this is fine.
+	_set_last_command_of(metadata, .Vertex)
+	_set_last_command_of(metadata, .Fragment)
+	if len(metadata.render_pass_color_formats) != 0 {
+		_set_last_command_of(metadata, .Color_Attachment)
+	}
+	if metadata.render_pass_depth_format != .None || metadata.render_pass_stencil_format != .None {
+		_set_last_command_of(metadata, .Depth_Stencil_Attachment)
+	}
 
 	metadata.is_encoding_render_pass = false
 
@@ -1318,8 +1300,7 @@ draw_indexed :: proc(
 
 submit :: proc(
 	queue:			Queue,
-	command_buffers:	[]Command_Buffer,
-	signals:		..Semaphore_Signal,
+	command_buffers:	..Command_Buffer,
 	location :=		#caller_location,
 ) -> (res: Result) {
 	
@@ -1354,94 +1335,30 @@ submit :: proc(
 		) or_return
 	}
 
-	for signal in signals {
-		_, semaphore_res := _metadata_of(signal.semaphore)
-		_check_semaphore_handle(semaphore_res, signal.semaphore, location) or_return
-	}
-
-	_check_fence_correctness(command_buffers, location) or_return
-
 	if sync.guard(&queue_metadata.emission_mutex) {
 		when TARGET_API == .Vulkan {
-			res = vk_submit(queue_metadata, command_buffers, signals)
+			res = vk_submit(queue_metadata, command_buffers)
 		} else {
-			res = m3_submit(queue_metadata, command_buffers, signals)
+			res = m3_submit(queue_metadata, command_buffers)
 		}
 	}
 
 	_check_generic_backend_error(res, location)
 	
 	for command_buffer in command_buffers {
+		command_buffer_metadata := _metadata_of(command_buffer) or_continue
+
+		for semaphore in command_buffer_metadata.used_surface_semaphores {
+			destroy_semaphore(semaphore)
+		}
+		for view in command_buffer_metadata.used_surface_views {
+			_destroy_surface_view(view)
+		}
+
 		_remove_command_buffer(command_buffer)
 	}
 
 	return res
-}
-
-_check_fence_correctness :: proc(command_buffers: []Command_Buffer, location: runtime.Source_Code_Location) -> Result {
-
-	signaled_fences := make(map[Fence]bool, _temp_allocator)
-	for command_buffer in command_buffers {
-		metadata, metadata_res := _metadata_of(command_buffer)
-		_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
-
-		for command in metadata.commands {
-			#partial switch v in command {
-			case _Command_Signal:
-				for fence in v.signals {
-					_, is_present := signaled_fences[fence]
-					_check_condition(
-						!is_present,
-						.Invalid_Argument,
-						.Error,
-						"Invalid fence signaling",
-						"In each submission, a fence can only be signaled once. Fence %v in " +
-						"command buffer %v was waited on before its " +
-						"signaling operation.",
-						command_buffer,
-						fence,
-						location=location,
-					) or_return
-
-					signaled_fences[fence] = false
-				}
-
-			case _Command_Wait:
-				for fence in v.waits {
-					_, is_present := signaled_fences[fence]
-					_check_condition(
-						is_present,
-						.Invalid_Argument,
-						.Error,
-						"Invalid command submission order",
-						"In each submission, the command buffer signaling fences must be submitted " +
-						"before the one consuming them. Please note that different command buffers " +
-						"working on the same set of fences must be submitted in the same call to " +
-						"`gfx::submit`. Fence %v in command buffer %v was waited on before its " +
-						"signaling operation.",
-						command_buffer,
-						fence,
-						location=location,
-					) or_return
-
-					signaled_fences[fence] = true
-				}
-			}
-		}
-	}
-
-	for fence, waited_on in signaled_fences {
-		_check_generic_condition(
-			waited_on,
-			.Warning,
-			"Fence signaled but not waited",
-			"The fence %v got signaled but never waited on.",
-			fence,
-			location=location,
-		)
-	}
-
-	return nil
 }
 
 _check_internal_emission_result :: proc(result: Result, location := #caller_location) -> (res: Result) {
@@ -1718,3 +1635,42 @@ _check_render_pipeline_congruency :: proc(
 	
 	return nil
 }
+
+_clone_and_normalize_synchronization_group :: proc(
+	group: Synchronization_Group,
+	allocator: runtime.Allocator,
+) -> (out: Synchronization_Group) {
+
+	out = _clone_syncronization_group(group, allocator)
+	for &signal in out.signal {
+		if signal.after == {} {
+			signal.after = { .Transfer, .Compute, .Vertex, .Fragment, .Color_Attachment, .Depth_Stencil_Attachment }
+		}
+	}
+	for &wait in out.wait {
+		if wait.before == {} {
+			wait.before = { .Transfer, .Compute, .Vertex, .Fragment, .Color_Attachment, .Depth_Stencil_Attachment }
+		}
+	}
+
+	return
+}
+
+_clone_syncronization_group :: proc(
+	group: Synchronization_Group,
+	allocator: runtime.Allocator,
+) -> (out: Synchronization_Group) {
+	
+	out.signal	= slice.clone(group.signal, allocator)
+	out.wait	= slice.clone(group.wait, allocator)
+
+	return
+}
+
+_set_last_command_of :: proc(
+	metadata:	^_Command_Buffer_Metadata,
+	stage:		Stage,
+) {
+	metadata.last_command[stage] = len(metadata.commands) - 1
+}
+

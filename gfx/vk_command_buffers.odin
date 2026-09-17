@@ -1,55 +1,31 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import vk "vendor:vulkan"
 
-vk_Fence_Signal :: struct {
-	fence:	Fence,
-	value:	int,
-	stages:	Stages,
-}
-
 vk_Command_Buffer_Metadata :: struct {
 	command_buffer:			vk.CommandBuffer,
-	command_buffer_valid:		bool,
 
 	bound_compute_pipeline:		Pipeline,
-	bound_render_pipeline:	Pipeline,
+	bound_render_pipeline:		Pipeline,
 	bound_resource_set:		Resource_Set,
 	bound_depth_stencil_state:	Depth_Stencil_State,
 	bound_blend_constant:		[4]f64,
 	bound_scissor:			Scissor,
 
-	is_first_command_buffer:	bool,
-
-	pending_waits:			[]Fence,
-	pending_render_pass_waits:	[]Render_Pass_Wait,
-	pending_render_pass_signals:	[]Render_Pass_Signal,
-	pending_surface_waits:		[dynamic]vk.Semaphore,
-
 	render_pass_surface_views:	[dynamic]View,
-
-	semaphore:			vk.Semaphore,
-	semaphore_value:		u64,
 }
 
 vk_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
-	semaphore_type_info := vk.SemaphoreTypeCreateInfo {
-		sType		= .SEMAPHORE_TYPE_CREATE_INFO,
-		semaphoreType	= .TIMELINE,
-		initialValue	= 0,
-	}
-	semaphore_info := vk.SemaphoreCreateInfo {
-		sType	= .SEMAPHORE_CREATE_INFO,
-		pNext	= &semaphore_type_info,
-	}
-	vk_call(vk.CreateSemaphore(vk_device, &semaphore_info, nil, &metadata.vk.semaphore)) or_return
-
 	return nil
 }
 
-vk_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {
-	vk.DestroySemaphore(vk_device, metadata.vk.semaphore, nil)
-}
+vk_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {}
 
 vk_emit_mem_copy :: proc(
 	metadata:	^_Command_Buffer_Metadata,
@@ -62,8 +38,6 @@ vk_emit_mem_copy :: proc(
 
 	destination_metadata, destination_res := _metadata_of(command.destination.buffer)
 	_check_internal_emission_result(destination_res) or_return
-
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	region := vk.BufferCopy {
 		srcOffset	= cast(vk.DeviceSize)command.source.offset,
@@ -91,8 +65,6 @@ vk_emit_copy_texture_to_texture :: proc(
 
 	destination_metadata, destination_res := _metadata_of(command.destination)
 	_check_internal_emission_result(destination_res) or_return
-
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	image_copy := vk.ImageCopy {
 		srcSubresource	= vk.ImageSubresourceLayers {
@@ -136,8 +108,6 @@ vk_emit_copy_buffer_to_texture :: proc(
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
 
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-	
 	region := vk.BufferImageCopy {
 		bufferOffset		= cast(vk.DeviceSize)command.source.offset,
 		bufferRowLength		= cast(u32)command.region.size.x,
@@ -175,8 +145,6 @@ vk_emit_copy_texture_to_buffer :: proc(
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
 
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-	
 	region := vk.BufferImageCopy {
 		bufferOffset		= cast(vk.DeviceSize)command.destination.offset,
 		bufferRowLength		= cast(u32)command.region.size.x,
@@ -211,8 +179,6 @@ vk_emit_generate_mipmaps :: proc(
 
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
-
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	dimensions := texture_metadata.dimensions
 	for i in 1..<texture_metadata.mip_count {
@@ -491,8 +457,6 @@ vk_emit_dispatch :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-
 	vk_use_resource_set(metadata, command.resource_set) or_return
 	vk_use_compute_pipeline(metadata, command.pipeline) or_return
 	vk.CmdPushConstants(
@@ -519,8 +483,6 @@ vk_emit_barrier :: proc(
 	command:	_Command_Barrier,
 ) -> Result {
 
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-
 	memory_barrier := vk.MemoryBarrier2 {
 		sType			= .MEMORY_BARRIER_2,
 		srcStageMask		= vk_stages_to_vk(command.after),
@@ -538,38 +500,13 @@ vk_emit_barrier :: proc(
 	return nil
 }
 
-vk_emit_signal :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-	command:	_Command_Signal,
-) -> Result {
-	
-	vk_end_command_buffer(metadata, queue_metadata, command.signals) or_return
-
-	return nil
-}
-
-vk_emit_wait :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-	command:	_Command_Wait,
-) -> Result {
-
-	metadata.vk.pending_waits = command.waits
-
-	return nil
-}
-
 vk_emit_begin_render_pass :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Begin_Render_Pass,
 ) -> Result {
 
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-	if metadata.vk.pending_render_pass_signals != nil {
-		vk_flush_command_buffer(metadata, queue_metadata, nil) or_return
-	}
+	resize(&metadata.vk.render_pass_surface_views, 0)
 
 	color_attachment_infos := make(
 		[]vk.RenderingAttachmentInfo,
@@ -702,9 +639,6 @@ vk_emit_begin_render_pass :: proc(
 	}
 	vk.CmdSetScissor(metadata.vk.command_buffer, 0, 1, &scissor)
 
-	metadata.vk.pending_render_pass_waits	= command.waits
-	metadata.vk.pending_render_pass_signals	= command.signals
-
 	return nil
 }
 
@@ -746,8 +680,6 @@ vk_emit_end_render_pass :: proc(
 		vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
 	}
 
-	resize(&metadata.vk.render_pass_surface_views, 0)
-
 	return nil
 }
 
@@ -759,8 +691,6 @@ vk_emit_draw :: proc(
 
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
-
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	vk_use_resource_set(metadata, command.resource_set) or_return
 	vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return
@@ -796,8 +726,6 @@ vk_emit_draw_indexed :: proc(
 
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
-
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
 
 	vk_use_resource_set(metadata, command.resource_set)
 	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
@@ -841,15 +769,14 @@ vk_emit_commands :: proc(
 	metadata.vk.bound_compute_pipeline	= {}
 	metadata.vk.bound_render_pipeline	= {}
 	metadata.vk.bound_scissor		= {}
-	metadata.vk.command_buffer_valid	= false
-	metadata.vk.is_first_command_buffer	= true
-	metadata.vk.pending_waits		= {}
-	metadata.vk.pending_render_pass_signals	= {}
-	metadata.vk.pending_render_pass_waits	= {}
-	metadata.vk.pending_surface_waits	= make([dynamic]vk.Semaphore, metadata.allocator) or_return
-	metadata.vk.render_pass_surface_views	= make([dynamic]View, metadata.allocator) or_return
 
-	vk_ensure_command_buffer_valid(metadata, queue_metadata)
+	metadata.vk.command_buffer = vk_acquire_command_buffer_from(&queue_metadata.vk.command_pool) or_return
+
+	begin_info := vk.CommandBufferBeginInfo {
+		sType	= .COMMAND_BUFFER_BEGIN_INFO,
+		flags	= { .ONE_TIME_SUBMIT },
+	}
+	vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
 
 	for command in metadata.commands {
 		switch v in command {
@@ -867,10 +794,6 @@ vk_emit_commands :: proc(
 			vk_emit_dispatch(metadata, queue_metadata, v) or_return
 		case _Command_Barrier:
 			vk_emit_barrier(metadata, queue_metadata, v) or_return
-		case _Command_Signal:
-			vk_emit_signal(metadata, queue_metadata, v) or_return
-		case _Command_Wait:
-			vk_emit_wait(metadata, queue_metadata, v) or_return
 		case _Command_Begin_Render_Pass:
 			vk_emit_begin_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_End_Render_Pass:
@@ -881,29 +804,49 @@ vk_emit_commands :: proc(
 			vk_emit_draw_indexed(metadata, queue_metadata, v) or_return
 		}
 	}
-
-	vk_ensure_command_buffer_valid(metadata, queue_metadata)
 	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
 
-	command_buffer_info := new(vk.CommandBufferSubmitInfo, metadata.allocator) or_return
-	waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
-	signals := vk_prepare_signal_semaphore_submit_infos(metadata, {}) or_return
+	semaphore_waits := make([]vk.SemaphoreSubmitInfo, len(metadata.synchronization_group.wait), metadata.allocator)
+	for wait, i in metadata.synchronization_group.wait {
+		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
+		_check_internal_emission_result(semaphore_res) or_return
 
-	command_buffer_info^ = vk.CommandBufferSubmitInfo {
+		semaphore_waits[i] = {
+			sType		= .SEMAPHORE_SUBMIT_INFO,
+			semaphore	= semaphore_metadata.vk.semaphore,
+			value		= cast(u64)wait.value,
+			stageMask	= vk_stages_to_vk(wait.before),
+		}
+	}
+
+	semaphore_signals := make([]vk.SemaphoreSubmitInfo, len(metadata.synchronization_group.signal), metadata.allocator)
+	for signal, i in metadata.synchronization_group.signal {
+		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
+		_check_internal_emission_result(semaphore_res) or_return
+
+		semaphore_signals[i] = {
+			sType		= .SEMAPHORE_SUBMIT_INFO,
+			semaphore	= semaphore_metadata.vk.semaphore,
+			value		= cast(u64)signal.value,
+			stageMask	= vk_stages_to_vk(signal.after),
+		}
+	}
+
+	command_buffer_submit_info := new(vk.CommandBufferSubmitInfo, metadata.allocator) or_return
+	command_buffer_submit_info^ = {
 		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
 		commandBuffer	= metadata.vk.command_buffer,
 	}
-	submit_info = vk.SubmitInfo2 {
-		sType				= .SUBMIT_INFO_2,
-		commandBufferInfoCount		= 1,
-		pCommandBufferInfos		= command_buffer_info,
-		waitSemaphoreInfoCount		= cast(u32)len(waits),
-		pWaitSemaphoreInfos		= raw_data(waits),
-		signalSemaphoreInfoCount	= cast(u32)len(signals),
-		pSignalSemaphoreInfos		= raw_data(signals),
-	}
 
-	metadata.vk.semaphore_value += 1
+	submit_info = {
+		sType				= .SUBMIT_INFO_2,
+		pCommandBufferInfos		= command_buffer_submit_info,
+		commandBufferInfoCount		= 1,
+		pWaitSemaphoreInfos		= raw_data(semaphore_waits),
+		waitSemaphoreInfoCount		= cast(u32)len(semaphore_waits),
+		pSignalSemaphoreInfos		= raw_data(semaphore_signals),
+		signalSemaphoreInfoCount	= cast(u32)len(semaphore_signals),
+	}
 
 	return submit_info, nil
 }
@@ -911,7 +854,6 @@ vk_emit_commands :: proc(
 vk_submit :: proc(
 	queue_metadata: ^_Queue_Metadata,
 	command_buffers: []Command_Buffer,
-	signals: []Semaphore_Signal,
 ) -> Result {
 
 	fence := vk_begin_command_group(&queue_metadata.vk.command_pool) or_return
@@ -929,209 +871,7 @@ vk_submit :: proc(
 		vk.QueueSubmit2KHR(queue_metadata.vk.queue, cast(u32)len(submit_infos), raw_data(submit_infos), fence),
 	) or_return
 
-
-	wait_infos := make([]vk.SemaphoreSubmitInfo, len(command_buffers), _temp_allocator) or_return
-	for command_buffer, i in command_buffers {
-		metadata, metadata_res := _metadata_of(command_buffer)
-		_check_internal_emission_result(metadata_res) or_return
-
-		wait_infos[i] = vk.SemaphoreSubmitInfo {
-			sType		= .SEMAPHORE_SUBMIT_INFO,
-			semaphore	= metadata.vk.semaphore,
-			value		= metadata.vk.semaphore_value,
-			stageMask	= { .ALL_COMMANDS },
-		}
-	}
-
-	signal_infos := make([]vk.SemaphoreSubmitInfo, len(signals), _temp_allocator) or_return
-	for signal, i in signals {
-		metadata, metadata_res := _metadata_of(signal.semaphore)
-		_check_internal_emission_result(metadata_res) or_return
-
-		signal_infos[i] = vk.SemaphoreSubmitInfo {
-			sType		= .SEMAPHORE_SUBMIT_INFO,
-			semaphore	= metadata.vk.semaphore,
-			value		= cast(u64)signal.value,
-			stageMask	= { .ALL_COMMANDS },
-		}
-	}
-
-	submit_info := vk.SubmitInfo2 {
-		sType				= .SUBMIT_INFO_2,
-		waitSemaphoreInfoCount		= cast(u32)len(wait_infos),
-		pWaitSemaphoreInfos		= raw_data(wait_infos),
-		signalSemaphoreInfoCount	= cast(u32)len(signal_infos),
-		pSignalSemaphoreInfos		= raw_data(signal_infos),
-	}
-	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
-	
 	return nil
-}
-
-vk_ensure_command_buffer_valid :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-) -> Result {
-	if metadata.vk.command_buffer_valid {
-		return nil
-	}
-
-	metadata.vk.command_buffer = vk_acquire_command_buffer_from(&queue_metadata.vk.command_pool) or_return
-
-	begin_info := vk.CommandBufferBeginInfo {
-		sType	= .COMMAND_BUFFER_BEGIN_INFO,
-		flags	= { .ONE_TIME_SUBMIT },
-	}
-	vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
-
-	metadata.vk.command_buffer_valid = true
-
-	return nil
-}
-
-vk_prepare_wait_semaphore_submit_infos :: proc(
-	metadata: ^_Command_Buffer_Metadata,
-) -> (infos: []vk.SemaphoreSubmitInfo, res: Result) {
-
-	wait_count := len(metadata.vk.pending_waits) + len(metadata.vk.pending_surface_waits)
-	if metadata.vk.is_first_command_buffer {
-		wait_count += len(metadata.semaphore_waits)
-	} else {
-		wait_count += 1
-		
-	}
-	for wait in metadata.vk.pending_render_pass_waits {
-		wait_count += len(wait.fences)
-	}
-
-	waits := make([dynamic]vk.SemaphoreSubmitInfo, 0, wait_count, metadata.allocator) or_return
-	for fence in metadata.vk.pending_waits {
-		fence_metadata, fence_res := _metadata_of(fence)
-		_check_internal_emission_result(fence_res) or_return
-
-		append(
-			&waits,
-			vk.SemaphoreSubmitInfo {
-				sType		= .SEMAPHORE_SUBMIT_INFO,
-				semaphore	= fence_metadata.vk.semaphore,
-				value		= fence_metadata.vk.last_signaled_value,
-				stageMask	= { .ALL_COMMANDS },
-			},
-		)
-	}
-	for semaphore in metadata.vk.pending_surface_waits {
-		append(
-			&waits,
-			vk.SemaphoreSubmitInfo {
-				sType		= .SEMAPHORE_SUBMIT_INFO,
-				semaphore	= semaphore,
-				stageMask	= { .COLOR_ATTACHMENT_OUTPUT },
-			},
-		)
-	}
-
-	for wait in metadata.vk.pending_render_pass_waits {
-		for fence in wait.fences {
-			fence_metadata, fence_res := _metadata_of(fence)
-			_check_internal_emission_result(fence_res) or_return
-
-			append(
-				&waits,
-				vk.SemaphoreSubmitInfo {
-					sType		= .SEMAPHORE_SUBMIT_INFO,
-					semaphore	= fence_metadata.vk.semaphore,
-					value		= fence_metadata.vk.last_signaled_value,
-					stageMask	= vk_stages_to_vk(wait.before),
-				},
-			)
-		}
-	}
-
-	if metadata.vk.is_first_command_buffer {
-		for wait in metadata.semaphore_waits {
-			semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
-			_check_internal_emission_result(semaphore_res) or_return
-
-			append(
-				&waits,
-				vk.SemaphoreSubmitInfo {
-					sType		= .SEMAPHORE_SUBMIT_INFO,
-					semaphore	= semaphore_metadata.vk.semaphore,
-					value		= cast(u64)wait.value,
-					stageMask	= { .ALL_COMMANDS },
-				},
-			)
-		}
-	} else {
-		append(
-			&waits,
-			vk.SemaphoreSubmitInfo {
-				sType		= .SEMAPHORE_SUBMIT_INFO,
-				semaphore	= metadata.vk.semaphore,
-				value		= metadata.vk.semaphore_value,
-				stageMask	= { .ALL_COMMANDS },
-			},
-		)
-	}
-
-	return waits[:], nil
-}
-
-vk_prepare_signal_semaphore_submit_infos :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	fences:		[]Fence,
-) -> (infos: []vk.SemaphoreSubmitInfo, res: Result) {
-	
-	signal_count := len(fences)
-	for signal in metadata.vk.pending_render_pass_signals {
-		signal_count += len(signal.fences)
-	}
-
-	signals := make([dynamic]vk.SemaphoreSubmitInfo, 0, len(fences) + 1, metadata.allocator) or_return
-
-	for fence in fences {
-		fence_metadata, fence_res := _metadata_of(fence)
-		_check_internal_emission_result(fence_res) or_return
-
-		fence_metadata.vk.last_signaled_value += 1
-		append(
-			&signals,
-			vk.SemaphoreSubmitInfo {
-				sType		= .SEMAPHORE_SUBMIT_INFO,
-				semaphore	= fence_metadata.vk.semaphore,
-				value		= fence_metadata.vk.last_signaled_value,
-				stageMask	= { .ALL_COMMANDS },
-			},
-		)
-	}
-	for signal in metadata.vk.pending_render_pass_signals {
-		for fence in signal.fences {
-			fence_metadata, fence_res := _metadata_of(fence)
-			_check_internal_emission_result(fence_res) or_return
-
-			fence_metadata.vk.last_signaled_value += 1
-			append(
-				&signals,
-				vk.SemaphoreSubmitInfo {
-					sType		= .SEMAPHORE_SUBMIT_INFO,
-					semaphore	= fence_metadata.vk.semaphore,
-					value		= fence_metadata.vk.last_signaled_value,
-					stageMask	= vk_stages_to_vk(signal.after),
-				},
-			)
-		}
-	}
-	append(
-		&signals,
-		vk.SemaphoreSubmitInfo {
-			sType		= .SEMAPHORE_SUBMIT_INFO,
-			semaphore	= metadata.vk.semaphore,
-			value		= metadata.vk.semaphore_value + 1,
-			stageMask	= { .ALL_COMMANDS },
-		},
-	)
-
-	return signals[:], nil
 }
 
 vk_prepare_surface_for_renderpass :: proc(
@@ -1141,10 +881,7 @@ vk_prepare_surface_for_renderpass :: proc(
 	surface:		Surface,
 	surface_metadata:	^_Surface_Metadata,
 ) -> Result {
-	append(
-		&metadata.vk.pending_surface_waits,
-		view_metadata.vk.swapchain_image_semaphore,
-	) or_return
+
 	append(
 		&metadata.vk.render_pass_surface_views,
 		view,
@@ -1179,65 +916,6 @@ vk_prepare_surface_for_renderpass :: proc(
 		pImageMemoryBarriers	= &image_barrier,
 	}
 	vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &dependency_info)
-
-	return nil
-}
-
-vk_flush_command_buffer :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-	signals:	[]Fence,
-) -> Result {
-
-	vk_end_command_buffer(metadata, queue_metadata, signals) or_return
-	vk_ensure_command_buffer_valid(metadata, queue_metadata) or_return
-
-	return nil
-}
-
-vk_end_command_buffer :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-	signals:	[]Fence,
-) -> Result {
-
-	if !metadata.vk.command_buffer_valid {
-		return nil
-	}
-
-	vk.EndCommandBuffer(metadata.vk.command_buffer)
-	metadata.vk.command_buffer_valid = false
-
-	waits := vk_prepare_wait_semaphore_submit_infos(metadata) or_return
-	signals := vk_prepare_signal_semaphore_submit_infos(metadata, signals) or_return
-
-	command_buffer_info := vk.CommandBufferSubmitInfo {
-		sType		= .COMMAND_BUFFER_SUBMIT_INFO,
-		commandBuffer	= metadata.vk.command_buffer,
-	}
-	submit_info := vk.SubmitInfo2 {
-		sType				= .SUBMIT_INFO_2,
-		waitSemaphoreInfoCount		= cast(u32)len(waits),
-		pWaitSemaphoreInfos		= raw_data(waits),
-		signalSemaphoreInfoCount	= cast(u32)len(signals),
-		pSignalSemaphoreInfos		= raw_data(signals),
-		commandBufferInfoCount		= 1,
-		pCommandBufferInfos		= &command_buffer_info,
-	}
-	vk_call(vk.QueueSubmit2KHR(queue_metadata.vk.queue, 1, &submit_info, 0)) or_return
-
-	metadata.vk.is_first_command_buffer	= false
-	metadata.vk.pending_waits		= {}
-	metadata.vk.pending_render_pass_signals = {}
-	metadata.vk.pending_render_pass_waits	= {}
-	metadata.vk.bound_compute_pipeline	= {}
-	metadata.vk.bound_render_pipeline	= {}
-	metadata.vk.bound_depth_stencil_state	= {}
-	metadata.vk.bound_resource_set		= {}
-	metadata.vk.bound_blend_constant	= {}
-	metadata.vk.bound_scissor		= {}
-	metadata.vk.semaphore_value		+= 1
-	resize(&metadata.vk.pending_surface_waits, 0)
 
 	return nil
 }

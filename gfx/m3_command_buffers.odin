@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 #+build darwin
 package vicixdev_gfx
 
@@ -29,10 +35,11 @@ m3_Command_Buffer_Metadata :: struct {
 	bound_blend_constant:		[4]f64,
 	bound_scissor:			Scissor,
 
+	encoded_stages:			Stages,
+	finished_stages:		Stages,
+
 	barrier_fence:			^MTL.Fence,
 	barrier_fence_pending:		bool,
-
-	wait_set:			[]Fence,
 }
 
 m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
@@ -241,57 +248,6 @@ m3_emit_barrier :: proc(
 	return nil
 }
 
-m3_emit_signal :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-	command:	_Command_Signal,
-) -> Result {
-
-	switch metadata.m3.current_encoder {
-	case .Blit:
-		for fence in command.signals {
-			fence_metadata, fence_res := _metadata_of(fence)
-			_check_internal_emission_result(fence_res) or_return
-			
-			metadata.m3.blit_encoder->updateFence(fence_metadata.m3.fence)
-		}
-
-	case .Compute:
-		for fence in command.signals {
-			fence_metadata, fence_res := _metadata_of(fence)
-			_check_internal_emission_result(fence_res) or_return
-			
-			metadata.m3.compute_encoder->updateFence(fence_metadata.m3.fence)
-		}
-
-	case .Render:
-		panic("It is not possible to emit signals during render passes.")
-
-	case .None:
-		m3_enable_blit_encoder(metadata)
-		for fence in command.signals {
-			fence_metadata, fence_res := _metadata_of(fence)
-			_check_internal_emission_result(fence_res) or_return
-			
-			metadata.m3.blit_encoder->updateFence(fence_metadata.m3.fence)
-		}
-	}
-
-	return nil
-}
-
-m3_emit_wait :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	queue_metadata:	^_Queue_Metadata,
-	command:	_Command_Wait,
-) -> Result {
-
-	assert(metadata.m3.current_encoder != .Render, "It is not possible to emit waits during render passes.")
-	
-	metadata.m3.wait_set	= command.waits
-	return nil
-}
-
 m3_emit_begin_render_pass :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
@@ -448,34 +404,28 @@ m3_emit_draw_indexed :: proc(
 
 m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 
-	metadata.m3.wait_set = {}	
 	metadata.m3.bound_resource_set = {}
 	metadata.m3.bound_depth_stencil_state = {}
 	metadata.m3.bound_blend_constant = {}
 	metadata.m3.bound_compute_pipeline = {}
 	metadata.m3.bound_render_pipeline = {}
 	metadata.m3.bound_scissor = {}
+	metadata.m3.encoded_stages = {}
 	metadata.m3.barrier_fence_pending = false
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
 	MTLe.CommandBuffer_useResidencySet(auto_cast metadata.m3.command_buffer, _m3_residency_set)
 
-	for wait in metadata.semaphore_waits {
+	for wait in metadata.synchronization_group.wait {
 		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
-		_check_internal_emission_result(semaphore_res) or_return
+		_check_internal_emission_result(semaphore_res) or_continue
 
-		switch semaphore_metadata.type {
-		case .Default:
-			metadata.m3.command_buffer->encodeWaitForEvent(
-				semaphore_metadata.m3.event, cast(u64)wait.value)
-
-		case .Cpu_Waitable:
-			metadata.m3.command_buffer->encodeWaitForEvent(
-				semaphore_metadata.m3.shared_event, cast(u64)wait.value)
-		}
+		_m3_emit_wait_semaphore(metadata.m3.command_buffer, semaphore_metadata, wait.value)
 	}
 
 	for command in metadata.commands {
+		// m3_check_for_and_emit_waits(metadata, queue_metadata, command) or_return
+
 		switch v in command {
 		case _Command_Mem_Copy:
 			m3_emit_mem_copy(metadata, queue_metadata, v)or_return
@@ -491,10 +441,6 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 			m3_emit_dispatch(metadata, queue_metadata, v) or_return
 		case _Command_Barrier:
 			m3_emit_barrier(metadata, queue_metadata, v) or_return
-		case _Command_Signal:
-			m3_emit_signal(metadata, queue_metadata, v) or_return
-		case _Command_Wait:
-			m3_emit_wait(metadata, queue_metadata, v) or_return
 		case _Command_Begin_Render_Pass:
 			m3_emit_begin_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_End_Render_Pass:
@@ -504,9 +450,18 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 		case _Command_Draw_Indexed:
 			m3_emit_draw_indexed(metadata, queue_metadata, v) or_return
 		}
+
+		// m3_check_for_and_emit_signals(metadata, queue_metadata, i) or_return
 	}
 
 	m3_flush_encoder(metadata)
+	for signal in metadata.synchronization_group.signal {
+		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
+		_check_internal_emission_result(semaphore_res) or_continue
+
+		_m3_emit_signal_semaphore(metadata.m3.command_buffer, semaphore_metadata, signal.value)
+	}
+
 	metadata.m3.command_buffer->commit()
 
 	return nil
@@ -515,7 +470,6 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 m3_submit :: proc(
 	queue_metadata: ^_Queue_Metadata,
 	command_buffers: []Command_Buffer,
-	signals: []Semaphore_Signal,
 ) -> Result {
 	NS.scoped_autoreleasepool()
 
@@ -524,26 +478,6 @@ m3_submit :: proc(
 		_check_internal_emission_result(metadata_res) or_return
 
 		m3_emit_commands(metadata, queue_metadata) or_return
-	}
-
-	if len(signals) > 0 {
-		command_buffer := queue_metadata.m3.queue->commandBuffer()
-
-		for signal in signals {
-			semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
-			_check_internal_emission_result(semaphore_res) or_return
-
-			if semaphore_metadata.type == .Default {
-				command_buffer->encodeSignalEvent(semaphore_metadata.m3.event, cast(u64)signal.value)
-			} else {
-				command_buffer->encodeSignalEvent(
-					semaphore_metadata.m3.shared_event,
-					cast(u64)signal.value,
-				)
-			}
-		}
-
-		command_buffer->commit()
 	}
 
 	return nil
@@ -703,13 +637,6 @@ m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	metadata.m3.blit_encoder = metadata.m3.command_buffer->blitCommandEncoder()
 	metadata.m3.current_encoder = .Blit
 
-	for fence in metadata.m3.wait_set {
-		fence_metadata, fence_res := _metadata_of(fence)
-		_check_internal_emission_result(fence_res) or_return
-
-		metadata.m3.blit_encoder->waitForFence(fence_metadata.m3.fence)
-	}
-	metadata.m3.wait_set = {}
 	if metadata.m3.barrier_fence_pending {
 		metadata.m3.blit_encoder->waitForFence(metadata.m3.barrier_fence)
 		metadata.m3.barrier_fence_pending = false
@@ -728,13 +655,6 @@ m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result
 	metadata.m3.compute_encoder = metadata.m3.command_buffer->computeCommandEncoderWithDispatchType(.Concurrent)
 	metadata.m3.current_encoder = .Compute
 
-	for fence in metadata.m3.wait_set {
-		fence_metadata, fence_res := _metadata_of(fence)
-		_check_internal_emission_result(fence_res) or_return
-
-		metadata.m3.compute_encoder->waitForFence(fence_metadata.m3.fence)
-	}
-	metadata.m3.wait_set = {}
 	if metadata.m3.barrier_fence_pending {
 		metadata.m3.compute_encoder->waitForFence(metadata.m3.barrier_fence)
 		metadata.m3.barrier_fence_pending = false
@@ -749,13 +669,6 @@ m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descriptor
 	metadata.m3.render_encoder = metadata.m3.command_buffer->renderCommandEncoderWithDescriptor(descriptor)
 	metadata.m3.current_encoder = .Render
 
-	for fence in metadata.m3.wait_set {
-		fence_metadata, fence_res := _metadata_of(fence)
-		_check_internal_emission_result(fence_res) or_return
-
-		metadata.m3.render_encoder->waitForFence(fence_metadata.m3.fence, { .Vertex })
-	}
-	metadata.m3.wait_set = {}
 	if metadata.m3.barrier_fence_pending {
 		metadata.m3.render_encoder->waitForFence(metadata.m3.barrier_fence, { .Vertex })
 		metadata.m3.barrier_fence_pending = false
@@ -823,6 +736,93 @@ m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target
 
 	unreachable()
 }
+
+// m3_check_for_and_emit_waits :: proc(
+// 	metadata:	^_Command_Buffer_Metadata,
+// 	queue_metadata: ^_Queue_Metadata,
+// 	command:	_Command,
+// ) -> Result {
+
+// 	current_stages: Stages
+// 	#partial switch v in command {
+// 	case _Command_Mem_Copy:
+// 		current_stages = { .Transfer }
+// 	case _Command_Copy_Texture_To_Texture:
+// 		current_stages = { .Transfer }
+// 	case _Command_Copy_Buffer_To_Texture:
+// 		current_stages = { .Transfer }
+// 	case _Command_Copy_Texture_To_Buffer:
+// 		current_stages = { .Transfer }
+// 	case _Command_Generate_Mipmaps:
+// 		current_stages = { .Transfer }
+// 	case _Command_Dispatch:
+// 		current_stages = { .Compute }
+// 	case _Command_Begin_Render_Pass:
+// 		current_stages = { .Vertex, .Fragment, .Color_Attachment, .Depth_Stencil_Attachment }
+// 	}
+
+// 	current_stages -= metadata.m3.encoded_stages
+
+// 	if current_stages == {} {
+// 		return nil
+// 	}
+
+// 	waits := make([dynamic]Semaphore_Wait, 0, len(metadata.synchronization_group.wait), metadata.allocator)
+// 	for wait in metadata.synchronization_group.wait {
+// 		inner: for stage in current_stages {
+// 			if stage in wait.before {
+// 				append(&waits, wait)
+// 			}
+// 		}
+// 	}
+
+// 	m3_flush_encoder(metadata)
+// 	for wait in waits {
+// 		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
+// 		_check_internal_emission_result(semaphore_res) or_return
+
+// 		_m3_emit_wait_semaphore(metadata.m3.command_buffer, semaphore_metadata, wait.value)
+// 	}
+
+// 	metadata.m3.encoded_stages += current_stages
+	
+// 	return nil
+// }
+
+// m3_check_for_and_emit_signals :: proc(
+// 	metadata:	^_Command_Buffer_Metadata,
+// 	queue_metadata: ^_Queue_Metadata,
+// 	command_index:	int,
+// ) -> Result {
+// 	stages: Stages
+// 	for stage in Stage {
+// 		if command_index == metadata.last_command[stage] {
+// 			stages += { stage }
+// 			metadata.m3.finished_stages += { stage }
+// 		}
+// 	}
+
+// 	if stages == {} {
+// 		return nil
+// 	}
+
+// 	signals := make([dynamic]Semaphore_Signal, 0, len(metadata.synchronization_group.signal), metadata.allocator)
+// 	for signal in metadata.synchronization_group.signal {
+// 		if signal.after - metadata.m3.finished_stages == {} {
+// 			append(&signals, signal)
+// 		}
+// 	}
+
+// 	m3_flush_encoder(metadata)
+// 	for signal in signals {
+// 		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
+// 		_check_internal_emission_result(semaphore_res) or_return
+
+// 		_m3_emit_signal_semaphore(metadata.m3.command_buffer, semaphore_metadata, signal.value)
+// 	}
+
+// 	return nil
+// }
 
 @(rodata)
 m3_LOAD_OPERATION_TO_MTL := [Load_Operation]MTL.LoadAction {

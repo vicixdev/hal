@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import "base:runtime"
@@ -23,9 +29,9 @@ Target_Api :: enum {
 	Vulkan,
 }
 
-// TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
+TARGET_API_STRING :: #config(GFX_TARGET_API, "Vulkan")
 // TARGET_API_STRING :: #config(GFX_TARGET_API, "Metal_3")
-TARGET_API_STRING :: #config(GFX_TARGET_API, "")
+// TARGET_API_STRING :: #config(GFX_TARGET_API, "")
 when TARGET_API_STRING == "Vulkan" {
 	TARGET_API :: Target_Api.Vulkan
 } else when TARGET_API_STRING == "Metal_3" {
@@ -107,10 +113,7 @@ Stage :: enum {
 	Color_Attachment,
 	Depth_Stencil_Attachment,
 }
-
 Stages :: bit_set[Stage]
-
-// Command_Buffer :: distinct Handle
 
 Vulkan_Shader_Format :: enum {
 	Spirv,
@@ -156,7 +159,6 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	hm.dynamic_init(&_pipelines, _global_allocator)
 	hm.dynamic_init(&_resource_sets, _global_allocator)
 	hm.dynamic_init(&_semaphores, _global_allocator)
-	hm.dynamic_init(&_fences, _global_allocator)
 	hm.dynamic_init(&_depth_stencil_states, _global_allocator)
 	hm.dynamic_init(&_blend_states, _global_allocator)
 	hm.dynamic_init(&_surfaces, _global_allocator)
@@ -200,11 +202,6 @@ fini :: proc() {
 	depth_stencil_it := hm.dynamic_iterator_make(&_depth_stencil_states)
 	for _, depth_stencil in hm.iterate(&depth_stencil_it) {
 		destroy_depth_stencil_state(depth_stencil)
-	}
-
-	fence_it := hm.dynamic_iterator_make(&_fences)
-	for _, fence in hm.iterate(&fence_it) {
-		destroy_fence(fence)
 	}
 
 	semaphore_it := hm.dynamic_iterator_make(&_semaphores)
@@ -274,7 +271,6 @@ _metadata_of :: proc {
 	_command_buffer_metadata_of,
 	_resource_set_metadata_of,
 	_semaphore_metadata_of,
-	_fence_metadata_of,
 	_blend_state_metadata_of,
 	_depth_stencil_state_metadata_of,
 	_surface_metadata_of,

@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import "base:runtime"
@@ -43,6 +49,11 @@ Surface_Descriptor :: struct {
 	dimensions:		[2]int,
 	frames_in_flight:	int,
 	target:			Surface_Target,
+}
+
+Present_Semaphore_Wait :: struct {
+	semaphore:		Semaphore,
+	value:			int,
 }
 
 _Surface_Metadata :: struct {
@@ -128,10 +139,20 @@ destroy_surface :: proc(surface: Surface, location := #caller_location) {
 
 }
 
-acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> (view: View, res: Result) {
+acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> (
+	view: View,
+	semaphore: Semaphore,
+	res: Result,
+) {
 	
 	metadata, metadata_res := _metadata_of(surface)
 	_check_surface_handle(metadata_res, surface, location)
+
+	semaphore_metadata: ^_Semaphore_Metadata
+	semaphore, semaphore_metadata = _add_semaphore_metadata() or_return
+	defer if res != nil && res != .Surface_Unavailable do _remove_semaphore_metadata(semaphore)
+
+	semaphore_metadata.type	= .Surface
 
 	view_metadata: ^_View_Metadata
 	view, view_metadata = _add_view_metadata() or_return
@@ -144,9 +165,9 @@ acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> 
 	view_metadata.mip_count		= 1
 
 	when TARGET_API == .Vulkan {
-		res = vk_acquire_surface_view(metadata, view_metadata)
+		res = vk_acquire_surface_view(metadata, view_metadata, semaphore_metadata)
 	} else {
-		res = m3_acquire_surface_view(metadata, view_metadata)
+		res = m3_acquire_surface_view(metadata, view_metadata, semaphore_metadata)
 	}
 
 	if res == .Surface_Unavailable {
@@ -161,7 +182,7 @@ acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> 
 present :: proc(
 	queue:		Queue,
 	view:		View,
-	after:		..Semaphore_Wait,
+	after:		..Present_Semaphore_Wait,
 	location :=	#caller_location,
 ) -> (res: Result) {
 	

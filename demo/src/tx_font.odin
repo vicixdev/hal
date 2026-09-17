@@ -363,8 +363,10 @@ _tx_use_glyph :: proc(
 ) -> (draw_info: tx_Glyph_Draw_Info, glyph_rect: _tx_Glyph_Rect, res: Result) {
 
 	normalized_shift := [2]f32 {
-		_tx_quantize(shift.x, 4),
-		_tx_quantize(shift.y, 4),
+		// _tx_quantize(shift.x, 16),
+		shift.x,
+		// _tx_quantize(shift.y, 16),
+		shift.y,
 	}
 
 	glyph_idx, already_registered := metadata.glyphs[{glyph, shift}]

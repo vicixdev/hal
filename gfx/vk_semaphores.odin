@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import vk "vendor:vulkan"
@@ -7,15 +13,34 @@ vk_Semaphore_Metadata :: struct {
 }
 
 vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
-	semaphore_type_info := vk.SemaphoreTypeCreateInfo {
-		sType		= .SEMAPHORE_TYPE_CREATE_INFO,
-		semaphoreType	= .TIMELINE,
-		initialValue	= 0,
+	semaphore_info: vk.SemaphoreCreateInfo
+	switch metadata.type {
+	case .Default:
+		semaphore_type_info := vk.SemaphoreTypeCreateInfo {
+			sType		= .SEMAPHORE_TYPE_CREATE_INFO,
+			semaphoreType	= .BINARY,
+			initialValue	= 0,
+		}
+		semaphore_info = vk.SemaphoreCreateInfo {
+			sType	= .SEMAPHORE_CREATE_INFO,
+			pNext	= &semaphore_type_info,
+		}
+
+	case .Timeline, .Cpu:
+		semaphore_type_info := vk.SemaphoreTypeCreateInfo {
+			sType		= .SEMAPHORE_TYPE_CREATE_INFO,
+			semaphoreType	= .TIMELINE,
+			initialValue	= 0,
+		}
+		semaphore_info = vk.SemaphoreCreateInfo {
+			sType	= .SEMAPHORE_CREATE_INFO,
+			pNext	= &semaphore_type_info,
+		}
+
+	case .Surface:
+		unreachable()
 	}
-	semaphore_info := vk.SemaphoreCreateInfo {
-		sType	= .SEMAPHORE_CREATE_INFO,
-		pNext	= &semaphore_type_info,
-	}
+
 	semaphore: vk.Semaphore
 	vk_call(vk.CreateSemaphore(vk_device, &semaphore_info, nil, &semaphore)) or_return
 
@@ -25,7 +50,9 @@ vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type
 }
 
 vk_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
-	vk.DestroySemaphore(vk_device, metadata.vk.semaphore, nil)
+	if metadata.type != .Surface {
+		vk.DestroySemaphore(vk_device, metadata.vk.semaphore, nil)
+	}
 
 	return nil
 }

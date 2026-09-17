@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 #+private
 package vicixdev_gfx_tests
 
@@ -37,7 +43,7 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 			upload[i] = cast(i64)i
 		}
 
-		sema := gfx.create_semaphore(.Cpu_Waitable) or_return
+		sema := gfx.create_semaphore(.Cpu) or_return
 		defer gfx.destroy_semaphore(sema)
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
@@ -45,7 +51,13 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 		gfx.mem_copy(command_buffer, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
 		gfx.barrier(command_buffer, { .Transfer }, { .Transfer }) or_return
 		gfx.mem_copy(command_buffer, raw_data(output), raw_data(gpu), 1024 * size_of(i64)) or_return
-		gfx.submit(.Default, { command_buffer }, { sema, 1 }) or_return
+
+		gfx.synchronize(command_buffer, {
+			signal	= {
+				{ sema, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 
 		gfx.wait_semaphore(sema, 1)
 
@@ -61,7 +73,7 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 }
 
 @(test)
-memory_transfers_with_fences :: proc(t: ^testing.T) {
+memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 	ELEMENT_COUNT :: 1024
 
 	reference :: proc() -> (reference: []i64) {
@@ -74,8 +86,6 @@ memory_transfers_with_fences :: proc(t: ^testing.T) {
 	}
 
 	test :: proc(results_memory: ^gfx.Arena) -> (output: []i64, res: gfx.Result) {
-
-		fence := gfx.create_fence() or_return
 
 		staging_memory: gfx.Arena
 		gfx.create_arena(&staging_memory, .Staging, 64 * mem.Kilobyte) or_return
@@ -93,132 +103,34 @@ memory_transfers_with_fences :: proc(t: ^testing.T) {
 			upload[i] = cast(i64)i
 		}
 
-		sema := gfx.create_semaphore(.Cpu_Waitable) or_return
+		sema := gfx.create_semaphore(.Default) or_return
 		defer gfx.destroy_semaphore(sema)
 
-		command_buffer := gfx.begin_command_encoding(.Default) or_return
-
-		gfx.mem_copy(command_buffer, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
-		gfx.signal(command_buffer, fence) or_return
-		gfx.wait(command_buffer, fence) or_return
-		gfx.mem_copy(command_buffer, raw_data(output), raw_data(gpu), 1024 * size_of(i64)) or_return
-		gfx.submit(.Default, { command_buffer }, { sema, 1 }) or_return
-
-		gfx.wait_semaphore(sema, 1)
-
-		return output, nil
-	}
-
-	results_memory := acquire_test_resources()
-	reference_bytes := reference()
-
-	output, res := test(&results_memory)
-	check_result(t, res)
-	test_agains_reference_bytes(t, reference_bytes, output)
-}
-
-@(test)
-memory_transfers_with_multiple_command_buffers_and_fences :: proc(t: ^testing.T) {
-	ELEMENT_COUNT :: 1024
-
-	reference :: proc() -> (reference: []i64) {
-		reference = make([]i64, ELEMENT_COUNT, context.temp_allocator)
-		for i in 0..<ELEMENT_COUNT {
-			reference[i] = cast(i64)i
-		}
-
-		return
-	}
-
-	test :: proc(results_memory: ^gfx.Arena) -> (output: []i64, res: gfx.Result) {
-
-		fence := gfx.create_fence() or_return
-
-		staging_memory: gfx.Arena
-		gfx.create_arena(&staging_memory, .Staging, 64 * mem.Kilobyte) or_return
-		defer gfx.destroy_arena(staging_memory)
-
-		private_memory: gfx.Arena
-		gfx.create_arena(&private_memory, .Private, 64 * mem.Kilobyte) or_return
-		defer gfx.destroy_arena(private_memory)
-
-		upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
-		gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
-		output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
-
-		for i in 0..<ELEMENT_COUNT {
-			upload[i] = cast(i64)i
-		}
-
-		sema := gfx.create_semaphore(.Cpu_Waitable) or_return
-		defer gfx.destroy_semaphore(sema)
+		cpu_sema := gfx.create_semaphore(.Cpu) or_return
+		defer gfx.destroy_semaphore(cpu_sema)
 
 		command_buffer_1 := gfx.begin_command_encoding(.Default) or_return
+		gfx.mem_copy(command_buffer_1, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
+		gfx.synchronize(command_buffer_1, {
+			signal	= {
+				{ sema, 0, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer_1)
+
 		command_buffer_2 := gfx.begin_command_encoding(.Default) or_return
-
-		gfx.mem_copy(command_buffer_1, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
-		gfx.signal(command_buffer_1, fence) or_return
-
-		gfx.wait(command_buffer_2, fence) or_return
 		gfx.mem_copy(command_buffer_2, raw_data(output), raw_data(gpu), 1024 * size_of(i64)) or_return
-		gfx.submit(.Default, { command_buffer_1, command_buffer_2 }, { sema, 1 }) or_return
+		gfx.synchronize(command_buffer_2, {
+			wait	= {
+				{ sema, 0, {} },
+			},
+			signal	= {
+				{ cpu_sema, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer_2) or_return
 
-		gfx.wait_semaphore(sema, 1)
-
-		return output, nil
-	}
-
-	results_memory := acquire_test_resources()
-	reference_bytes := reference()
-
-	output, res := test(&results_memory)
-	check_result(t, res)
-	test_agains_reference_bytes(t, reference_bytes, output)
-}
-
-@(test)
-memory_transfers_with_multiple_command_buffers_and_semaphores :: proc(t: ^testing.T) {
-	ELEMENT_COUNT :: 1024
-
-	reference :: proc() -> (reference: []i64) {
-		reference = make([]i64, ELEMENT_COUNT, context.temp_allocator)
-		for i in 0..<ELEMENT_COUNT {
-			reference[i] = cast(i64)i
-		}
-
-		return
-	}
-
-	test :: proc(results_memory: ^gfx.Arena) -> (output: []i64, res: gfx.Result) {
-
-		staging_memory: gfx.Arena
-		gfx.create_arena(&staging_memory, .Staging, 64 * mem.Kilobyte) or_return
-		defer gfx.destroy_arena(staging_memory)
-
-		private_memory: gfx.Arena
-		gfx.create_arena(&private_memory, .Private, 64 * mem.Kilobyte) or_return
-		defer gfx.destroy_arena(private_memory)
-
-		upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
-		gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
-		output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
-
-		for i in 0..<ELEMENT_COUNT {
-			upload[i] = cast(i64)i
-		}
-
-		sema := gfx.create_semaphore(.Cpu_Waitable) or_return
-		defer gfx.destroy_semaphore(sema)
-
-		command_buffer_1 := gfx.begin_command_encoding(.Default) or_return
-		gfx.mem_copy(command_buffer_1, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
-		gfx.submit(.Default, { command_buffer_1 }, { sema, 1 })
-
-		command_buffer_2 := gfx.begin_command_encoding(.Default, { sema, 1 }) or_return
-		gfx.mem_copy(command_buffer_2, raw_data(output), raw_data(gpu), 1024 * size_of(i64)) or_return
-		gfx.submit(.Default, { command_buffer_2 }, { sema, 2 }) or_return
-
-		gfx.wait_semaphore(sema, 2)
+		gfx.wait_semaphore(cpu_sema, 1)
 
 		return output, nil
 	}
@@ -267,7 +179,7 @@ texture_upload_download :: proc(t: ^testing.T) {
 
 		output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 		gfx.copy_buffer_to_texture(command_buffer, raw_data(upload_buffer), texture, gfx.Texture_Region {
@@ -280,7 +192,12 @@ texture_upload_download :: proc(t: ^testing.T) {
 			size		= { 2, 2, 1 },
 		}, raw_data(output)) or_return
 
-		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 
 		gfx.wait_semaphore(semaphore, 1)
 
@@ -334,7 +251,7 @@ memory_transfers_with_textures :: proc(t: ^testing.T) {
 
 		output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 		gfx.copy_buffer_to_texture(command_buffer, raw_data(upload_buffer), texture_1, gfx.Texture_Region {
@@ -361,7 +278,12 @@ memory_transfers_with_textures :: proc(t: ^testing.T) {
 			size		= { 2, 2, 1 },
 		}, raw_data(output)) or_return
 
-		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 
 		gfx.wait_semaphore(semaphore, 1)
 
@@ -446,7 +368,7 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 
 		output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
@@ -476,8 +398,12 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 			size		= { 2, 2, 1 },
 		}, raw_data(output))
 
-		submit_res := gfx.submit(.Default, { command_buffer }, { semaphore, 1 })
-		assert(submit_res == nil)
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 
 		gfx.wait_semaphore(semaphore, 1)
 
@@ -514,7 +440,7 @@ clear_render_pass :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 4096) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
@@ -550,7 +476,12 @@ clear_render_pass :: proc(t: ^testing.T) {
 			size = { **FRAMEBUFFER_SIZE, 1 },
 		}, raw_data(output)) or_return
 
-		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 
 		gfx.wait_semaphore(semaphore, 1)
 
@@ -609,7 +540,7 @@ generic_compute_test :: proc(t: ^testing.T) {
 		}) or_return
 		defer gfx.destroy_pipeline(add_pipeline)
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 		defer gfx.destroy_semaphore(semaphore)
 
 		default_memory: gfx.Arena
@@ -637,7 +568,13 @@ generic_compute_test :: proc(t: ^testing.T) {
 			out	= gpu_out,
 		}
 		gfx.dispatch(command_buffer, add_pipeline, arguments, { ARRAY_LENGTH / 128, 1, 1 }) or_return
-		gfx.submit(.Default, {command_buffer}, {semaphore, 1}) or_return
+
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 
 		gfx.wait_semaphore(semaphore, 1)
 
@@ -725,7 +662,7 @@ draw_triangle :: proc(t: ^testing.T) {
 		defer gfx.destroy_texture(framebuffer)
 		framebuffer_view := gfx.default_view_of(framebuffer) or_return
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 		defer gfx.destroy_semaphore(semaphore)
 
 		render_pass_descriptor := gfx.Render_Pass_Descriptor {
@@ -753,7 +690,12 @@ draw_triangle :: proc(t: ^testing.T) {
 			size = { **FRAMEBUFFER_SIZE, 1 },
 		}, raw_data(output)) or_return
 
-		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 		gfx.wait_semaphore(semaphore, 1)
 
 		return
@@ -848,7 +790,7 @@ draw_quad :: proc(t: ^testing.T) {
 		defer gfx.destroy_texture(framebuffer)
 		framebuffer_view := gfx.default_view_of(framebuffer) or_return
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 		defer gfx.destroy_semaphore(semaphore)
 
 		render_pass_descriptor := gfx.Render_Pass_Descriptor {
@@ -876,7 +818,12 @@ draw_quad :: proc(t: ^testing.T) {
 			size = { **FRAMEBUFFER_SIZE, 1 },
 		}, raw_data(output)) or_return
 
-		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 		gfx.wait_semaphore(semaphore, 1)
 
 		return
@@ -993,7 +940,7 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 		defer gfx.destroy_texture(depthbuffer)
 		depthbuffer_view := gfx.default_view_of(depthbuffer) or_return
 
-		semaphore := gfx.create_semaphore(.Cpu_Waitable) or_return
+		semaphore := gfx.create_semaphore(.Cpu) or_return
 		defer gfx.destroy_semaphore(semaphore)
 
 		render_pass_descriptor := gfx.Render_Pass_Descriptor {
@@ -1039,7 +986,12 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 			size = { **FRAMEBUFFER_SIZE, 1 },
 		}, raw_data(output)) or_return
 
-		gfx.submit(.Default, { command_buffer }, { semaphore, 1 }) or_return
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 		gfx.wait_semaphore(semaphore, 1)
 
 		return

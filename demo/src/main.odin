@@ -11,7 +11,6 @@ import "core:debug/trace"
 import la "core:math/linalg"
 import sdl "vendor:sdl3"
 import "vendor:stb/image"
-// import ui "vendor:microui"
 import "root:gfx"
 
 WINDOW_SIZE :: [2]int {
@@ -204,8 +203,8 @@ cube_rotation:		f32
 setup :: proc() {
 	ensure(sdl.Init({ .VIDEO }) == true)
 
-	// window_flags := sdl.WindowFlags { .RESIZABLE, .HIGH_PIXEL_DENSITY }
-	window_flags := sdl.WindowFlags { .RESIZABLE }
+	window_flags := sdl.WindowFlags { .RESIZABLE, .HIGH_PIXEL_DENSITY }
+	// window_flags := sdl.WindowFlags { .RESIZABLE }
 	when ODIN_OS == .Darwin {
 		window_flags += { .METAL }
 	}
@@ -257,7 +256,7 @@ setup :: proc() {
 	}
 
 	surface_descriptor := gfx.Surface_Descriptor {
-		type			= .Immediate,
+		type			= .V_Sync,
 		dimensions		= window_state.dimensions,
 		frames_in_flight	= 3,
 		target			= target,
@@ -329,7 +328,7 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 	camera.near	= 0.01
 	camera.far	= 100.0
 
-	ui_resize_screen(window_state.dimensions) or_return
+	ui_resize_screen(window_state.scaled_dimensions, window_state.dimensions) or_return
 
 	return nil
 }
@@ -351,7 +350,7 @@ transfer_queue :: proc() -> gfx.Queue {
 	}
 }
 
-setup_skybox :: proc(image_paths: [6]string, on_done: ..gfx.Semaphore_Signal) -> gfx.Result {
+setup_skybox :: proc(image_paths: [6]string, synchronization := gfx.Synchronization_Group{}) -> gfx.Result {
 	SKYBOX_VERTICES := [?][3]f32 {
 		{ -1.0, -1.0, -1.0 },
 		{  1.0, -1.0, -1.0 },
@@ -420,7 +419,6 @@ setup_skybox :: proc(image_paths: [6]string, on_done: ..gfx.Semaphore_Signal) ->
 	skybox_pipeline = gfx.create_render_pipeline(skybox_pipeline_descriptor) or_return
 
 	command_buffer := gfx.begin_command_encoding(transfer_queue()) or_return
-	defer gfx.submit(transfer_queue(), { command_buffer }, ..on_done)
 
 	upload_buffer := gfx.scratch_alloc(&staging_memory, []Pixel, dimensions.x * dimensions.y * 6) or_return
 	for img, i in images {
@@ -444,6 +442,9 @@ setup_skybox :: proc(image_paths: [6]string, on_done: ..gfx.Semaphore_Signal) ->
 
 		image.image_free(img)
 	}
+
+	gfx.synchronize(command_buffer, synchronization)
+	gfx.submit(transfer_queue(), command_buffer)
 
 	return nil
 }
@@ -479,7 +480,7 @@ draw_skybox :: proc(
 	return nil
 }
 
-create_texture :: proc(path: string, on_done: ..gfx.Semaphore_Signal) -> (texture: gfx.Texture, view: gfx.View, res: gfx.Result) {
+create_texture :: proc(path: string, synchronization := gfx.Synchronization_Group{}) -> (texture: gfx.Texture, view: gfx.View, res: gfx.Result) {
 	channels_to_format := [?]gfx.Pixel_Format {
 		0	= .None,
 		1	= .R8_Unorm,
@@ -523,14 +524,15 @@ create_texture :: proc(path: string, on_done: ..gfx.Semaphore_Signal) -> (textur
 		) or_return
 		gfx.barrier(command_buffer, { .Transfer }, { .Transfer }) or_return
 		gfx.generate_mipmaps_for(command_buffer, texture) or_return
-	gfx.submit(transfer_queue(), { command_buffer }, ..on_done) or_return
+	gfx.synchronize(command_buffer, synchronization) or_return
+	gfx.submit(transfer_queue(), command_buffer) or_return
 
 	return
 }
 
 app :: proc() -> Result {
 
-	frame_semaphore = gfx.create_semaphore(.Cpu_Waitable) or_return
+	frame_semaphore = gfx.create_semaphore(.Cpu) or_return
 
 	gfx.create_arena	(&default_memory,	.Default, 256	* mem.Megabyte) or_return
 	gfx.create_arena	(&framebuffers_memory,	.Private, 512	* mem.Megabyte) or_return
@@ -538,12 +540,12 @@ app :: proc() -> Result {
 	gfx.create_scratch	(&staging_memory,	.Staging, 32	* mem.Megabyte) or_return
 	gfx.create_scratch	(&frame_memory,		.Default, 32	* mem.Megabyte) or_return
 
-	// tl_track_memory("default_memory", &default_memory)
-	// tl_track_memory("private_memory", &private_memory)
-	// tl_track_memory("staging_memory", &staging_memory)
-	// tl_track_memory("framebuffers_memory", &framebuffers_memory)
-	// tl_track_memory("frame_memory", &frame_memory)
-	// tl_track_internal_gfx_memory()
+	tl_track_memory("default_memory", &default_memory)
+	tl_track_memory("private_memory", &private_memory)
+	tl_track_memory("staging_memory", &staging_memory)
+	tl_track_memory("framebuffers_memory", &framebuffers_memory)
+	tl_track_memory("frame_memory", &frame_memory)
+	tl_track_internal_gfx_memory()
 
 	rd_init_resource_manager(rd_resource_manager()) or_return
 
@@ -554,7 +556,7 @@ app :: proc() -> Result {
 
 	// tx_register_font_root("./res/fonts/IBMPlexSans.ttf")
 	tx_register_font_root("./res/fonts/NotoSans-Regular.ttf")
-	font := tx_register_font("./res/fonts/Cairopixel.ttf", 20) or_return
+	tx_register_font("./res/fonts/NotoSansSymbols2-Regular.ttf", 20) or_return
 	// font3 := tx_register_font("./res/fonts/NotoSansJP.ttf", 50) or_return
 	// font4 := tx_register_font("./res/fonts/NotoSansJP.ttf", 20) or_return
 	// glyph_iter := tx_make_glyph_iterator(font3, "Hello friends!", {}) or_return
@@ -724,7 +726,7 @@ app :: proc() -> Result {
 	prev_time := time.tick_now()
 	delta_time: f32
 
-	ui_semaphore := gfx.create_semaphore() or_return
+	ui_semaphore := gfx.create_semaphore(.Timeline) or_return
 
 	for !should_quit {
 		frame_count += 1
@@ -734,7 +736,7 @@ app :: proc() -> Result {
 		// gfx.wait_semaphore(frame_semaphore, frame_count - 1)
 
 		process_events()
-		// tl_begin_frame()
+		tl_begin_frame()
 
 		if window_state.did_resize {
 			prepare_stuff_for_window_size() or_return
@@ -799,10 +801,11 @@ app :: proc() -> Result {
 		// ui_memory_tracker(ui_ctx)
 		// ui.end(ui_ctx)
 
-		surface_view: gfx.View
+		surface_view:		gfx.View
+		surface_semaphore:	gfx.Semaphore
 		for {
 			surface_view_res: gfx.Result
-			surface_view, surface_view_res = gfx.acquire_surface_view(surface)
+			surface_view, surface_semaphore, surface_view_res = gfx.acquire_surface_view(surface)
 			if surface_view_res == .Surface_Unavailable {
 				continue
 			} else if surface_view_res == nil {
@@ -833,9 +836,16 @@ app :: proc() -> Result {
 		rd_cycle_resource_manager(rd_resource_manager())
 		rd_apply_resource_manager_updates(rd_resource_manager())
 
-		do_ui(delta_time, { ui_semaphore, frame_count }) or_return
+		do_ui(delta_time, {
+			wait	= {
+				{ surface_semaphore, 0, { .Color_Attachment } },
+			},
+			signal	= {
+				{ ui_semaphore, frame_count, { .Color_Attachment } },
+			},
+		}) or_return
 
-		command_buffer := gfx.begin_command_encoding(.Default, { ui_semaphore, frame_count }) or_return
+		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		tx_sync_font_textures(command_buffer) or_return
 
@@ -884,8 +894,6 @@ app :: proc() -> Result {
 			gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 6) or_return
 			draw_skybox(command_buffer, view, proj, 0, 0) or_return
 
-			// draw_text(command_buffer, font4, "vicixdev_gfx demo", { 5, window_state.scaled_dimensions.y - 5 }, { 255, 255, 255, 255 }, window_state.scaled_dimensions)
-
 			gfx.use_depth_stencil_state(command_buffer, depth_disabled_stencil)
 			gfx.use_resources(command_buffer, rd_current_resource_set_of(rd_resource_manager()))
 			blit_args := gfx.scratch_alloc(&frame_memory, Blit_Arguments) or_return
@@ -897,10 +905,18 @@ app :: proc() -> Result {
 			gfx.draw(command_buffer, blit_pipeline, blit_args, 3) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
-		gfx.submit(.Default, { command_buffer }, { frame_semaphore, frame_count }) or_return
+		gfx.synchronize(command_buffer, {
+			wait = {
+				{ ui_semaphore, frame_count, { .Transfer } },
+			},
+			signal = {
+				{ frame_semaphore, frame_count, { .Color_Attachment } },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
 		gfx.present(.Default, surface_view, { frame_semaphore, frame_count }) or_return
 
-		// tl_end_frame()
+		tl_end_frame()
 	}
 
 	gfx.wait_semaphore(frame_semaphore, frame_count)
@@ -924,16 +940,15 @@ main :: proc() {
 	setup()
 	defer fini()
 
-	// tl_init_memtrack()
-	// defer tl_fini_memtrack()
+	tl_init_memtrack()
+	defer tl_fini_memtrack()
 
 	res := app()
 	if res != nil do log.fatalf("Example failed with error %v.", res)
 }
 
-do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
-	if ui.UI({
-		id	= ui.ID("Stats_Widget"),
+do_ui :: proc(delta_time: f32, synchronization: gfx.Synchronization_Group) -> Result {
+	if ui.UI(ui.ID("Stats_Widget"))({
 		layout	= {
 			sizing = {
 				ui.SizingFit({ min = 100.0 }),
@@ -950,9 +965,9 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 		cornerRadius	= {
 			0, 0, 0, 10,
 		},
-		backgroundColor	= { 20, 20, 20, 90 },
+		backgroundColor	= { **ui.PRIMARY_900.rgb, 90 },
 		floating = {
-			zIndex		= -256,
+			zIndex		= 256,
 			attachTo	= .Root,
 			attachment	= {
 				element	= .LeftTop,
@@ -961,13 +976,12 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 			pointerCaptureMode = .Passthrough,
 		},
 	}) {
-		ui.Text(gfx.TARGET_API_STRING, &{
+		ui.Text(gfx.TARGET_API_STRING, {
 			textColor	= { 25, 255, 25, 255 } when gfx.TARGET_API == .Metal_3 else { 255, 25, 25, 255 },
 			fontSize	= 20,
 		})
 
-		if ui.UI({
-			id	= ui.ID_LOCAL("Grid"),
+		if ui.UI(ui.ID_LOCAL("Grid"))({
 			layout	= {
 				sizing = {
 					ui.SizingGrow({}),
@@ -976,8 +990,7 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 				layoutDirection	= .LeftToRight,
 			},
 		}) {
-			if ui.UI({
-				id	= ui.ID_LOCAL("Labels"),
+			if ui.UI(ui.ID_LOCAL("Labels"))({
 				layout	= {
 					sizing = {
 						ui.SizingPercent(0.30),
@@ -986,18 +999,17 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 					layoutDirection	= .TopToBottom,
 				},
 			}) {
-				ui.Text("FPS:", &{
+				ui.Text("FPS:", {
 					textColor	= { 255, 255, 255, 255 },
 					fontSize	= 20,
 				})
-				ui.Text("MS:", &{
+				ui.Text("MS:", {
 					textColor	= { 255, 255, 255, 255 },
 					fontSize	= 20,
 				})
 			
 			}
-			if ui.UI({
-				id	= ui.ID_LOCAL("Stats"),
+			if ui.UI(ui.ID_LOCAL("Stats"))({
 				layout	= {
 					sizing = {
 						ui.SizingGrow({}),
@@ -1010,11 +1022,11 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 					},
 				},
 			}) {
-				ui.TextDynamic(fmt.tprintf("%.2f", 1.0/delta_time), &{
+				ui.TextDynamic(fmt.tprintf("%.2f", 1.0/delta_time), {
 					textColor	= { 255, 255, 255, 255 },
 					fontSize	= 20,
 				})
-				ui.TextDynamic(fmt.tprintf("%.2f", delta_time * 1000.0), &{
+				ui.TextDynamic(fmt.tprintf("%.2f", delta_time * 1000.0), {
 					textColor	= { 255, 255, 255, 255 },
 					fontSize	= 20,
 				})
@@ -1022,8 +1034,7 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 		}
 	}
 
-	if ui.UI({
-		id		= ui.ID("Demo_Widget"),
+	if ui.UI(ui.ID("Demo_Widget"))({
 		layout		= {
 			sizing	= {
 				width	= ui.SizingFit({}),
@@ -1031,25 +1042,43 @@ do_ui :: proc(delta_time: f32, on_done: ..gfx.Semaphore_Signal) -> Result {
 			},
 			padding = { 3, 3, 0, 1 },
 		},
-		backgroundColor	= { 20, 20, 20, 90 },
+		backgroundColor	= { **ui.PRIMARY_900.rgb, 90 },
 		cornerRadius	= { 0.0, 5.0, 0.0, 0.0 },
 		floating	= {
-			zIndex		= -256,
+			zIndex		= 256,
 			attachment	= {
 				element	= .LeftBottom,
 				parent	= .LeftBottom,
 			},
+			pointerCaptureMode = .Passthrough,
 			attachTo	= .Root,
 		},
 	}) {
-		ui.Text("vicixdev_gfx demo", &{
+		ui.Text("vicixdev_gfx demo", {
 			wrapMode	= .Newlines,
 			textColor	= { 255, 255, 255, 255 },
 			fontSize	= 20,
 		})
 	}
-	
-	ui_render(..on_done) or_return
+
+	@static
+	memory_window := ui_Window_Persistent_Data {
+		position	= 300,
+		dimensions	= 300,
+	}
+	window_config := ui_Window_Config {
+		persistent	= &memory_window,
+		title		= "Memory Tracker",
+	}
+	if .Just_Pressed in key_states[.M] {
+		memory_window.status	= .Normal
+	}
+	if ui_Window(ui.ID("Window"), &window_config) {
+		tl_Memory_Tracker()
+	}
+
+	ui_render(synchronization) or_return
 
 	return nil
 }
+

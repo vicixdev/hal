@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 #+build darwin
 package vicixdev_gfx
 
@@ -57,7 +63,7 @@ m3_resize_surface :: proc(metadata: ^_Surface_Metadata, dimensions: [2]int) -> R
 	return nil
 }
 
-m3_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_View_Metadata) -> Result {
+m3_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_View_Metadata, semaphore_metadata: ^_Semaphore_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 
 	drawable := metadata.m3.layer->nextDrawable()
@@ -84,19 +90,13 @@ m3_present :: proc(
 	surface_metadata:	^_Surface_Metadata,
 	view_metadata:		^_View_Metadata,
 	waits:			[]_Semaphore_Wait,
-) -> Result {
+) -> (res: Result) {
 	NS.scoped_autoreleasepool()
 	
 	command_buffer := queue_metadata.m3.queue->commandBuffer()
 
 	for wait in waits {
-		switch wait.semaphore.type {
-		case .Default:
-			command_buffer->encodeWaitForEvent(wait.semaphore.m3.event, cast(u64)wait.value)
-
-		case .Cpu_Waitable:
-			command_buffer->encodeWaitForEvent(wait.semaphore.m3.shared_event, cast(u64)wait.value)
-		}
+		_m3_emit_wait_semaphore(command_buffer, wait.semaphore, wait.value)
 	}
 
 	command_buffer->presentDrawable(view_metadata.m3.drawable)

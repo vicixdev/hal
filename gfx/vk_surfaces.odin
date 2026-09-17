@@ -1,3 +1,9 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
 package vicixdev_gfx
 
 import "base:runtime"
@@ -202,7 +208,11 @@ vk_present :: proc(
 	return nil
 }
 	
-vk_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_View_Metadata) -> Result {
+vk_acquire_surface_view :: proc(
+	metadata:		^_Surface_Metadata,
+	view_metadata:		^_View_Metadata,
+	semaphore_metadata:	^_Semaphore_Metadata,
+) -> Result {
 
 	semaphore_index := metadata.vk.next_image_available_semaphore % len(metadata.vk.image_available_semaphores)
 	metadata.vk.next_image_available_semaphore += 1
@@ -223,7 +233,8 @@ vk_acquire_surface_view :: proc(metadata: ^_Surface_Metadata, view_metadata: ^_V
 
 	view_metadata.vk.view				= metadata.vk.image_views[image_index]
 	view_metadata.vk.swapchain_image_index		= image_index
-	view_metadata.vk.swapchain_image_semaphore	= semaphore
+
+	semaphore_metadata.vk.semaphore	= semaphore
 	
 	return nil
 }

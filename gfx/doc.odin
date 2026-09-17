@@ -1,4 +1,10 @@
 /*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+*/
+
+/*
 vx_gfx is an opinionated Hardware Abstraction Layer (HAL) compatible with Metal 3+Residency Sets and
 Vulkan 1.2+VK_KHR_dynamic_rendering. It exposes in a cross-platform and ergonomic manner modern GPU features,
 like bindless rendering, persistently mapped resources and more.

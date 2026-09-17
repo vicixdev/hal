@@ -19,6 +19,7 @@ _ui: struct {
 	frame_memory:				^gfx.Scratch,
 
 	screen_dimensions:			[2]int,
+	render_dimensions:			[2]int,
 	scissor:				gfx.Scissor,
 
 	blend_state:				gfx.Blend_State,
@@ -27,12 +28,9 @@ _ui: struct {
 	sampler_resource_id:			int,
 	frame_buffer:				gfx.Texture,
 	frame_buffer_view:			gfx.View,
-	frame_buffer_resource_id:		int,
 	resolve_frame_buffer:			gfx.Texture,
 	resolve_frame_buffer_view:		gfx.View,
 	resolve_frame_buffer_resource_id:	int,
-	depth_buffer:				gfx.Texture,
-	depth_buffer_view:			gfx.View,
 }
 
 ui_init :: proc(
@@ -104,12 +102,11 @@ ui_init :: proc(
 		topology	= .Triangle_Strip,
 		cull		= .None,
 		color_formats	= { .RGBA8_Unorm },
-		depth_format	= .D32_Float,
 		blend_state	= _ui.blend_state,
 	}
 	_ui.pipeline = gfx.create_render_pipeline(pipeline_descriptor) or_return
 
-	ui_resize_screen(window_state.dimensions) or_return
+	ui_resize_screen(window_state.scaled_dimensions, window_state.dimensions) or_return
 
 	ui.BeginLayout()
 	return nil
@@ -120,21 +117,20 @@ ui_toggle_debug_mode :: proc() {
 	ui.SetDebugModeEnabled(_ui.debug_mode_enabled)
 }
 
-ui_resize_screen :: proc(screen_size: [2]int) -> (res: gfx.Result) {
+ui_resize_screen :: proc(screen_size: [2]int, render_size: [2]int) -> (res: gfx.Result) {
 	if _ui.frame_buffer != {} {
 		gfx.destroy_texture(_ui.frame_buffer)
-		gfx.destroy_texture(_ui.depth_buffer)
 		gfx.destroy_texture(_ui.resolve_frame_buffer)
 
-		rd_release_texture_resource_id(rd_resource_manager(), .D2, _ui.frame_buffer_resource_id)
 		rd_release_texture_resource_id(rd_resource_manager(), .D2, _ui.resolve_frame_buffer_resource_id)
 	}
 
 	_ui.screen_dimensions = screen_size
+	_ui.render_dimensions = render_size
 
 	frame_buffer_descriptor := gfx.Texture_Descriptor {
 		type		= .D2_Array,
-		dimensions	= { **_ui.screen_dimensions, 1 },
+		dimensions	= { **_ui.render_dimensions, 1 },
 		format		= .RGBA8_Unorm,
 		sample_count	= 4,
 		usage		= { .Color_Attachment, .Sampled },
@@ -144,22 +140,9 @@ ui_resize_screen :: proc(screen_size: [2]int) -> (res: gfx.Result) {
 	_ui.frame_buffer = gfx.create_texture(frame_buffer_memory, frame_buffer_descriptor) or_return
 	_ui.frame_buffer_view = gfx.default_view_of(_ui.frame_buffer) or_return
 
-	depth_buffer_descriptor := gfx.Texture_Descriptor {
-		type		= .D2_Array,
-		dimensions	= { **_ui.screen_dimensions, 1 },
-		format		= .D32_Float,
-		sample_count	= 4,
-		usage		= { .Depth_Stencil_Attachment },
-	}
-	depth_buffer_size, depth_buffer_align := gfx.size_align_of(depth_buffer_descriptor) or_return
-	depth_buffer_memory := gfx.arena_alloc(_ui.frame_buffer_memory, depth_buffer_size, depth_buffer_align) or_return
-	_ui.depth_buffer = gfx.create_texture(depth_buffer_memory, depth_buffer_descriptor) or_return
-	_ui.depth_buffer_view = gfx.default_view_of(_ui.depth_buffer) or_return
-	_ui.frame_buffer_resource_id = rd_acquire_texture_resource_id(rd_resource_manager(), .D2, _ui.frame_buffer_view)
-
 	resolve_frame_buffer_descriptor := gfx.Texture_Descriptor {
 		type		= .D2_Array,
-		dimensions	= { **_ui.screen_dimensions, 1 },
+		dimensions	= { **_ui.render_dimensions, 1 },
 		format		= .RGBA8_Unorm,
 		sample_count	= 1,
 		usage		= { .Color_Attachment, .Sampled },
@@ -170,7 +153,7 @@ ui_resize_screen :: proc(screen_size: [2]int) -> (res: gfx.Result) {
 	_ui.resolve_frame_buffer_view = gfx.default_view_of(_ui.resolve_frame_buffer) or_return
 	_ui.resolve_frame_buffer_resource_id = rd_acquire_texture_resource_id(rd_resource_manager(), .D2, _ui.resolve_frame_buffer_view)
 
-	ui.SetLayoutDimensions({ **cast([2]f32)screen_size })
+	ui.SetLayoutDimensions({ **cast([2]f32)_ui.screen_dimensions })
 
 	return nil
 }
@@ -186,7 +169,7 @@ ui_poll_inputs :: proc() {
 			.Pressed in mouse_state.buttons[.Left],
 		)
 
-		ui.UpdateScrollContainers(true, mouse_state.scroll, 0.01)
+		ui.UpdateScrollContainers(false, mouse_state.scroll, 0.01)
 	} else {
 		ui.SetPointerState(
 			{ -1, -1 },
@@ -195,9 +178,9 @@ ui_poll_inputs :: proc() {
 	}
 }
 
-ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
+ui_render :: proc(synchronization: gfx.Synchronization_Group) -> Result {
 	
-	render_commands := ui.EndLayout()
+	render_commands := ui.EndLayout(0.01)
 
 	command_buffer := gfx.begin_command_encoding(.Default) or_return
 
@@ -210,12 +193,6 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 				store_operation	= .Store,
 				clear_value	= [4]f64 { 0.0, 0.0, 0.0, 0.0 },
 			},
-		},
-		depth_attachment	= gfx.Render_Attachment{
-			view		= _ui.depth_buffer_view,
-			load_operation	= .Clear,
-			store_operation	= .Store,
-			clear_value	= 1.0,
 		},
 	}
 	gfx.begin_render_pass(command_buffer, renderpass_descriptor) or_return
@@ -273,6 +250,10 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 				command.zIndex,
 			)
 
+		case .OverlayColorStart:
+
+		case .OverlayColorEnd:
+
 		case .Image:
 			data := command.renderData.image
 
@@ -283,24 +264,27 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 			)
 
 		case .ScissorStart:
+			screen_render_ratio := cast([2]f32)_ui.render_dimensions / cast([2]f32)_ui.screen_dimensions
+			x0 := command.boundingBox.x
+			y0 := command.boundingBox.y
+			x1 := x0 + command.boundingBox.width
+			y1 := y0 + command.boundingBox.height
+
 			scissor: gfx.Scissor
-			scissor.offset.x = cast(int)command.boundingBox.x
-			scissor.dimensions.x = cast(int)command.boundingBox.width
-			scissor.offset.y = _ui.screen_dimensions.y - cast(int)command.boundingBox.y - cast(int)command.boundingBox.height
-			scissor.dimensions.y = cast(int)command.boundingBox.height
+			scissor.offset.x = cast(int)math.floor(x0 * screen_render_ratio.x)
+			scissor.offset.y = cast(int)math.floor((cast(f32)_ui.screen_dimensions.y - y1) * screen_render_ratio.y)
+			scissor.dimensions.x = cast(int)math.ceil(x1 * screen_render_ratio.x) - scissor.offset.x
+			scissor.dimensions.y = cast(int)math.ceil((cast(f32)_ui.screen_dimensions.y - y0) * screen_render_ratio.y) - scissor.offset.y
 
-			if scissor.offset.x >= _ui.screen_dimensions.x || scissor.offset.x < 0 {
-				continue
+			if scissor.offset.x < 0 do scissor.offset.x = 0
+			if scissor.offset.y < 0 do scissor.offset.y = 0
+			if scissor.offset.x > _ui.render_dimensions.x do scissor.offset.x = _ui.render_dimensions.x
+			if scissor.offset.y > _ui.render_dimensions.y do scissor.offset.y = _ui.render_dimensions.y
+			if scissor.offset.x + scissor.dimensions.x > _ui.render_dimensions.x {
+				scissor.dimensions.x = _ui.render_dimensions.x - scissor.offset.x
 			}
-			if scissor.offset.y >= _ui.screen_dimensions.y || scissor.offset.y < 0 {
-				continue
-			}
-
-			if scissor.dimensions.x + scissor.offset.x >= _ui.screen_dimensions.x {
-				scissor.dimensions.x = _ui.screen_dimensions.x - scissor.offset.x
-			}
-			if scissor.dimensions.y + scissor.offset.y >= _ui.screen_dimensions.y {
-				scissor.dimensions.y = _ui.screen_dimensions.y - scissor.offset.y
+			if scissor.offset.y + scissor.dimensions.y > _ui.render_dimensions.y {
+				scissor.dimensions.y = _ui.render_dimensions.y - scissor.offset.y
 			}
 
 			gfx.use_scissor(command_buffer, scissor) or_return
@@ -308,7 +292,7 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 		case .ScissorEnd:
 			_ui.scissor	= {
 				{ 0, 0 },
-				_ui.screen_dimensions,
+				_ui.render_dimensions,
 			}
 			gfx.use_scissor(command_buffer, _ui.scissor) or_return
 
@@ -316,8 +300,9 @@ ui_render :: proc(on_done: ..gfx.Semaphore_Signal) -> Result {
 		}
 	}
 
+	gfx.synchronize(command_buffer, synchronization) or_return
 	gfx.end_render_pass(command_buffer) or_return
-	gfx.submit(.Default, { command_buffer }, ..on_done) or_return
+	gfx.submit(.Default, command_buffer) or_return
 
 	ui_poll_inputs()
 	ui.BeginLayout()
@@ -637,7 +622,7 @@ _ui_draw_border :: proc(
 
 	quad_strips := make([dynamic]_ui_Vertex, context.temp_allocator)
 	// Top border quad
-	if top_bottom_left != top_top_left {
+	if data.width.top > 0 {
 		append(&quad_strips, _ui_Vertex {
 			position	= top_bottom_left,
 		})
@@ -652,7 +637,7 @@ _ui_draw_border :: proc(
 		})
 	}
 	// Left border quad
-	if left_bottom_left != left_bottom_right {
+	if data.width.left > 0 {
 		append(&quad_strips, _ui_Vertex {
 			position	= left_bottom_left,
 		})
@@ -667,7 +652,7 @@ _ui_draw_border :: proc(
 		})
 	}
 	// Bottom border quad
-	if bottom_bottom_left != bottom_top_right {
+	if data.width.bottom > 0 {
 		append(&quad_strips, _ui_Vertex {
 			position	= bottom_bottom_left,
 		})
@@ -682,7 +667,7 @@ _ui_draw_border :: proc(
 		})
 	}
 	// Right border quad
-	if right_bottom_left != bottom_bottom_right {
+	if data.width.right > 0 {
 		append(&quad_strips, _ui_Vertex {
 			position	= right_bottom_left,
 		})

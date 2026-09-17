@@ -27,7 +27,8 @@ struct Arguments {
 	}
 
 	float	get_z() {
-		return ((float)z_index / 32766.0 + 1.0) / 2.0;
+		return 1.0 - (((float)z_index / 32768.0 + 1.0) / 2.0);
+		// return 0.0;
 	}
 
 	float	get_color_factor() {
