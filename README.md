@@ -4,7 +4,7 @@ Vulkan 1.2+VK_KHR_dynamic_rendering. It exposes in a cross-platform and ergonomi
 like bindless rendering, persistently mapped resources and more.
 
 It is heavily inspired by the [No Graphics API](https://www.sebastianaaltonen.com/blog/no-graphics-api)
-blogpost by [Sebastian Altonen](https://www.sebastianaaltonen.com).
+blogpost by [Sebastian Aaltonen](https://www.sebastianaaltonen.com).
 
 ## PLATFORM SUPPORT
 `vicixdev_gfx` is expected to run on the following platforms (assuming latest drivers):
