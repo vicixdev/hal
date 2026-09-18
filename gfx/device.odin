@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 
@@ -44,8 +44,8 @@ Device_Info :: struct {
 	limits:		Device_Limits,
 
 	_platform:	struct #raw_union {
-		m3:	m3_Device_Info,
-		vk:	vk_Device_Info,
+		m3:	_m3_Device_Info,
+		vk:	_vk_Device_Info,
 	},
 }
 
@@ -69,9 +69,9 @@ enumerate_devices :: proc(
 	}
 
 	when TARGET_API == .Vulkan {
-		_available_devices, res = vk_enumerate_devices(_global_allocator)
+		_available_devices, res = _vk_enumerate_devices(_global_allocator)
 	} else when TARGET_API == .Metal_3 {
-		_available_devices, res = m3_enumerate_devices(_global_allocator)
+		_available_devices, res = _m3_enumerate_devices(_global_allocator)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -99,11 +99,11 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 	defer _device_is_being_initialized = false
 
 	when TARGET_API == .Vulkan {
-		res = vk_select_device(device)
+		res = _vk_select_device(device)
 		_check_generic_backend_error(res, location) or_return
 
 	} else when TARGET_API == .Metal_3 {
-		res = m3_select_device(device)
+		res = _m3_select_device(device)
 		_check_generic_backend_error(res, location) or_return
 	}
 

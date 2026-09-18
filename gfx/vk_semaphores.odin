@@ -1,18 +1,20 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import vk "vendor:vulkan"
 
-vk_Semaphore_Metadata :: struct {
+_vk_Semaphore_Metadata :: struct {
 	semaphore:	vk.Semaphore,
 }
 
-vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
+_vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
 	semaphore_info: vk.SemaphoreCreateInfo
 	switch metadata.type {
 	case .Default:
@@ -42,22 +44,22 @@ vk_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type
 	}
 
 	semaphore: vk.Semaphore
-	vk_call(vk.CreateSemaphore(vk_device, &semaphore_info, nil, &semaphore)) or_return
+	_vk_call(vk.CreateSemaphore(_vk_device, &semaphore_info, nil, &semaphore)) or_return
 
 	metadata.vk.semaphore = semaphore
 
 	return nil
 }
 
-vk_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
+_vk_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
 	if metadata.type != .Surface {
-		vk.DestroySemaphore(vk_device, metadata.vk.semaphore, nil)
+		vk.DestroySemaphore(_vk_device, metadata.vk.semaphore, nil)
 	}
 
 	return nil
 }
 
-vk_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result {
+_vk_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result {
 
 	value := cast(u64)value
 	wait_info := vk.SemaphoreWaitInfo {
@@ -66,7 +68,7 @@ vk_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result 
 		pSemaphores	= &metadata.vk.semaphore,
 		pValues		= &value,
 	}
-	vk_call(vk.WaitSemaphores(vk_device, &wait_info, max(u64))) or_return
+	_vk_call(vk.WaitSemaphores(_vk_device, &wait_info, max(u64))) or_return
 
 	return nil
 }

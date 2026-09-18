@@ -1,44 +1,44 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import "darwext/dispatch"
 
-m3_Pipeline_Stage_Metadata :: struct {
+_m3_Pipeline_Stage_Metadata :: struct {
 	library:	^MTL.Library,
 	function:	^MTL.Function,
 }
 
-m3_Pipeline_Metadata :: struct {
+_m3_Pipeline_Metadata :: struct {
 	using type_metadata: struct #raw_union {
 		compute:	struct {
-			using stage:	m3_Pipeline_Stage_Metadata,
+			using stage:	_m3_Pipeline_Stage_Metadata,
 			pipeline:	^MTL.ComputePipelineState,
 		},
 		render:		struct {
-			vertex:		m3_Pipeline_Stage_Metadata,
-			fragment:	m3_Pipeline_Stage_Metadata,
+			vertex:		_m3_Pipeline_Stage_Metadata,
+			fragment:	_m3_Pipeline_Stage_Metadata,
 			pipeline:	^MTL.RenderPipelineState,
 		},
 	},
 }
 
-m3_create_compute_pipeline :: proc(
+_m3_create_compute_pipeline :: proc(
 	metadata:	^_Pipeline_Metadata,
 	descriptor:	Compute_Pipeline_Descriptor,
 ) -> Result {
 	NS.scoped_autoreleasepool()
 
-	library, function := m3_compile_pipeline_stage(descriptor.stage) or_return
+	library, function := _m3_compile_pipeline_stage(descriptor.stage) or_return
 
-	pipeline, pipeline_err := m3_device->newComputePipelineStateWithFunction(function)
+	pipeline, pipeline_err := _m3_device->newComputePipelineStateWithFunction(function)
 	if pipeline_err != nil {
 		_log_generic_message(
 			.Error,
@@ -59,24 +59,24 @@ m3_create_compute_pipeline :: proc(
 	return nil
 }
 
-m3_create_render_pipeline :: proc(
+_m3_create_render_pipeline :: proc(
 	metadata: ^_Pipeline_Metadata,
 	descriptor: Render_Pipeline_Descriptor,
 	blend_metadata: ^_Blend_State_Metadata,
 ) -> Result {
 	NS.scoped_autoreleasepool()
 
-	vertex_library, vertex_function := m3_compile_pipeline_stage(descriptor.vertex_stage) or_return
-	fragment_library, fragment_function := m3_compile_pipeline_stage(descriptor.fragment_stage) or_return
+	vertex_library, vertex_function := _m3_compile_pipeline_stage(descriptor.vertex_stage) or_return
+	fragment_library, fragment_function := _m3_compile_pipeline_stage(descriptor.fragment_stage) or_return
 
-	pipeline_descriptor := m3_render_pipeline_descriptor_to_mtl(
+	pipeline_descriptor := _m3_render_pipeline_descriptor_to_mtl(
 		descriptor,
 		blend_metadata,
 		vertex_function,
 		fragment_function,
 	)
 
-	pipeline, pipeline_err := m3_device->newRenderPipelineStateWithDescriptor(pipeline_descriptor)
+	pipeline, pipeline_err := _m3_device->newRenderPipelineStateWithDescriptor(pipeline_descriptor)
 	if pipeline_err != nil {
 		_log_generic_message(
 			.Error,
@@ -100,7 +100,7 @@ m3_create_render_pipeline :: proc(
 	return nil
 }
 
-m3_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
+_m3_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
 	NS.scoped_autoreleasepool()
 
 	switch metadata.type {
@@ -118,7 +118,7 @@ m3_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
 	}
 }
 
-m3_render_pipeline_descriptor_to_mtl :: proc(
+_m3_render_pipeline_descriptor_to_mtl :: proc(
 	descriptor:		Render_Pipeline_Descriptor,
 	blend_metadata:		^_Blend_State_Metadata,
 	vertex_function:	^MTL.Function,
@@ -143,38 +143,38 @@ m3_render_pipeline_descriptor_to_mtl :: proc(
 		color_attachment := MTL.RenderPipelineColorAttachmentDescriptor.alloc()->init()
 		defer color_attachment->release()
 
-		color_attachment->setPixelFormat(m3_PIXEL_FORMAT_TO_MTL[color_format])
+		color_attachment->setPixelFormat(_m3_PIXEL_FORMAT_TO_MTL[color_format])
 
 		if blend_metadata != nil {
 			color_attachment->setBlendingEnabled(true)
-			color_attachment->setRgbBlendOperation(m3_BLEND_OPERATION_TO_MTL[blend_metadata.color_op])
+			color_attachment->setRgbBlendOperation(_m3_BLEND_OPERATION_TO_MTL[blend_metadata.color_op])
 			color_attachment->setSourceRGBBlendFactor(
-				m3_BLEND_FACTOR_TO_MTL[blend_metadata.source_color_factor])
+				_m3_BLEND_FACTOR_TO_MTL[blend_metadata.source_color_factor])
 			color_attachment->setDestinationRGBBlendFactor(
-				m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_color_factor])
-			color_attachment->setAlphaBlendOperation(m3_BLEND_OPERATION_TO_MTL[blend_metadata.alpha_op])
+				_m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_color_factor])
+			color_attachment->setAlphaBlendOperation(_m3_BLEND_OPERATION_TO_MTL[blend_metadata.alpha_op])
 			color_attachment->setSourceAlphaBlendFactor(
-				m3_BLEND_FACTOR_TO_MTL[blend_metadata.source_alpha_factor])
+				_m3_BLEND_FACTOR_TO_MTL[blend_metadata.source_alpha_factor])
 			color_attachment->setDestinationAlphaBlendFactor(
-				m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_alpha_factor])
+				_m3_BLEND_FACTOR_TO_MTL[blend_metadata.destination_alpha_factor])
 		}
 		
 		mtl->colorAttachments()->setObject(color_attachment, cast(NS.UInteger)i)
 	}
 
 	if descriptor.depth_format != .None {
-		mtl->setDepthAttachmentPixelFormat(m3_PIXEL_FORMAT_TO_MTL[descriptor.depth_format])
+		mtl->setDepthAttachmentPixelFormat(_m3_PIXEL_FORMAT_TO_MTL[descriptor.depth_format])
 	}
 
 	if descriptor.stencil_format != .None {
-		mtl->setStencilAttachmentPixelFormat(m3_PIXEL_FORMAT_TO_MTL[descriptor.stencil_format])
+		mtl->setStencilAttachmentPixelFormat(_m3_PIXEL_FORMAT_TO_MTL[descriptor.stencil_format])
 	}
 
 
 	return
 }
 
-m3_compile_pipeline_stage :: proc(
+_m3_compile_pipeline_stage :: proc(
 	descriptor: Shader_Stage_Descriptor,
 ) -> (^MTL.Library, ^MTL.Function, Result) {
 	
@@ -186,7 +186,7 @@ m3_compile_pipeline_stage :: proc(
 	)
 	defer bytecode_data->release()
 
-	library, library_err := m3_device->newLibraryWithData(bytecode_data)
+	library, library_err := _m3_device->newLibraryWithData(bytecode_data)
 	if library_err != nil {
 		_log_generic_message(
 			.Error,
@@ -220,7 +220,7 @@ m3_compile_pipeline_stage :: proc(
 		for constant in descriptor.constants {
 			constants->setConstantValue(
 				constant.value,
-				m3_CONSTANT_TYPE_TO_MTL[constant.type],
+				_m3_CONSTANT_TYPE_TO_MTL[constant.type],
 				cast(NS.UInteger)constant.index,
 			)
 		}
@@ -244,13 +244,13 @@ m3_compile_pipeline_stage :: proc(
 }
 
 @(rodata)
-m3_CONSTANT_TYPE_TO_MTL := [Constant_Type]MTL.DataType {
+_m3_CONSTANT_TYPE_TO_MTL := [Constant_Type]MTL.DataType {
 	.U32 = .UInt,
 	.F32 = .Float,
 }
 
 @(rodata)
-m3_TOPOLOGY_TO_MTL := [Topology]MTL.PrimitiveType {
+_m3_TOPOLOGY_TO_MTL := [Topology]MTL.PrimitiveType {
 	.Triangle_List	= .Triangle,
 	.Triangle_Strip	= .TriangleStrip,
 }

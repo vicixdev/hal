@@ -1,26 +1,28 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import vk "vendor:vulkan"
 
-vk_Depth_Stencil_State_Metadata :: struct {}
+_vk_Depth_Stencil_State_Metadata :: struct {}
 
-vk_create_depth_stencil_state :: proc(
+_vk_create_depth_stencil_state :: proc(
 	metadata:	^_Depth_Stencil_State_Metadata,
 	descriptor:	Depth_Stencil_Descriptor,
 ) -> Result {
 	return nil
 }
 
-vk_destroy_depth_stencil_state :: proc(metadata: ^_Depth_Stencil_State_Metadata) {}
+_vk_destroy_depth_stencil_state :: proc(metadata: ^_Depth_Stencil_State_Metadata) {}
 
 @(rodata)
-vk_COMPARE_OPERATION_TO_VK := [Compare_Operation]vk.CompareOp {
+_vk_COMPARE_OPERATION_TO_VK := [Compare_Operation]vk.CompareOp {
 	.Never		= .NEVER,
 	.Less		= .LESS,
 	.Equal		= .EQUAL,
@@ -32,7 +34,7 @@ vk_COMPARE_OPERATION_TO_VK := [Compare_Operation]vk.CompareOp {
 }
 
 @(rodata)
-vk_STENCIL_OPERATION_TO_VK := [Stencil_Operation]vk.StencilOp {
+_vk_STENCIL_OPERATION_TO_VK := [Stencil_Operation]vk.StencilOp {
 	.Keep			= .KEEP,
 	.Zero			= .ZERO,
 	.Replace		= .REPLACE,

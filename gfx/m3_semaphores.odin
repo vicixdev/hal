@@ -1,17 +1,17 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/metal"
 
-m3_Semaphore_Metadata :: struct {
+_m3_Semaphore_Metadata :: struct {
 	// Only when `.Default` semaphore.
 	value:	u64,
 
@@ -21,14 +21,14 @@ m3_Semaphore_Metadata :: struct {
 	},
 }
 
-m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
+_m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type) -> Result {
 	NS.scoped_autoreleasepool()
 
 	switch type {
 	// NOTE: In Metal 4, MTLFences can be used across queues, so, when the time comes for a Metal 4 backend, a
 	//	MTLFence should be used for `.Default` semaphores.
 	case .Default, .Timeline:
-		event := m3_device->newEvent()
+		event := _m3_device->newEvent()
 		if event == nil {
 			return .Out_Of_Gpu_Memory
 		}
@@ -36,7 +36,7 @@ m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type
 		metadata.m3.event = event
 
 	case .Cpu:
-		shared_event := m3_device->newSharedEvent()
+		shared_event := _m3_device->newSharedEvent()
 		if shared_event == nil {
 			return .Out_Of_Gpu_Memory
 		}
@@ -51,7 +51,7 @@ m3_create_semaphore :: proc(metadata: ^_Semaphore_Metadata, type: Semaphore_Type
 	return nil
 }
 
-m3_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
+_m3_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 
 	switch metadata.type {
@@ -67,7 +67,7 @@ m3_destroy_semaphore :: proc(metadata: ^_Semaphore_Metadata) -> Result {
 	return nil
 }
 
-m3_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result {
+_m3_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result {
 	NS.scoped_autoreleasepool()
 
 	assert(metadata.type == .Cpu)

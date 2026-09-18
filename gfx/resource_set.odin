@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:slice"
@@ -28,8 +28,8 @@ _Resource_Set_Metadata :: struct {
 	sampler_set:		[]Sampler,
 
 	using platform: struct #raw_union {
-		vk:	vk_Resource_Set_Metadata,
-		m3:	m3_Resource_Set_Metadata,
+		vk:	_vk_Resource_Set_Metadata,
+		m3:	_m3_Resource_Set_Metadata,
 	},
 }
 
@@ -43,9 +43,9 @@ create_resource_set :: proc(location := #caller_location) -> (set: Resource_Set,
 	handle, metadata := _add_resource_set_metadata() or_return
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_resource_set(metadata)
+		res = _vk_create_resource_set(metadata)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_resource_set(metadata)
+		res = _m3_create_resource_set(metadata)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -59,9 +59,9 @@ destroy_resource_set :: proc(resource_set: Resource_Set, location := #caller_loc
 	if metadata_res != nil do return
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_resource_set(metadata)
+		_vk_destroy_resource_set(metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_resource_set(metadata)
+		_m3_destroy_resource_set(metadata)
 	}
 
 	delete(metadata.sampler_set, _generic_allocator)
@@ -141,9 +141,9 @@ set_texture_set :: proc(
 
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_set_texture_set(metadata, type)
+		res = _vk_set_texture_set(metadata, type)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_set_texture_set(metadata, type)
+		res = _m3_set_texture_set(metadata, type)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -218,9 +218,9 @@ set_storage_texture_set :: proc(
 	
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_set_storage_texture_set(metadata, type)
+		res = _vk_set_storage_texture_set(metadata, type)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_set_storage_texture_set(metadata, type)
+		res = _m3_set_storage_texture_set(metadata, type)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -242,9 +242,9 @@ set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, locatio
 	
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_set_sampler_set(metadata)
+		res = _vk_set_sampler_set(metadata)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_set_sampler_set(metadata)
+		res = _m3_set_sampler_set(metadata)
 	}
 
 	_check_generic_backend_error(res, location) or_return

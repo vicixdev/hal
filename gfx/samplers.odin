@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -52,8 +52,8 @@ _Sampler_Metadata :: struct {
 	using desc:	Sampler_Descriptor,
 
 	using platform: struct #raw_union {
-		vk:	vk_Sampler_Metadata,
-		m3:	m3_Sampler_Metadata,
+		vk:	_vk_Sampler_Metadata,
+		m3:	_m3_Sampler_Metadata,
 	},
 }
 
@@ -69,9 +69,9 @@ create_sampler :: proc(descriptor: Sampler_Descriptor, location := #caller_locat
 	metadata.desc = descriptor
 
 	when TARGET_API == .Vulkan {
-		vk_create_sampler(metadata, descriptor) or_return
+		_vk_create_sampler(metadata, descriptor) or_return
 	} else when TARGET_API == .Metal_3 {
-		m3_create_sampler(metadata, descriptor) or_return
+		_m3_create_sampler(metadata, descriptor) or_return
 	}
 
 	return handle, nil
@@ -89,9 +89,9 @@ destroy_sampler :: proc(sampler: Sampler, location := #caller_location) {
 	}
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_sampler(metadata)
+		_vk_destroy_sampler(metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_sampler(metadata)
+		_m3_destroy_sampler(metadata)
 	}
 
 	_remove_sampler_metadata(sampler)
@@ -108,9 +108,9 @@ label_sampler :: proc(sampler: Sampler, label: string, location := #caller_locat
 
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_label_sampler(metadata, label)
+		res = _vk_label_sampler(metadata, label)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_label_sampler(metadata, label)
+		res = _m3_label_sampler(metadata, label)
 	}
 
 	_check_generic_backend_error(res, location)

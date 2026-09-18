@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -41,8 +41,8 @@ _Semaphore_Metadata :: struct {
 	surface:		Surface,
 
 	using platform:	struct #raw_union {
-		vk:	vk_Semaphore_Metadata,
-		m3:	m3_Semaphore_Metadata,
+		vk:	_vk_Semaphore_Metadata,
+		m3:	_m3_Semaphore_Metadata,
 	},
 }
 
@@ -74,9 +74,9 @@ destroy_semaphore :: proc(semaphore: Semaphore, location := #caller_location) {
 
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_destroy_semaphore(metadata)
+		res = _vk_destroy_semaphore(metadata)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_destroy_semaphore(metadata)
+		res = _m3_destroy_semaphore(metadata)
 	}
 
 	_check_generic_backend_error(res, location)
@@ -102,9 +102,9 @@ wait_semaphore :: proc(semaphore: Semaphore, value: int, location := #caller_loc
 
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_wait_semaphore(metadata, value)
+		res = _vk_wait_semaphore(metadata, value)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_wait_semaphore(metadata, value)
+		res = _m3_wait_semaphore(metadata, value)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -120,9 +120,9 @@ _create_semaphore :: proc(type: Semaphore_Type, location: runtime.Source_Code_Lo
 	metadata.type = type
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_semaphore(metadata, type)
+		res = _vk_create_semaphore(metadata, type)
 	} else {
-		res = m3_create_semaphore(metadata, type)
+		res = _m3_create_semaphore(metadata, type)
 	}
 
 	_check_generic_backend_error(res, location) or_return

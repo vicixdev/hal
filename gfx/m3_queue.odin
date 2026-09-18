@@ -1,25 +1,25 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import "core:sync"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/metal"
 
-m3_Queue_Metadata :: struct {
+_m3_Queue_Metadata :: struct {
 	queue:	^MTL.CommandQueue,
 }
 
-m3_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
+_m3_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 
-	queue := m3_device->newCommandQueueWithMaxCommandBufferCount(1)
+	queue := _m3_device->newCommandQueueWithMaxCommandBufferCount(1)
 	if queue == nil {
 		return .Generic_Backend_Error
 	}
@@ -31,16 +31,16 @@ m3_setup_queue :: proc(metadata: ^_Queue_Metadata) -> Result {
 	return nil
 }
 
-m3_destroy_queue :: proc(metadata: ^_Queue_Metadata) {
+_m3_destroy_queue :: proc(metadata: ^_Queue_Metadata) {
 	NS.scoped_autoreleasepool()
 
 	metadata.m3.queue->release()
 }
 
-m3_wait_idle :: proc(metadata: ^_Queue_Metadata) -> Result {
+_m3_wait_idle :: proc(metadata: ^_Queue_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 
-	event := m3_device->newSharedEvent()
+	event := _m3_device->newSharedEvent()
 	defer event->release()
 
 	if sync.guard(&metadata.emission_mutex) {

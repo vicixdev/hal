@@ -1,24 +1,24 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
-m3_Sampler_Metadata :: struct {
+_m3_Sampler_Metadata :: struct {
 	sampler: ^MTL.SamplerState,
 }
 
-m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Descriptor) -> Result {
+_m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Descriptor) -> Result {
 	NS.scoped_autoreleasepool()
 
-	sampler_desc := m3_sampler_descriptor_to_mtl(descriptor)
-	sampler := m3_device->newSamplerState(sampler_desc)
+	sampler_desc := _m3_sampler_descriptor_to_mtl(descriptor)
+	sampler := _m3_device->newSamplerState(sampler_desc)
 	if sampler == nil {
 		return .Generic_Backend_Error
 	}
@@ -28,32 +28,32 @@ m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Desc
 	return nil
 }
 
-m3_destroy_sampler :: proc(metadata: ^_Sampler_Metadata) {
+_m3_destroy_sampler :: proc(metadata: ^_Sampler_Metadata) {
 	NS.scoped_autoreleasepool()
 
 	metadata.m3.sampler->release()
 }
 
-m3_label_sampler :: proc(metadata: ^_Sampler_Metadata, label: string) -> Result {
+_m3_label_sampler :: proc(metadata: ^_Sampler_Metadata, label: string) -> Result {
 	NS.scoped_autoreleasepool()
 
 	// NOTE: Metal does not allow setting a sampler label after the creation.
 	return nil
 }
 
-m3_sampler_descriptor_to_mtl :: proc(descriptor: Sampler_Descriptor) -> (info: ^MTL.SamplerDescriptor) {
+_m3_sampler_descriptor_to_mtl :: proc(descriptor: Sampler_Descriptor) -> (info: ^MTL.SamplerDescriptor) {
 	info = MTL.SamplerDescriptor.alloc()->init()
 	info->autorelease()
 
-	info->setMagFilter(m3_FILTER_TO_MTL[descriptor.mag_filter])
-	info->setMinFilter(m3_FILTER_TO_MTL[descriptor.min_filter])
-	info->setMipFilter(m3_FILTER_TO_MTL_MIPMAP[descriptor.mip_filter])
+	info->setMagFilter(_m3_FILTER_TO_MTL[descriptor.mag_filter])
+	info->setMinFilter(_m3_FILTER_TO_MTL[descriptor.min_filter])
+	info->setMipFilter(_m3_FILTER_TO_MTL_MIPMAP[descriptor.mip_filter])
 
-	info->setRAddressMode(m3_ADDRESS_MODE_TO_MTL[descriptor.address_u])
-	info->setSAddressMode(m3_ADDRESS_MODE_TO_MTL[descriptor.address_v])
-	info->setTAddressMode(m3_ADDRESS_MODE_TO_MTL[descriptor.address_w])
+	info->setRAddressMode(_m3_ADDRESS_MODE_TO_MTL[descriptor.address_u])
+	info->setSAddressMode(_m3_ADDRESS_MODE_TO_MTL[descriptor.address_v])
+	info->setTAddressMode(_m3_ADDRESS_MODE_TO_MTL[descriptor.address_w])
 
-	info->setBorderColor(m3_BORDER_COLOR_TO_MTL[descriptor.border_color])
+	info->setBorderColor(_m3_BORDER_COLOR_TO_MTL[descriptor.border_color])
 
 	if descriptor.max_anisotropy > 1 {
 		info->setMaxAnisotropy(cast(NS.UInteger)descriptor.max_anisotropy)
@@ -65,19 +65,19 @@ m3_sampler_descriptor_to_mtl :: proc(descriptor: Sampler_Descriptor) -> (info: ^
 }
 
 @(rodata)
-m3_FILTER_TO_MTL := [Filter]MTL.SamplerMinMagFilter {
+_m3_FILTER_TO_MTL := [Filter]MTL.SamplerMinMagFilter {
 	.Nearest	= .Nearest,
 	.Linear		= .Linear,
 }
 
 @(rodata)
-m3_FILTER_TO_MTL_MIPMAP := [Filter]MTL.SamplerMipFilter {
+_m3_FILTER_TO_MTL_MIPMAP := [Filter]MTL.SamplerMipFilter {
 	.Nearest	= .Nearest,
 	.Linear		= .Linear,
 }
 
 @(rodata)
-m3_ADDRESS_MODE_TO_MTL := [Address_Mode]MTL.SamplerAddressMode {
+_m3_ADDRESS_MODE_TO_MTL := [Address_Mode]MTL.SamplerAddressMode {
 	.Repeat			= .Repeat,
 	.Mirrored_Repeat	= .MirrorRepeat,
 	.Clamp_To_Edge		= .ClampToEdge,
@@ -85,7 +85,7 @@ m3_ADDRESS_MODE_TO_MTL := [Address_Mode]MTL.SamplerAddressMode {
 }
 
 @(rodata)
-m3_BORDER_COLOR_TO_MTL := [Border_Color]MTL.SamplerBorderColor {
+_m3_BORDER_COLOR_TO_MTL := [Border_Color]MTL.SamplerBorderColor {
 	.Transparent_Black_Float	= .TransparentBlack,
 	.Transparent_Black_Int		= .TransparentBlack,
 	.Opaque_Black_Float		= .OpaqueBlack,

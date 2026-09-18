@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:mem"
@@ -166,9 +166,9 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	avl.init(&_address_map, _compare_address_map_nodes, _generic_allocator)
 
 	when TARGET_API == .Vulkan {
-		res = vk_init()
+		res = _vk_init()
 	} else when TARGET_API == .Metal_3 {
-		res = m3_init()
+		res = _m3_init()
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -180,9 +180,9 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 
 fini :: proc() {
 	when TARGET_API == .Vulkan {
-		vk_pre_fini()
+		_vk_pre_fini()
 	} else when TARGET_API == .Metal_3 {
-		m3_pre_fini()
+		_m3_pre_fini()
 	}
 
 	if _is_device_selected {
@@ -239,9 +239,9 @@ fini :: proc() {
 	}
 
 	when TARGET_API == .Vulkan {
-		vk_fini()
+		_vk_fini()
 	} else when TARGET_API == .Metal_3 {
-		m3_fini()
+		_m3_fini()
 	}
 
 	vmem.arena_destroy(&_global_arena)

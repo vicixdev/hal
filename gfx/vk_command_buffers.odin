@@ -1,14 +1,16 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import vk "vendor:vulkan"
 
-vk_Command_Buffer_Metadata :: struct {
+_vk_Command_Buffer_Metadata :: struct {
 	command_buffer:			vk.CommandBuffer,
 
 	bound_compute_pipeline:		Pipeline,
@@ -21,13 +23,13 @@ vk_Command_Buffer_Metadata :: struct {
 	render_pass_surface_views:	[dynamic]View,
 }
 
-vk_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+_vk_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 	return nil
 }
 
-vk_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {}
+_vk_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {}
 
-vk_emit_mem_copy :: proc(
+_vk_emit_mem_copy :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Mem_Copy,
@@ -55,7 +57,7 @@ vk_emit_mem_copy :: proc(
 	return nil
 }
 
-vk_emit_copy_texture_to_texture :: proc(
+_vk_emit_copy_texture_to_texture :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Copy_Texture_To_Texture,
@@ -68,20 +70,20 @@ vk_emit_copy_texture_to_texture :: proc(
 
 	image_copy := vk.ImageCopy {
 		srcSubresource	= vk.ImageSubresourceLayers {
-			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[source_metadata.format],
+			aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[source_metadata.format],
 			mipLevel	= cast(u32)command.source_region.mip,
 			baseArrayLayer	= cast(u32)command.source_region.base_layer,
 			layerCount	= cast(u32)command.source_region.layer_count,
 		},
-		srcOffset	= vk_origin_to_vk_offset(command.source_region.origin),
+		srcOffset	= _vk_origin_to_vk_offset(command.source_region.origin),
 		dstSubresource	= vk.ImageSubresourceLayers {
-			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[destination_metadata.format],
+			aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[destination_metadata.format],
 			mipLevel	= cast(u32)command.destination_region.mip,
 			baseArrayLayer	= cast(u32)command.destination_region.base_layer,
 			layerCount	= cast(u32)command.destination_region.layer_count,
 		},
-		dstOffset	= vk_origin_to_vk_offset(command.destination_region.origin),
-		extent		= vk_size_to_vk_extent(command.source_region.size),
+		dstOffset	= _vk_origin_to_vk_offset(command.destination_region.origin),
+		extent		= _vk_size_to_vk_extent(command.source_region.size),
 	}
 	vk.CmdCopyImage(
 		metadata.vk.command_buffer,
@@ -96,7 +98,7 @@ vk_emit_copy_texture_to_texture :: proc(
 	return nil
 }
 
-vk_emit_copy_buffer_to_texture :: proc(
+_vk_emit_copy_buffer_to_texture :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Copy_Buffer_To_Texture,
@@ -112,10 +114,10 @@ vk_emit_copy_buffer_to_texture :: proc(
 		bufferOffset		= cast(vk.DeviceSize)command.source.offset,
 		bufferRowLength		= cast(u32)command.region.size.x,
 		bufferImageHeight	= cast(u32)command.region.size.y,
-		imageOffset		= vk_origin_to_vk_offset(command.region.origin),
-		imageExtent		= vk_size_to_vk_extent(command.region.size),
+		imageOffset		= _vk_origin_to_vk_offset(command.region.origin),
+		imageExtent		= _vk_size_to_vk_extent(command.region.size),
 		imageSubresource	= vk.ImageSubresourceLayers {
-			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+			aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
 			mipLevel	= cast(u32)command.region.mip,
 			baseArrayLayer	= cast(u32)command.region.base_layer,
 			layerCount	= cast(u32)command.region.layer_count,
@@ -133,7 +135,7 @@ vk_emit_copy_buffer_to_texture :: proc(
 	return nil
 }
 
-vk_emit_copy_texture_to_buffer :: proc(
+_vk_emit_copy_texture_to_buffer :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Copy_Texture_To_Buffer,
@@ -149,10 +151,10 @@ vk_emit_copy_texture_to_buffer :: proc(
 		bufferOffset		= cast(vk.DeviceSize)command.destination.offset,
 		bufferRowLength		= cast(u32)command.region.size.x,
 		bufferImageHeight	= cast(u32)command.region.size.y,
-		imageOffset		= vk_origin_to_vk_offset(command.region.origin),
-		imageExtent		= vk_size_to_vk_extent(command.region.size),
+		imageOffset		= _vk_origin_to_vk_offset(command.region.origin),
+		imageExtent		= _vk_size_to_vk_extent(command.region.size),
 		imageSubresource	= vk.ImageSubresourceLayers {
-			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+			aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
 			mipLevel	= cast(u32)command.region.mip,
 			baseArrayLayer	= cast(u32)command.region.base_layer,
 			layerCount	= cast(u32)command.region.layer_count,
@@ -171,7 +173,7 @@ vk_emit_copy_texture_to_buffer :: proc(
 	return nil
 }
 
-vk_emit_generate_mipmaps :: proc(
+_vk_emit_generate_mipmaps :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
 	command: _Command_Generate_Mipmaps,
@@ -189,7 +191,7 @@ vk_emit_generate_mipmaps :: proc(
 
 		region := vk.ImageBlit {
 			srcSubresource	= {
-				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+				aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
 				mipLevel	= cast(u32)(i - 1),
 				layerCount	= cast(u32)texture_metadata.layer_count,
 			},
@@ -198,7 +200,7 @@ vk_emit_generate_mipmaps :: proc(
 				{ cast(i32)dimensions.x, cast(i32)dimensions.y, cast(i32)dimensions.z },
 			},
 			dstSubresource	= {
-				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+				aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
 				mipLevel	= cast(u32)i,
 				layerCount	= cast(u32)texture_metadata.layer_count,
 			},
@@ -228,7 +230,7 @@ vk_emit_generate_mipmaps :: proc(
 			dstAccessMask			= { .TRANSFER_READ },
 			image				= texture_metadata.vk.image,
 			subresourceRange		= {
-				aspectMask		= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
+				aspectMask		= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format],
 				baseMipLevel		= cast(u32)i,
 				levelCount		= cast(u32)1,
 				layerCount		= cast(u32)texture_metadata.layer_count,
@@ -245,7 +247,7 @@ vk_emit_generate_mipmaps :: proc(
 	return nil
 }
 
-vk_use_blend_constant :: proc(
+_vk_use_blend_constant :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	constant:	[4]f64,
 ) -> Result {
@@ -254,17 +256,17 @@ vk_use_blend_constant :: proc(
 		return nil
 	}
 
-	vk_blend_constant := [4]f32{
+	_vk_blend_constant := [4]f32{
 		cast(f32)constant.r, cast(f32)constant.g, cast(f32)constant.b, cast(f32)constant.a,
 	}
-	vk.CmdSetBlendConstants(metadata.vk.command_buffer, &vk_blend_constant)
+	vk.CmdSetBlendConstants(metadata.vk.command_buffer, &_vk_blend_constant)
 
 	metadata.vk.bound_blend_constant = constant
 
 	return nil
 }
 
-vk_use_depth_stencil_state :: proc(
+_vk_use_depth_stencil_state :: proc(
 	metadata:		^_Command_Buffer_Metadata,
 	depth_stencil_state:	Depth_Stencil_State,
 ) -> Result {
@@ -278,7 +280,7 @@ vk_use_depth_stencil_state :: proc(
 
 	vk.CmdSetDepthTestEnableEXT(metadata.vk.command_buffer, cast(b32)depth_stencil_metadata.depth_enable)
 	vk.CmdSetDepthWriteEnableEXT(metadata.vk.command_buffer, cast(b32)depth_stencil_metadata.depth_write)
-	vk.CmdSetDepthCompareOpEXT(metadata.vk.command_buffer, vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.depth_test])
+	vk.CmdSetDepthCompareOpEXT(metadata.vk.command_buffer, _vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.depth_test])
 	vk.CmdSetDepthBiasEnableEXT(metadata.vk.command_buffer, true)
 	vk.CmdSetDepthBias(
 		metadata.vk.command_buffer,
@@ -291,10 +293,10 @@ vk_use_depth_stencil_state :: proc(
 	vk.CmdSetStencilOpEXT(
 		metadata.vk.command_buffer,
 		{ .FRONT },
-		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.fail],
-		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.pass],
-		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.depth_fail],
-		vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.test],
+		_vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.fail],
+		_vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.pass],
+		_vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.depth_fail],
+		_vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.stencil_front.test],
 	)
 	vk.CmdSetStencilReference(
 		metadata.vk.command_buffer,
@@ -315,10 +317,10 @@ vk_use_depth_stencil_state :: proc(
 	vk.CmdSetStencilOpEXT(
 		metadata.vk.command_buffer,
 		{ .BACK },
-		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.fail],
-		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.pass],
-		vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.depth_fail],
-		vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.test],
+		_vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.fail],
+		_vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.pass],
+		_vk_STENCIL_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.depth_fail],
+		_vk_COMPARE_OPERATION_TO_VK[depth_stencil_metadata.stencil_back.test],
 	)
 	vk.CmdSetStencilReference(
 		metadata.vk.command_buffer,
@@ -341,7 +343,7 @@ vk_use_depth_stencil_state :: proc(
 	return nil
 }
 
-vk_use_compute_pipeline :: proc(
+_vk_use_compute_pipeline :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	pipeline:	Pipeline,
 ) -> Result {
@@ -360,7 +362,7 @@ vk_use_compute_pipeline :: proc(
 	return nil
 }
 
-vk_use_render_pipeline :: proc(
+_vk_use_render_pipeline :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	pipeline:	Pipeline,
 ) -> Result {
@@ -379,7 +381,7 @@ vk_use_render_pipeline :: proc(
 	return nil
 }
 
-vk_use_resource_set :: proc(
+_vk_use_resource_set :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	resource_set:	Resource_Set,
 ) -> Result {
@@ -394,7 +396,7 @@ vk_use_resource_set :: proc(
 	vk.CmdBindDescriptorSets(
 		metadata.vk.command_buffer,
 		.COMPUTE,
-		vk_compute_pipeline_layout,
+		_vk_compute_pipeline_layout,
 		0,
 		1,
 		&resource_set_metadata.vk.descriptor_set,
@@ -404,7 +406,7 @@ vk_use_resource_set :: proc(
 	vk.CmdBindDescriptorSets(
 		metadata.vk.command_buffer,
 		.GRAPHICS,
-		vk_render_pipeline_layout,
+		_vk_render_pipeline_layout,
 		0,
 		1,
 		&resource_set_metadata.vk.descriptor_set,
@@ -417,7 +419,7 @@ vk_use_resource_set :: proc(
 	return nil
 }
 
-vk_use_scissor :: proc(
+_vk_use_scissor :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	scissor:	Scissor,
 ) -> Result {
@@ -426,7 +428,7 @@ vk_use_scissor :: proc(
 		return nil
 	}
 
-	vk_scissor := vk.Rect2D {
+	_vk_scissor := vk.Rect2D {
 		offset	= {
 			cast(i32)scissor.offset.x,
 			cast(i32)scissor.offset.y,
@@ -440,7 +442,7 @@ vk_use_scissor :: proc(
 		metadata.vk.command_buffer,
 		0,
 		1,
-		&vk_scissor,
+		&_vk_scissor,
 	)
 
 	metadata.vk.bound_scissor = scissor
@@ -448,7 +450,7 @@ vk_use_scissor :: proc(
 	return nil
 }
 
-vk_emit_dispatch :: proc(
+_vk_emit_dispatch :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Dispatch,
@@ -457,11 +459,11 @@ vk_emit_dispatch :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	vk_use_resource_set(metadata, command.resource_set) or_return
-	vk_use_compute_pipeline(metadata, command.pipeline) or_return
+	_vk_use_resource_set(metadata, command.resource_set) or_return
+	_vk_use_compute_pipeline(metadata, command.pipeline) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
-		vk_compute_pipeline_layout,
+		_vk_compute_pipeline_layout,
 		{ .COMPUTE },
 		0,
 		8,
@@ -477,7 +479,7 @@ vk_emit_dispatch :: proc(
 	return nil
 }
 
-vk_emit_barrier :: proc(
+_vk_emit_barrier :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Barrier,
@@ -485,9 +487,9 @@ vk_emit_barrier :: proc(
 
 	memory_barrier := vk.MemoryBarrier2 {
 		sType			= .MEMORY_BARRIER_2,
-		srcStageMask		= vk_stages_to_vk(command.after),
+		srcStageMask		= _vk_stages_to_vk(command.after),
 		srcAccessMask		= { .MEMORY_WRITE, .MEMORY_READ },
-		dstStageMask		= vk_stages_to_vk(command.before),
+		dstStageMask		= _vk_stages_to_vk(command.before),
 		dstAccessMask		= { .MEMORY_WRITE, .MEMORY_READ },
 	}
 	dependency_info := vk.DependencyInfo {
@@ -500,7 +502,7 @@ vk_emit_barrier :: proc(
 	return nil
 }
 
-vk_emit_begin_render_pass :: proc(
+_vk_emit_begin_render_pass :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Begin_Render_Pass,
@@ -521,8 +523,8 @@ vk_emit_begin_render_pass :: proc(
 			sType			= .RENDERING_ATTACHMENT_INFO,
 			imageView		= view_metadata.vk.view,
 			imageLayout		= .GENERAL,
-			loadOp			= vk_LOAD_OPERATION_TO_VK[attachment.load_operation],
-			storeOp			= vk_STORE_OPERATION_TO_VK[attachment.store_operation],
+			loadOp			= _vk_LOAD_OPERATION_TO_VK[attachment.load_operation],
+			storeOp			= _vk_STORE_OPERATION_TO_VK[attachment.store_operation],
 			clearValue		= {
 				color	= {
 					float32 = {
@@ -540,7 +542,7 @@ vk_emit_begin_render_pass :: proc(
 			surface_metadata, surface_res := _metadata_of(surface)
 			assert(surface_res == nil)
 
-			vk_prepare_surface_for_renderpass(
+			_vk_prepare_surface_for_renderpass(
 				metadata,
 				attachment.view,
 				view_metadata,
@@ -563,7 +565,7 @@ vk_emit_begin_render_pass :: proc(
 				surface_metadata, surface_res := _metadata_of(surface)
 				assert(surface_res == nil)
 
-				vk_prepare_surface_for_renderpass(
+				_vk_prepare_surface_for_renderpass(
 					metadata,
 					attachment.resolve_view,
 					resolve_view_metadata,
@@ -583,8 +585,8 @@ vk_emit_begin_render_pass :: proc(
 			sType			= .RENDERING_ATTACHMENT_INFO,
 			imageView		= view_metadata.vk.view,
 			imageLayout		= .GENERAL,
-			loadOp			= vk_LOAD_OPERATION_TO_VK[attachment.load_operation],
-			storeOp			= vk_STORE_OPERATION_TO_VK[attachment.store_operation],
+			loadOp			= _vk_LOAD_OPERATION_TO_VK[attachment.load_operation],
+			storeOp			= _vk_STORE_OPERATION_TO_VK[attachment.store_operation],
 			clearValue		= {
 				depthStencil	= {
 					depth	= cast(f32)attachment.clear_value.(f64),
@@ -602,8 +604,8 @@ vk_emit_begin_render_pass :: proc(
 			sType			= .RENDERING_ATTACHMENT_INFO,
 			imageView		= view_metadata.vk.view,
 			imageLayout		= .GENERAL,
-			loadOp			= vk_LOAD_OPERATION_TO_VK[attachment.load_operation],
-			storeOp			= vk_STORE_OPERATION_TO_VK[attachment.store_operation],
+			loadOp			= _vk_LOAD_OPERATION_TO_VK[attachment.load_operation],
+			storeOp			= _vk_STORE_OPERATION_TO_VK[attachment.store_operation],
 			clearValue		= {
 				depthStencil	= {
 					stencil	= attachment.clear_value.(u32),
@@ -642,7 +644,7 @@ vk_emit_begin_render_pass :: proc(
 	return nil
 }
 
-vk_emit_end_render_pass :: proc(
+_vk_emit_end_render_pass :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_End_Render_Pass,
@@ -667,7 +669,7 @@ vk_emit_end_render_pass :: proc(
 			newLayout		= .PRESENT_SRC_KHR,
 			image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
 			subresourceRange	= {
-				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
+				aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
 				levelCount	= 1,
 				layerCount	= 1,
 			},
@@ -683,7 +685,7 @@ vk_emit_end_render_pass :: proc(
 	return nil
 }
 
-vk_emit_draw :: proc(
+_vk_emit_draw :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Draw,
@@ -692,13 +694,13 @@ vk_emit_draw :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	vk_use_resource_set(metadata, command.resource_set) or_return
-	vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return
-	vk_use_render_pipeline(metadata, command.pipeline) or_return
-	vk_use_scissor(metadata, command.scissor) or_return
+	_vk_use_resource_set(metadata, command.resource_set) or_return
+	_vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return
+	_vk_use_render_pipeline(metadata, command.pipeline) or_return
+	_vk_use_scissor(metadata, command.scissor) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
-		vk_render_pipeline_layout,
+		_vk_render_pipeline_layout,
 		{ .VERTEX, .FRAGMENT },
 		0,
 		size_of(arguments_ptr),
@@ -715,7 +717,7 @@ vk_emit_draw :: proc(
 	return nil
 }
 
-vk_emit_draw_indexed :: proc(
+_vk_emit_draw_indexed :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Draw_Indexed,
@@ -727,13 +729,13 @@ vk_emit_draw_indexed :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	vk_use_resource_set(metadata, command.resource_set)
-	vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
-	vk_use_render_pipeline(metadata, command.pipeline) or_return
-	vk_use_scissor(metadata, command.scissor) or_return
+	_vk_use_resource_set(metadata, command.resource_set)
+	_vk_use_depth_stencil_state(metadata, command.depth_stencil_state)
+	_vk_use_render_pipeline(metadata, command.pipeline) or_return
+	_vk_use_scissor(metadata, command.scissor) or_return
 	vk.CmdPushConstants(
 		metadata.vk.command_buffer,
-		vk_render_pipeline_layout,
+		_vk_render_pipeline_layout,
 		{ .VERTEX, .FRAGMENT },
 		0,
 		size_of(arguments_ptr),
@@ -743,7 +745,7 @@ vk_emit_draw_indexed :: proc(
 		metadata.vk.command_buffer,
 		indices_metadata.vk.buffer,
 		cast(vk.DeviceSize)command.indices.offset,
-		vk_INDEX_TYPE_TO_VK[command.index_type],
+		_vk_INDEX_TYPE_TO_VK[command.index_type],
 	)
 	vk.CmdDrawIndexed(
 		metadata.vk.command_buffer,
@@ -758,7 +760,7 @@ vk_emit_draw_indexed :: proc(
 }
 
 
-vk_emit_commands :: proc(
+_vk_emit_commands :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
 ) -> (submit_info: vk.SubmitInfo2, res: Result) {
@@ -770,41 +772,41 @@ vk_emit_commands :: proc(
 	metadata.vk.bound_render_pipeline	= {}
 	metadata.vk.bound_scissor		= {}
 
-	metadata.vk.command_buffer = vk_acquire_command_buffer_from(&queue_metadata.vk.command_pool) or_return
+	metadata.vk.command_buffer = _vk_acquire_command_buffer_from(&queue_metadata.vk.command_pool) or_return
 
 	begin_info := vk.CommandBufferBeginInfo {
 		sType	= .COMMAND_BUFFER_BEGIN_INFO,
 		flags	= { .ONE_TIME_SUBMIT },
 	}
-	vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
+	_vk_call(vk.BeginCommandBuffer(metadata.vk.command_buffer, &begin_info)) or_return
 
 	for command in metadata.commands {
 		switch v in command {
 		case _Command_Mem_Copy:
-			vk_emit_mem_copy(metadata, queue_metadata, v) or_return
+			_vk_emit_mem_copy(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Texture_To_Texture:
-			vk_emit_copy_texture_to_texture(metadata, queue_metadata, v) or_return
+			_vk_emit_copy_texture_to_texture(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Buffer_To_Texture:
-			vk_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
+			_vk_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Texture_To_Buffer:
-			vk_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
+			_vk_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
 		case _Command_Generate_Mipmaps:
-			vk_emit_generate_mipmaps(metadata, queue_metadata, v) or_return
+			_vk_emit_generate_mipmaps(metadata, queue_metadata, v) or_return
 		case _Command_Dispatch:
-			vk_emit_dispatch(metadata, queue_metadata, v) or_return
+			_vk_emit_dispatch(metadata, queue_metadata, v) or_return
 		case _Command_Barrier:
-			vk_emit_barrier(metadata, queue_metadata, v) or_return
+			_vk_emit_barrier(metadata, queue_metadata, v) or_return
 		case _Command_Begin_Render_Pass:
-			vk_emit_begin_render_pass(metadata, queue_metadata, v) or_return
+			_vk_emit_begin_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_End_Render_Pass:
-			vk_emit_end_render_pass(metadata, queue_metadata, v) or_return
+			_vk_emit_end_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_Draw:
-			vk_emit_draw(metadata, queue_metadata, v) or_return
+			_vk_emit_draw(metadata, queue_metadata, v) or_return
 		case _Command_Draw_Indexed:
-			vk_emit_draw_indexed(metadata, queue_metadata, v) or_return
+			_vk_emit_draw_indexed(metadata, queue_metadata, v) or_return
 		}
 	}
-	vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
+	_vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
 
 	semaphore_waits := make([]vk.SemaphoreSubmitInfo, len(metadata.synchronization_group.wait), metadata.allocator)
 	for wait, i in metadata.synchronization_group.wait {
@@ -815,7 +817,7 @@ vk_emit_commands :: proc(
 			sType		= .SEMAPHORE_SUBMIT_INFO,
 			semaphore	= semaphore_metadata.vk.semaphore,
 			value		= cast(u64)wait.value,
-			stageMask	= vk_stages_to_vk(wait.before),
+			stageMask	= _vk_stages_to_vk(wait.before),
 		}
 	}
 
@@ -828,7 +830,7 @@ vk_emit_commands :: proc(
 			sType		= .SEMAPHORE_SUBMIT_INFO,
 			semaphore	= semaphore_metadata.vk.semaphore,
 			value		= cast(u64)signal.value,
-			stageMask	= vk_stages_to_vk(signal.after),
+			stageMask	= _vk_stages_to_vk(signal.after),
 		}
 	}
 
@@ -851,30 +853,30 @@ vk_emit_commands :: proc(
 	return submit_info, nil
 }
 
-vk_submit :: proc(
+_vk_submit :: proc(
 	queue_metadata: ^_Queue_Metadata,
 	command_buffers: []Command_Buffer,
 ) -> Result {
 
-	fence := vk_begin_command_group(&queue_metadata.vk.command_pool) or_return
-	defer vk_end_command_group(&queue_metadata.vk.command_pool)
+	fence := _vk_begin_command_group(&queue_metadata.vk.command_pool) or_return
+	defer _vk_end_command_group(&queue_metadata.vk.command_pool)
 
 	submit_infos := make([]vk.SubmitInfo2, len(command_buffers), _temp_allocator) or_return
 	for command_buffer, i in command_buffers {
 		metadata, metadata_res := _metadata_of(command_buffer)
 		_check_internal_emission_result(metadata_res) or_return
 
-		submit_infos[i] = vk_emit_commands(metadata, queue_metadata) or_return
+		submit_infos[i] = _vk_emit_commands(metadata, queue_metadata) or_return
 	}
 
-	vk_call(
+	_vk_call(
 		vk.QueueSubmit2KHR(queue_metadata.vk.queue, cast(u32)len(submit_infos), raw_data(submit_infos), fence),
 	) or_return
 
 	return nil
 }
 
-vk_prepare_surface_for_renderpass :: proc(
+_vk_prepare_surface_for_renderpass :: proc(
 	metadata:		^_Command_Buffer_Metadata,
 	view:			View,
 	view_metadata:		^_View_Metadata,
@@ -905,7 +907,7 @@ vk_prepare_surface_for_renderpass :: proc(
 		newLayout		= .GENERAL,
 		image			= surface_metadata.vk.images[view_metadata.vk.swapchain_image_index],
 		subresourceRange	= {
-			aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
+			aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[surface_metadata.format],
 			levelCount	= 1,
 			layerCount	= 1,
 		},
@@ -920,15 +922,15 @@ vk_prepare_surface_for_renderpass :: proc(
 	return nil
 }
 
-vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {
+_vk_stages_to_vk :: proc(stages: Stages) -> (flags: vk.PipelineStageFlags2) {
 	for stage in stages {
-		flags += vk_STAGE_TO_VK[stage]
+		flags += _vk_STAGE_TO_VK[stage]
 	}
 
 	return
 }
 
-vk_origin_to_vk_offset :: proc(origin: [3]int) -> vk.Offset3D {
+_vk_origin_to_vk_offset :: proc(origin: [3]int) -> vk.Offset3D {
 	return {
 		cast(i32)origin.x,
 		cast(i32)origin.y,
@@ -936,7 +938,7 @@ vk_origin_to_vk_offset :: proc(origin: [3]int) -> vk.Offset3D {
 	}
 }
 
-vk_size_to_vk_extent :: proc(size: [3]int) -> vk.Extent3D {
+_vk_size_to_vk_extent :: proc(size: [3]int) -> vk.Extent3D {
 	return {
 		cast(u32)size.x,
 		cast(u32)size.y,
@@ -944,7 +946,7 @@ vk_size_to_vk_extent :: proc(size: [3]int) -> vk.Extent3D {
 	}
 }
 
-vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
+_vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
 	.Transfer			= { .TRANSFER },
 	.Compute			= { .COMPUTE_SHADER },
 	.Vertex				= { .VERTEX_INPUT },
@@ -954,20 +956,20 @@ vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
 }
 
 @(rodata)
-vk_LOAD_OPERATION_TO_VK := [Load_Operation]vk.AttachmentLoadOp {
+_vk_LOAD_OPERATION_TO_VK := [Load_Operation]vk.AttachmentLoadOp {
 	.Clear		= .CLEAR,
 	.Load		= .LOAD,
 	.Dont_Care	= .DONT_CARE,
 }
 
 @(rodata)
-vk_STORE_OPERATION_TO_VK := [Store_Operation]vk.AttachmentStoreOp {
+_vk_STORE_OPERATION_TO_VK := [Store_Operation]vk.AttachmentStoreOp {
 	.Store		= .STORE,
 	.Dont_Care	= .DONT_CARE,
 }
 
 @(rodata)
-vk_INDEX_TYPE_TO_VK := [Index_Type]vk.IndexType {
+_vk_INDEX_TYPE_TO_VK := [Index_Type]vk.IndexType {
 	.U16	= .UINT16,
 	.U32	= .UINT32,
 }

@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -74,8 +74,8 @@ _Command_Buffer_Metadata :: struct {
 	used_surface_semaphores:		[dynamic]Semaphore,
 
 	using platform:	struct #raw_union {
-		vk:	vk_Command_Buffer_Metadata,
-		m3:	m3_Command_Buffer_Metadata,
+		vk:	_vk_Command_Buffer_Metadata,
+		m3:	_m3_Command_Buffer_Metadata,
 	},
 }
 
@@ -216,9 +216,9 @@ _setup_command_buffer :: proc(
 	metadata.commands = make([dynamic]_Command, metadata.allocator) or_return
 
 	when TARGET_API == .Vulkan {
-		vk_setup_command_buffer(metadata, queue_metadata) or_return
+		_vk_setup_command_buffer(metadata, queue_metadata) or_return
 	} else when TARGET_API == .Metal_3 {
-		m3_setup_command_buffer(metadata, queue_metadata) or_return
+		_m3_setup_command_buffer(metadata, queue_metadata) or_return
 	}
 
 	return nil
@@ -232,9 +232,9 @@ _destroy_command_buffer :: proc(
 	vmem.arena_destroy(&metadata.arena)
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_command_buffer(metadata, queue_metadata)
+		_vk_destroy_command_buffer(metadata, queue_metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_command_buffer(metadata, queue_metadata)
+		_m3_destroy_command_buffer(metadata, queue_metadata)
 	}
 }
 
@@ -458,13 +458,13 @@ copy_texture_to_texture :: proc(
 	_check_not_in_render_pass(metadata, location) or_return
 
 	source_metadata, source_res := _metadata_of(source)
-	_check_texture_handle(source_res, source, location) or_return
+	_vl_check_texture_handle(source_res, source, location) or_return
 
 	destination_metadata, destination_res := _metadata_of(destination)
-	_check_texture_handle(destination_res, destination, location) or_return
+	_vl_check_texture_handle(destination_res, destination, location) or_return
 
-	_check_texture_region(source_metadata, source_region, location) or_return
-	_check_texture_region(destination_metadata, destination_region, location) or_return
+	_vl_check_texture_region(source_metadata, source_region, location) or_return
+	_vl_check_texture_region(destination_metadata, destination_region, location) or_return
 
 	_check_condition(
 		source_region.size == destination_region.size,
@@ -524,7 +524,7 @@ copy_buffer_to_texture :: proc(
 	_check_not_in_render_pass(metadata, location) or_return
 
 	texture_metadata, texture_res := _metadata_of(texture)
-	_check_texture_handle(texture_res, texture, location) or_return
+	_vl_check_texture_handle(texture_res, texture, location) or_return
 
 	source_info, source_res := _address_info_of(source)
 	_check_address_info(source_res, source, location) or_return
@@ -586,7 +586,7 @@ copy_texture_to_buffer :: proc(
 	_check_not_in_render_pass(metadata, location) or_return
 
 	texture_metadata, texture_res := _metadata_of(texture)
-	_check_texture_handle(texture_res, texture, location) or_return
+	_vl_check_texture_handle(texture_res, texture, location) or_return
 
 	destination_info, destination_res := _address_info_of(destination)
 	_check_address_info(destination_res, destination, location) or_return
@@ -641,7 +641,7 @@ generate_mipmaps_for :: proc(command_buffer: Command_Buffer, texture: Texture, l
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
 	_, texture_res := _metadata_of(texture)
-	_check_texture_handle(texture_res, texture, location) or_return
+	_vl_check_texture_handle(texture_res, texture, location) or_return
 	
 	_check_not_in_render_pass(metadata, location) or_return
 
@@ -815,7 +815,7 @@ begin_render_pass :: proc(
 		switch v in view_metadata.reference {
 		case Texture:
 			texture_metadata, texture_res := _metadata_of(v)
-			_check_texture_handle(texture_res, v, location) or_return
+			_vl_check_texture_handle(texture_res, v, location) or_return
 		
 			_check_condition(
 				.Color_Attachment in texture_metadata.usage,
@@ -1003,7 +1003,7 @@ begin_render_pass :: proc(
 		) or_return
 
 		texture_metadata, texture_res := _metadata_of(reference)
-		_check_texture_handle(texture_res, reference, location) or_return
+		_vl_check_texture_handle(texture_res, reference, location) or_return
 		
 		_check_condition(
 			.Depth_Stencil_Attachment in texture_metadata.usage,
@@ -1092,7 +1092,7 @@ begin_render_pass :: proc(
 		) or_return
 
 		texture_metadata, texture_res := _metadata_of(reference)
-		_check_texture_handle(texture_res, reference, location) or_return
+		_vl_check_texture_handle(texture_res, reference, location) or_return
 		
 		_check_condition(
 			.Depth_Stencil_Attachment in texture_metadata.usage,
@@ -1333,9 +1333,9 @@ submit :: proc(
 
 	if sync.guard(&queue_metadata.emission_mutex) {
 		when TARGET_API == .Vulkan {
-			res = vk_submit(queue_metadata, command_buffers)
+			res = _vk_submit(queue_metadata, command_buffers)
 		} else {
-			res = m3_submit(queue_metadata, command_buffers)
+			res = _m3_submit(queue_metadata, command_buffers)
 		}
 	}
 

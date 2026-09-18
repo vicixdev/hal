@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "core:sync"
 import "core:mem"
@@ -21,8 +21,8 @@ _Queue_Metadata :: struct {
 	emission_mutex:	sync.Mutex,
 
 	using platform: struct #raw_union {
-		vk:	vk_Queue_Metadata,
-		m3:	m3_Queue_Metadata,
+		vk:	_vk_Queue_Metadata,
+		m3:	_m3_Queue_Metadata,
 	},
 }
 
@@ -34,9 +34,9 @@ wait_idle :: proc(queue: Queue, location := #caller_location) -> (res: Result) {
 	queue_metadata := _queue_metadata_of(queue) or_return
 
 	when TARGET_API == .Vulkan {
-		res = vk_wait_idle(queue_metadata)
+		res = _vk_wait_idle(queue_metadata)
 	} else {
-		res = m3_wait_idle(queue_metadata)
+		res = _m3_wait_idle(queue_metadata)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -70,9 +70,9 @@ _setup_queue :: proc(queue: Queue) -> Result {
 	create_scratch(&metadata.scratch, .Default, mem.Megabyte) or_return
 
 	when TARGET_API == .Vulkan {
-		vk_setup_queue(metadata) or_return
+		_vk_setup_queue(metadata) or_return
 	} else {
-		m3_setup_queue(metadata) or_return
+		_m3_setup_queue(metadata) or_return
 	}
 	_setup_command_buffers_of(queue)
 
@@ -87,9 +87,9 @@ _destroy_queue :: proc(queue: Queue) {
 
 	_destroy_command_buffers_of(queue)
 	when TARGET_API == .Vulkan {
-		vk_destroy_queue(metadata)
+		_vk_destroy_queue(metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_queue(metadata)
+		_m3_destroy_queue(metadata)
 	}
 }
 

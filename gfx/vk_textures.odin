@@ -1,35 +1,37 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import "core:fmt"
 import "core:sync"
 import vk "vendor:vulkan"
 
-vk_Texture_Metadata	:: struct {
+_vk_Texture_Metadata	:: struct {
 	image:	vk.Image,
 }
 
-vk_View_Metadata	:: struct {
+_vk_View_Metadata	:: struct {
 	view:			vk.ImageView,
 
 	// If referencing a surface.
 	swapchain_image_index:	u32,
 }
 
-vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) {
-	image_info := vk_texture_descriptor_to_vk(descriptor)
+_vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: int, res: Result) {
+	image_info := _vk_texture_descriptor_to_vk(descriptor)
 	
 	image: vk.Image
-	vk.CreateImage(vk_device, &image_info, nil, &image)
-	defer vk.DestroyImage(vk_device, image, nil)
+	vk.CreateImage(_vk_device, &image_info, nil, &image)
+	defer vk.DestroyImage(_vk_device, image, nil)
 
 	requirements: vk.MemoryRequirements
-	vk.GetImageMemoryRequirements(vk_device, image, &requirements)
+	vk.GetImageMemoryRequirements(_vk_device, image, &requirements)
 
 	// TODO: check if maintenance4 is available
 	// requirements_info := vk.DeviceImageMemoryRequirements {
@@ -40,7 +42,7 @@ vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: i
 	// requirements := vk.MemoryRequirements2 {
 	// 	sType		= .MEMORY_REQUIREMENTS_2,
 	// }
-	// vk.GetDeviceImageMemoryRequirements(vk_device, &requirements_info, &requirements)
+	// vk.GetDeviceImageMemoryRequirements(_vk_device, &requirements_info, &requirements)
 
 	size	= cast(int)requirements.size
 	align	= cast(int)requirements.alignment
@@ -48,7 +50,7 @@ vk_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: i
 	return
 }
 
-vk_create_texture :: proc(
+_vk_create_texture :: proc(
 	metadata:		^_Texture_Metadata,
 	address_info:		_Address_Info,
 	buffer_metadata:	^_Buffer_Metadata,
@@ -56,24 +58,24 @@ vk_create_texture :: proc(
 	descriptor:		Texture_Descriptor,
 ) -> (res: Result) {
 
-	image_info := vk_texture_descriptor_to_vk(descriptor)
+	image_info := _vk_texture_descriptor_to_vk(descriptor)
 
 	image: vk.Image
-	vk_call(vk.CreateImage(vk_device, &image_info, nil, &image)) or_return
-	defer if res != nil do vk.DestroyImage(vk_device, image, nil)
+	_vk_call(vk.CreateImage(_vk_device, &image_info, nil, &image)) or_return
+	defer if res != nil do vk.DestroyImage(_vk_device, image, nil)
 
-	vk_call(vk.BindImageMemory(
-		vk_device,
+	_vk_call(vk.BindImageMemory(
+		_vk_device,
 		image,
 		buffer_metadata.vk.device_memory,
 		cast(vk.DeviceSize)address_info.offset,
 	)) or_return
 
-	view_info := vk_texture_descriptor_to_vk_view(descriptor, image)
+	view_info := _vk_texture_descriptor_to_vk_view(descriptor, image)
 
 	view: vk.ImageView
-	vk_call(vk.CreateImageView(vk_device, &view_info, nil, &view)) or_return
-	defer if res != nil do vk.DestroyImage(vk_device, image, nil)
+	_vk_call(vk.CreateImageView(_vk_device, &view_info, nil, &view)) or_return
+	defer if res != nil do vk.DestroyImage(_vk_device, image, nil)
 
 	metadata.vk.image		= image
 	default_view_metadata.vk.view	= view
@@ -81,8 +83,8 @@ vk_create_texture :: proc(
 	if sync.guard(&_queues[.Default].emission_mutex) {
 		command_pool := &_queues[.Default].vk.command_pool
 
-		fence := vk_begin_command_group(command_pool) or_return
-		command_buffer := vk_acquire_command_buffer_from(command_pool) or_return
+		fence := _vk_begin_command_group(command_pool) or_return
+		command_buffer := _vk_acquire_command_buffer_from(command_pool) or_return
 		
 		begin_info := vk.CommandBufferBeginInfo {
 			sType	= .COMMAND_BUFFER_BEGIN_INFO,
@@ -96,7 +98,7 @@ vk_create_texture :: proc(
 			newLayout	= .GENERAL,
 			image		= image,
 			subresourceRange	= {
-				aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[descriptor.format],
+				aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[descriptor.format],
 				levelCount	= cast(u32)descriptor.mip_count,
 				layerCount	= cast(u32)descriptor.layer_count,
 			},
@@ -118,60 +120,60 @@ vk_create_texture :: proc(
 			commandBufferInfoCount	= 1,
 			pCommandBufferInfos	=  &command_buffer_info,
 		}
-		vk_call(vk.QueueSubmit2KHR(_queues[.Default].vk.queue, 1, &submit_info, fence)) or_return
-		vk_end_command_group(command_pool)
+		_vk_call(vk.QueueSubmit2KHR(_queues[.Default].vk.queue, 1, &submit_info, fence)) or_return
+		_vk_end_command_group(command_pool)
 	}
 
 	return
 }
 
-vk_destroy_texture :: proc(metadata: ^_Texture_Metadata) {
-	vk.DestroyImage(vk_device, metadata.vk.image, nil)
+_vk_destroy_texture :: proc(metadata: ^_Texture_Metadata) {
+	vk.DestroyImage(_vk_device, metadata.vk.image, nil)
 }
 
-vk_label_texture :: proc(metadata: ^_Texture_Metadata, label: string) -> Result {
-	vk_label_object(metadata.vk.image, .IMAGE, label) or_return
+_vk_label_texture :: proc(metadata: ^_Texture_Metadata, label: string) -> Result {
+	_vk_label_object(metadata.vk.image, .IMAGE, label) or_return
 
 	view_metadata, view_res := _metadata_of(metadata.default_view)
 	assert(view_res == nil, "Could not find the default view of an image.")
 
-	vk_label_object(view_metadata.vk.view, .IMAGE_VIEW, fmt.ctprintf("%s (default view)", label)) or_return
+	_vk_label_object(view_metadata.vk.view, .IMAGE_VIEW, fmt.ctprintf("%s (default view)", label)) or_return
 
 	return nil
 }
 
-vk_create_view_with_descriptor :: proc(
+_vk_create_view_with_descriptor :: proc(
 	metadata:		^_View_Metadata,
 	texture_metadata:	^_Texture_Metadata,
 	descriptor:		View_Descriptor,
 ) -> Result {
 
-	view_info := vk_view_descriptor_to_vk(descriptor, texture_metadata)
+	view_info := _vk_view_descriptor_to_vk(descriptor, texture_metadata)
 
 	view: vk.ImageView
-	vk_call(vk.CreateImageView(vk_device, &view_info, nil, &view)) or_return
+	_vk_call(vk.CreateImageView(_vk_device, &view_info, nil, &view)) or_return
 
 	metadata.vk.view = view
 
 	return nil
 }
 
-vk_label_view :: proc(metadata: ^_View_Metadata, label: string) -> Result {
-	vk_label_object(metadata.vk.view, .IMAGE_VIEW, label) or_return
+_vk_label_view :: proc(metadata: ^_View_Metadata, label: string) -> Result {
+	_vk_label_object(metadata.vk.view, .IMAGE_VIEW, label) or_return
 
 	return nil
 }
 
-vk_destroy_view :: proc(metadata: ^_View_Metadata) {
-	vk.DestroyImageView(vk_device, metadata.vk.view, nil)
+_vk_destroy_view :: proc(metadata: ^_View_Metadata) {
+	vk.DestroyImageView(_vk_device, metadata.vk.view, nil)
 }
 
-vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk.ImageCreateInfo) {
+_vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk.ImageCreateInfo) {
 	info.sType		= .IMAGE_CREATE_INFO
-	info.imageType		= vk_TEXTURE_TYPE_TO_VK[descriptor.type]
+	info.imageType		= _vk_TEXTURE_TYPE_TO_VK[descriptor.type]
 
-	info.format		= vk_PIXEL_FORMAT_TO_VK[descriptor.format]
-	info.usage		= vk_texture_usages_to_vk(descriptor.usage)
+	info.format		= _vk_PIXEL_FORMAT_TO_VK[descriptor.format]
+	info.usage		= _vk_texture_usages_to_vk(descriptor.usage)
 
 	info.extent.width	= cast(u32)descriptor.dimensions.x
 	info.extent.height	= cast(u32)descriptor.dimensions.y
@@ -184,7 +186,7 @@ vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk
 	info.initialLayout	= .UNDEFINED
 	info.sharingMode	= .EXCLUSIVE
 
-	info.samples		= vk_SAMPLE_COUNT_TO_VK[descriptor.sample_count]
+	info.samples		= _vk_SAMPLE_COUNT_TO_VK[descriptor.sample_count]
 
 	if _is_cube_compatible(descriptor) {
 		info.flags += { .CUBE_COMPATIBLE }
@@ -193,7 +195,7 @@ vk_texture_descriptor_to_vk :: proc(descriptor: Texture_Descriptor) -> (info: vk
 	return
 }
 
-vk_texture_descriptor_to_vk_view :: proc(
+_vk_texture_descriptor_to_vk_view :: proc(
 	descriptor: Texture_Descriptor,
 	image: vk.Image,
 ) -> (info: vk.ImageViewCreateInfo) {
@@ -201,10 +203,10 @@ vk_texture_descriptor_to_vk_view :: proc(
 	info.sType	= .IMAGE_VIEW_CREATE_INFO
 	info.image	= image
 
-	info.viewType	= vk_VIEW_TYPE_TO_VK[_texture_type_to_view_type(descriptor)]
-	info.format	= vk_PIXEL_FORMAT_TO_VK[descriptor.format]
+	info.viewType	= _vk_VIEW_TYPE_TO_VK[_texture_type_to_view_type(descriptor)]
+	info.format	= _vk_PIXEL_FORMAT_TO_VK[descriptor.format]
 
-	info.subresourceRange.aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[descriptor.format]
+	info.subresourceRange.aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[descriptor.format]
 	info.subresourceRange.baseMipLevel	= 0
 	info.subresourceRange.levelCount	= cast(u32)descriptor.mip_count
 	info.subresourceRange.baseArrayLayer	= 0
@@ -213,7 +215,7 @@ vk_texture_descriptor_to_vk_view :: proc(
 	return
 }
 
-vk_view_descriptor_to_vk :: proc(
+_vk_view_descriptor_to_vk :: proc(
 	descriptor:		View_Descriptor,
 	texture_metadata:	^_Texture_Metadata,
 ) -> (info: vk.ImageViewCreateInfo) {
@@ -221,10 +223,10 @@ vk_view_descriptor_to_vk :: proc(
 	info.sType	= .IMAGE_VIEW_CREATE_INFO
 	info.image	= texture_metadata.vk.image
 
-	info.viewType	= vk_VIEW_TYPE_TO_VK[descriptor.type]
-	info.format	= vk_PIXEL_FORMAT_TO_VK[texture_metadata.format]
+	info.viewType	= _vk_VIEW_TYPE_TO_VK[descriptor.type]
+	info.format	= _vk_PIXEL_FORMAT_TO_VK[texture_metadata.format]
 
-	info.subresourceRange.aspectMask	= vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format]
+	info.subresourceRange.aspectMask	= _vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK[texture_metadata.format]
 	info.subresourceRange.baseMipLevel	= cast(u32)descriptor.base_mip
 	info.subresourceRange.levelCount	= cast(u32)descriptor.mip_count
 	info.subresourceRange.baseArrayLayer	= cast(u32)descriptor.base_layer
@@ -233,9 +235,9 @@ vk_view_descriptor_to_vk :: proc(
 	return
 }
 
-vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsageFlags) {
+_vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsageFlags) {
 	for usage in usages {
-		flags += vk_TEXTURE_USAGE_TO_VK[usage]
+		flags += _vk_TEXTURE_USAGE_TO_VK[usage]
 	}
 
 	if usages == {} {
@@ -245,7 +247,7 @@ vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsage
 	return
 }
 
-// vk_texture_usages_to_vk_image_layout :: proc(usages: Texture_Usages) -> (layout: vk.ImageLayout) {
+// _vk_texture_usages_to_vk_image_layout :: proc(usages: Texture_Usages) -> (layout: vk.ImageLayout) {
 // 	if .Color_Attachment in usages {
 // 		return .COLOR_ATTACHMENT_OPTIMAL
 // 	} else if .Depth_Stencil_Attachment in usages {
@@ -256,14 +258,14 @@ vk_texture_usages_to_vk :: proc(usages: Texture_Usages) -> (flags: vk.ImageUsage
 // }
 
 @(rodata)
-vk_TEXTURE_TYPE_TO_VK := [Texture_Type]vk.ImageType {
+_vk_TEXTURE_TYPE_TO_VK := [Texture_Type]vk.ImageType {
 	.D1		= .D1,
 	.D2_Array	= .D2,
 	.D3		= .D3,
 }
 
 @(rodata)
-vk_VIEW_TYPE_TO_VK := [View_Type]vk.ImageViewType {
+_vk_VIEW_TYPE_TO_VK := [View_Type]vk.ImageViewType {
 	.D1			= .D1,
 	.D2			= .D2,
 	.D3			= .D3,
@@ -275,7 +277,7 @@ vk_VIEW_TYPE_TO_VK := [View_Type]vk.ImageViewType {
 }
 
 @(rodata)
-vk_PIXEL_FORMAT_TO_VK := [Pixel_Format]vk.Format {
+_vk_PIXEL_FORMAT_TO_VK := [Pixel_Format]vk.Format {
 	.None			= .UNDEFINED,
 	.R8_Unorm		= .R8_UNORM,
 	.RG8_Unorm		= .R8G8_UNORM,
@@ -302,7 +304,7 @@ vk_PIXEL_FORMAT_TO_VK := [Pixel_Format]vk.Format {
 }
 
 @(rodata)
-vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK := [Pixel_Format]vk.ImageAspectFlags {
+_vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK := [Pixel_Format]vk.ImageAspectFlags {
 	.None			= {},
 	.R8_Unorm		= { .COLOR },
 	.RG8_Unorm		= { .COLOR },
@@ -329,7 +331,7 @@ vk_PIXEL_FORMAT_TO_VK_ASPECT_MASK := [Pixel_Format]vk.ImageAspectFlags {
 }
 
 @(rodata)
-vk_TEXTURE_USAGE_TO_VK := [Texture_Usage]vk.ImageUsageFlags {
+_vk_TEXTURE_USAGE_TO_VK := [Texture_Usage]vk.ImageUsageFlags {
 	.Sampled			= { .SAMPLED, .TRANSFER_SRC, .TRANSFER_DST },
 	.Storage			= { .STORAGE, .TRANSFER_SRC, .TRANSFER_DST },
 	.Color_Attachment		= { .COLOR_ATTACHMENT, .TRANSFER_SRC, .TRANSFER_DST },
@@ -337,14 +339,14 @@ vk_TEXTURE_USAGE_TO_VK := [Texture_Usage]vk.ImageUsageFlags {
 }
 
 @(rodata)
-vk_SAMPLE_COUNT_TO_VK := #partial[?]vk.SampleCountFlags {
+_vk_SAMPLE_COUNT_TO_VK := #partial[?]vk.SampleCountFlags {
 	1	= { ._1 },
 	2	= { ._2 },
 	4	= { ._4 },
 	8	= { ._8 },
 }
 
-vk_format_to_gfx_pixel_format :: proc(format: vk.Format) -> (Pixel_Format) {
+_vk_format_to_gfx_pixel_format :: proc(format: vk.Format) -> (Pixel_Format) {
 	#partial switch format {
 		case .R8_UNORM:			return .R8_Unorm
 		case .R8G8_UNORM:		return .RG8_Unorm

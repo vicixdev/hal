@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -105,8 +105,8 @@ _Texture_Metadata :: struct {
 	default_view:		View,
 
 	using platform:	struct #raw_union {
-		m3:		m3_Texture_Metadata,
-		vk:		vk_Texture_Metadata,
+		m3:		_m3_Texture_Metadata,
+		vk:		_vk_Texture_Metadata,
 	},
 }
 
@@ -124,8 +124,8 @@ _View_Metadata :: struct {
 	used:		bool,
 
 	using platform: struct #raw_union {
-		m3:	m3_View_Metadata,
-		vk:	vk_View_Metadata,
+		m3:	_m3_View_Metadata,
+		vk:	_vk_View_Metadata,
 	},
 }
 
@@ -142,13 +142,12 @@ size_align_of :: proc(
 	descriptor := descriptor
 	_normalize_texture_descriptor(&descriptor)
 
-	_check_device_selected(location) or_return
-	_check_texture_descriptor(descriptor, location) or_return
+	_vl_size_align_of(descriptor, location) or_return
 
 	when TARGET_API == .Vulkan {
-		return vk_size_align_of(descriptor)
+		return _vk_size_align_of(descriptor)
 	} else when TARGET_API == .Metal_3 {
-		return m3_size_align_of(descriptor)
+		return _m3_size_align_of(descriptor)
 	}
 }
 
@@ -161,16 +160,210 @@ create_texture :: proc(
 	descriptor := descriptor
 	_normalize_texture_descriptor(&descriptor)
 
-	_check_device_selected(location) or_return
+	address_info, buffer_metadata :=
+		_vl_create_texture(address, descriptor, location) or_return
 
-	// NOTE: size_align_of() also checks for the descriptor validity.
+	texture, metadata := _add_texture_metadata() or_return
+	defer if res != nil do _remove_texture_metadata(texture)
+
+	view, view_metadata := _add_view_metadata() or_return
+	defer if res != nil do _remove_view_metadata(view)
+
+	metadata.desc		= descriptor
+	metadata.cube_compatible = _is_cube_compatible(descriptor)
+
+	view_metadata.mip_count		= metadata.mip_count
+	view_metadata.layer_count	= metadata.layer_count
+	view_metadata.type		= _texture_type_to_view_type(descriptor)
+
+	metadata.default_view	= view
+	view_metadata.next_view	= view
+	view_metadata.reference	= texture
+
+	when TARGET_API == .Vulkan {
+		res = _vk_create_texture(metadata, address_info, buffer_metadata, view_metadata, descriptor)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_create_texture(metadata, address_info, buffer_metadata, view_metadata, descriptor)
+	}
+
+	_check_specific_result(
+		res,
+		.Out_Of_Gpu_Memory,
+		.Warning,
+		"Out of GPU memory",
+		"Could not allocate texture with descriptor %#v: not enough free GPU memory.",
+		descriptor,
+		location=location,
+	) or_return
+	_check_generic_backend_error(res, location) or_return
+
+	return texture, nil
+}
+
+destroy_texture :: proc(texture: Texture, location := #caller_location) {
+	if _vl_destroy_texture(location) != nil {
+		return
+	}
+
+	metadata, res := _metadata_of(texture)
+	_vl_check_texture_handle(res, texture, location)
+	if res != nil {
+		return
+	}
+
+	start_view	:= metadata.default_view
+	current_view	:= metadata.default_view
+	for {
+		view_metadata, view_res := _metadata_of(current_view)
+		assert(view_res == nil, "Could not find a view of a texture. Broken view chain?")
+
+		next_view := view_metadata.next_view
+
+		when TARGET_API == .Vulkan {
+			_vk_destroy_view(view_metadata)
+		} else when TARGET_API == .Metal_3 {
+			_m3_destroy_view(view_metadata)
+		}
+
+		_remove_view_metadata(current_view)
+
+		current_view = next_view
+		if current_view == start_view {
+			break
+		}
+	}
+
+	when TARGET_API == .Vulkan {
+		_vk_destroy_texture(metadata)
+	} else when TARGET_API == .Metal_3 {
+		_m3_destroy_texture(metadata)
+	}
+
+	_remove_texture_metadata(texture)
+}
+
+label_texture :: proc(texture: Texture, label: string, location := #caller_location) {
+	if _vl_label_texture(location) != nil do return
+
+	metadata, metadata_res := _metadata_of(texture)
+	_vl_check_texture_handle(metadata_res, texture, location)
+	if metadata_res != nil {
+		return
+	}
+
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = _vk_label_texture(metadata, label)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_label_texture(metadata, label)
+	}
+
+	_check_generic_backend_error(res, location)
+}
+
+default_view_of :: proc(texture: Texture, location := #caller_location) -> (view: View, res: Result) {
+	_vl_default_view_of(location) or_return
+
+	metadata, metadata_res := _metadata_of(texture)
+	_vl_check_texture_handle(metadata_res, texture, location) or_return
+
+	return metadata.default_view, nil
+}
+
+create_view :: proc(
+	texture: Texture,
+	descriptor: View_Descriptor,
+	location := #caller_location,
+) -> (view: View, res: Result) {
+
+	descriptor := descriptor
+	_normalize_view_descriptor(&descriptor)
+
+	texture_metadata, texture_metadata_res := _metadata_of(texture)
+	_vl_check_texture_handle(texture_metadata_res, texture, location) or_return
+
+	_vl_create_view(descriptor, texture_metadata, location) or_return
+
+	default_view_metadata, default_view_err := _metadata_of(texture_metadata.default_view)
+	assert(default_view_err == nil, "Could not find the default view of a texture. Broken view chain?")
+
+	handle, metadata := _add_view_metadata() or_return
+	defer if res != nil do _remove_view_metadata(handle)
+
+	metadata.desc = descriptor
+
+	metadata.reference	= texture
+	metadata.next_view	= default_view_metadata.next_view
+	default_view_metadata.next_view = handle
+
+	when TARGET_API == .Vulkan {
+		res = _vk_create_view_with_descriptor(metadata, texture_metadata, descriptor)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_create_view_with_descriptor(metadata, texture_metadata, descriptor)
+	}
+
+	_check_specific_result(
+		res,
+		.Out_Of_Gpu_Memory,
+		.Warning,
+		"Out of GPU memory",
+		"Could not allocate a view with descriptor %#v: not enough free GPU memory.",
+		descriptor,
+		location=location,
+	) or_return
+	_check_generic_backend_error(res, location) or_return
+
+	return handle, nil
+}
+
+label_view :: proc(view: View, label: string, location := #caller_location) {
+	if _vl_label_view(location) != nil do return
+
+	metadata, metadata_res := _metadata_of(view)
+	_check_view_handle(metadata_res, view, location)
+	if metadata_res != nil {
+		return
+	}
+
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = _vk_label_view(metadata, label)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_label_view(metadata, label)
+	}
+
+	_check_generic_backend_error(res, location)
+}
+
+_vl_size_align_of :: proc(descriptor: Texture_Descriptor, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+	_vl_check_texture_descriptor(descriptor, location) or_return
+
+	return nil
+}
+
+_vl_create_texture :: proc(
+	address: rawptr,
+	descriptor: Texture_Descriptor,
+	location: runtime.Source_Code_Location,
+) -> (
+	address_info: _Address_Info,
+	buffer_metadata: ^_Buffer_Metadata,
+	res: Result,
+) {
 	required_size, required_align := size_align_of(descriptor, location) or_return
 
-	address_info, address_res := _address_info_of(address)
+	address_res: Result
+	address_info, address_res = _address_info_of(address)
 	_check_address_info(address_res, address, location) or_return
 
-	buffer_metadata, buffer_metadata_res := _metadata_of(address_info.buffer)
+	buffer_metadata_res: Result
+	buffer_metadata, buffer_metadata_res = _metadata_of(address_info.buffer)
 	assert(buffer_metadata_res == nil)
+
+	when !ENABLE_VALIDATION do return
 
 	_check_condition(
 		_is_aligned(cast(uintptr)address, required_align),
@@ -205,178 +398,52 @@ create_texture :: proc(
 		location=location,
 	) or_return
 
-	texture, metadata := _add_texture_metadata() or_return
-	defer if res != nil do _remove_texture_metadata(texture)
-
-	view, view_metadata := _add_view_metadata() or_return
-	defer if res != nil do _remove_view_metadata(view)
-
-	metadata.desc		= descriptor
-	metadata.cube_compatible = _is_cube_compatible(descriptor)
-
-	view_metadata.mip_count		= metadata.mip_count
-	view_metadata.layer_count	= metadata.layer_count
-	view_metadata.type		= _texture_type_to_view_type(descriptor)
-
-	metadata.default_view	= view
-	view_metadata.next_view	= view
-	view_metadata.reference	= texture
-
-	when TARGET_API == .Vulkan {
-		res = vk_create_texture(metadata, address_info, buffer_metadata, view_metadata, descriptor)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_create_texture(metadata, address_info, buffer_metadata, view_metadata, descriptor)
-	}
-
-	_check_specific_result(
-		res,
-		.Out_Of_Gpu_Memory,
-		.Warning,
-		"Out of GPU memory",
-		"Could not allocate texture with descriptor %#v: not enough free GPU memory.",
-		descriptor,
-		location=location,
-	) or_return
-	_check_generic_backend_error(res, location) or_return
-
-	return texture, nil
+	return
 }
 
-destroy_texture :: proc(texture: Texture, location := #caller_location) {
-	if _check_device_selected(location) != nil {
-		return
-	}
+_vl_destroy_texture :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
 
-	metadata, res := _metadata_of(texture)
-	_check_texture_handle(res, texture, location)
-	if res != nil {
-		return
-	}
-
-	start_view	:= metadata.default_view
-	current_view	:= metadata.default_view
-	for {
-		view_metadata, view_res := _metadata_of(current_view)
-		assert(view_res == nil, "Could not find a view of a texture. Broken view chain?")
-
-		next_view := view_metadata.next_view
-
-		when TARGET_API == .Vulkan {
-			vk_destroy_view(view_metadata)
-		} else when TARGET_API == .Metal_3 {
-			m3_destroy_view(view_metadata)
-		}
-
-		_remove_view_metadata(current_view)
-
-		current_view = next_view
-		if current_view == start_view {
-			break
-		}
-	}
-
-	when TARGET_API == .Vulkan {
-		vk_destroy_texture(metadata)
-	} else when TARGET_API == .Metal_3 {
-		m3_destroy_texture(metadata)
-	}
-
-	_remove_texture_metadata(texture)
-}
-
-label_texture :: proc(texture: Texture, label: string, location := #caller_location) {
-	if _check_device_selected(location) != nil do return
-
-	metadata, metadata_res := _metadata_of(texture)
-	_check_texture_handle(metadata_res, texture, location)
-	if metadata_res != nil {
-		return
-	}
-
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_label_texture(metadata, label)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_label_texture(metadata, label)
-	}
-
-	_check_generic_backend_error(res, location)
-}
-
-default_view_of :: proc(texture: Texture, location := #caller_location) -> (view: View, res: Result) {
 	_check_device_selected(location) or_return
 
-	metadata, metadata_res := _metadata_of(texture)
-	_check_texture_handle(metadata_res, texture, location) or_return
-
-	return metadata.default_view, nil
+	return nil
 }
 
-create_view :: proc(
-	texture: Texture,
+_vl_label_texture :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_default_view_of :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_create_view :: proc(
 	descriptor: View_Descriptor,
-	location := #caller_location,
-) -> (view: View, res: Result) {
+	texture_metadata: ^_Texture_Metadata,
+	location: runtime.Source_Code_Location,
+) -> Result {
+	when !ENABLE_VALIDATION do return nil
 
-	descriptor := descriptor
-	_normalize_view_descriptor(&descriptor)
+	_check_device_selected(location) or_return
+	_vl_check_view_descriptor(descriptor, texture_metadata^, location) or_return
+
+	return nil
+}
+
+_vl_label_view :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
 
 	_check_device_selected(location) or_return
 
-	texture_metadata, texture_metadata_res := _metadata_of(texture)
-	_check_texture_handle(texture_metadata_res, texture, location) or_return
-
-	_check_view_descriptor(descriptor, texture_metadata^, location) or_return
-
-	default_view_metadata, default_view_err := _metadata_of(texture_metadata.default_view)
-	assert(default_view_err == nil, "Could not find the default view of a texture. Broken view chain?")
-
-	handle, metadata := _add_view_metadata() or_return
-	defer if res != nil do _remove_view_metadata(handle)
-
-	metadata.desc = descriptor
-
-	metadata.reference	= texture
-	metadata.next_view	= default_view_metadata.next_view
-	default_view_metadata.next_view = handle
-
-	when TARGET_API == .Vulkan {
-		res = vk_create_view_with_descriptor(metadata, texture_metadata, descriptor)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_create_view_with_descriptor(metadata, texture_metadata, descriptor)
-	}
-
-	_check_specific_result(
-		res,
-		.Out_Of_Gpu_Memory,
-		.Warning,
-		"Out of GPU memory",
-		"Could not allocate a view with descriptor %#v: not enough free GPU memory.",
-		descriptor,
-		location=location,
-	) or_return
-	_check_generic_backend_error(res, location) or_return
-
-	return handle, nil
-}
-
-label_view :: proc(view: View, label: string, location := #caller_location) {
-	if _check_device_selected(location) != nil do return
-
-	metadata, metadata_res := _metadata_of(view)
-	_check_view_handle(metadata_res, view, location)
-	if metadata_res != nil {
-		return
-	}
-
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = vk_label_view(metadata, label)
-	} else when TARGET_API == .Metal_3 {
-		res = m3_label_view(metadata, label)
-	}
-
-	_check_generic_backend_error(res, location)
+	return nil
 }
 
 _is_cube_compatible :: proc(descriptor: Texture_Descriptor) -> bool {
@@ -385,7 +452,7 @@ _is_cube_compatible :: proc(descriptor: Texture_Descriptor) -> bool {
 		descriptor.dimensions.x == descriptor.dimensions.y
 }
 
-_check_texture_region :: proc(
+_vl_check_texture_region :: proc(
 	metadata:	^_Texture_Metadata,
 	region:		Texture_Region,
 	location:	runtime.Source_Code_Location,
@@ -521,7 +588,7 @@ _normalize_view_descriptor :: proc(descriptor: ^View_Descriptor) {
 	}
 }
 
-_check_texture_handle :: proc(result: Result, texture: Texture, location: runtime.Source_Code_Location) -> Result {
+_vl_check_texture_handle :: proc(result: Result, texture: Texture, location: runtime.Source_Code_Location) -> Result {
 	_check_result(
 		result,
 		.Warning,
@@ -544,7 +611,7 @@ _texture_metadata_of :: proc(texture: Texture) -> (^_Texture_Metadata, Result) {
 	return metadata, nil
 }
 
-_check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: runtime.Source_Code_Location) -> Result {
+_vl_check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: runtime.Source_Code_Location) -> Result {
 	_check_condition(
 		_impl(descriptor.type == .D1, descriptor.dimensions.z > 0 && descriptor.dimensions.yz == { 1, 1 }),
 		.Invalid_Descriptor,
@@ -650,7 +717,7 @@ _check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: runt
 	return nil
 }
 
-_check_view_descriptor :: proc(
+_vl_check_view_descriptor :: proc(
 	descriptor:		View_Descriptor,
 	texture_descriptor:	_Texture_Metadata,
 	location:		runtime.Source_Code_Location,

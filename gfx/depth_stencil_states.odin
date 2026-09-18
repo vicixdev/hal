@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -63,8 +63,8 @@ _Depth_Stencil_State_Metadata :: struct {
 	using desc:	Depth_Stencil_Descriptor,
 
 	using platform:	struct #raw_union {
-		m3:	m3_Depth_Stencil_State_Metadata,
-		vk:	vk_Depth_Stencil_State_Metadata,
+		m3:	_m3_Depth_Stencil_State_Metadata,
+		vk:	_vk_Depth_Stencil_State_Metadata,
 	},
 }
 
@@ -102,9 +102,9 @@ create_depth_stencil_state :: proc(
 	metadata.desc = descriptor
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_depth_stencil_state(metadata, descriptor)
+		res = _vk_create_depth_stencil_state(metadata, descriptor)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_depth_stencil_state(metadata, descriptor)
+		res = _m3_create_depth_stencil_state(metadata, descriptor)
 	}
 
 	_check_generic_backend_error(res, location)
@@ -118,9 +118,9 @@ destroy_depth_stencil_state :: proc(depth_stencil_state: Depth_Stencil_State, lo
 	if metadata_res != nil do return
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_depth_stencil_state(metadata)
+		_vk_destroy_depth_stencil_state(metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_depth_stencil_state(metadata)
+		_m3_destroy_depth_stencil_state(metadata)
 	}
 
 	_remove_depth_stencil_state_metadata(depth_stencil_state)

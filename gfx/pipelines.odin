@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:os"
@@ -82,8 +82,8 @@ _Pipeline_Metadata :: struct {
 	},
 
 	using platform: struct #raw_union {
-		vk:	vk_Pipeline_Metadata,
-		m3:	m3_Pipeline_Metadata,
+		vk:	_vk_Pipeline_Metadata,
+		m3:	_m3_Pipeline_Metadata,
 	},
 }
 
@@ -104,9 +104,9 @@ create_compute_pipeline :: proc(
 	metadata.compute = descriptor
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_compute_pipeline(metadata, descriptor)
+		res = _vk_create_compute_pipeline(metadata, descriptor)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_compute_pipeline(metadata, descriptor)
+		res = _m3_create_compute_pipeline(metadata, descriptor)
 	}
 
 	_check_specific_result(
@@ -156,9 +156,9 @@ create_render_pipeline :: proc(
 	metadata.render.color_formats = slice.clone(descriptor.color_formats, _generic_allocator)
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_render_pipeline(metadata, descriptor, blend_metadata)
+		res = _vk_create_render_pipeline(metadata, descriptor, blend_metadata)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_render_pipeline(metadata, descriptor, blend_metadata)
+		res = _m3_create_render_pipeline(metadata, descriptor, blend_metadata)
 	}
 
 	_check_specific_result(
@@ -205,9 +205,9 @@ destroy_pipeline :: proc(pipeline: Pipeline, location := #caller_location) {
 	}
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_pipeline(metadata)
+		_vk_destroy_pipeline(metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_pipeline(metadata)
+		_m3_destroy_pipeline(metadata)
 	}
 
 	if metadata.type == .Render {

@@ -1,28 +1,28 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
-m3_Depth_Stencil_State_Metadata :: struct {
+_m3_Depth_Stencil_State_Metadata :: struct {
 	depth_stencil_state:	^MTL.DepthStencilState,
 }
 
-m3_create_depth_stencil_state :: proc(
+_m3_create_depth_stencil_state :: proc(
 	metadata:	^_Depth_Stencil_State_Metadata,
 	descriptor:	Depth_Stencil_Descriptor,
 ) -> Result {
 	NS.scoped_autoreleasepool()
 
-	mtl_descriptor := m3_depth_stencil_descriptor_to_mtl(descriptor)
+	mtl_descriptor := _m3_depth_stencil_descriptor_to_mtl(descriptor)
 
-	depth_stencil_state := m3_device->newDepthStencilState(mtl_descriptor)
+	depth_stencil_state := _m3_device->newDepthStencilState(mtl_descriptor)
 	if depth_stencil_state == nil {
 		return .Generic_Backend_Error
 	}
@@ -32,32 +32,32 @@ m3_create_depth_stencil_state :: proc(
 	return nil
 }
 
-m3_destroy_depth_stencil_state :: proc(metadata: ^_Depth_Stencil_State_Metadata) {
+_m3_destroy_depth_stencil_state :: proc(metadata: ^_Depth_Stencil_State_Metadata) {
 	NS.scoped_autoreleasepool()
 
 	metadata.m3.depth_stencil_state->release()
 }
 
-m3_depth_stencil_descriptor_to_mtl :: proc(descriptor: Depth_Stencil_Descriptor) -> (mtl: ^MTL.DepthStencilDescriptor) {
+_m3_depth_stencil_descriptor_to_mtl :: proc(descriptor: Depth_Stencil_Descriptor) -> (mtl: ^MTL.DepthStencilDescriptor) {
 	mtl = MTL.DepthStencilDescriptor.alloc()->init()
 	mtl->autorelease()
 
-	mtl->setDepthCompareFunction(m3_COMPARE_OPERATION_TO_MTL[descriptor.depth_test])
+	mtl->setDepthCompareFunction(_m3_COMPARE_OPERATION_TO_MTL[descriptor.depth_test])
 	mtl->setDepthWriteEnabled(descriptor.depth_write)
-	mtl->setFrontFaceStencil(m3_stencil_descriptor_to_mtl(descriptor.stencil_front))
-	mtl->setBackFaceStencil(m3_stencil_descriptor_to_mtl(descriptor.stencil_back))
+	mtl->setFrontFaceStencil(_m3_stencil_descriptor_to_mtl(descriptor.stencil_front))
+	mtl->setBackFaceStencil(_m3_stencil_descriptor_to_mtl(descriptor.stencil_back))
 
 	return
 }
 
-m3_stencil_descriptor_to_mtl :: proc(descriptor: Stencil_Descriptor) -> (mtl: ^MTL.StencilDescriptor) {
+_m3_stencil_descriptor_to_mtl :: proc(descriptor: Stencil_Descriptor) -> (mtl: ^MTL.StencilDescriptor) {
 	mtl = MTL.StencilDescriptor.alloc()->init()
 	mtl->autorelease()
 
-	mtl->setStencilCompareFunction(m3_COMPARE_OPERATION_TO_MTL[descriptor.test])
-	mtl->setDepthStencilPassOperation(m3_STENCIL_OPERATION_TO_MTL[descriptor.pass])
-	mtl->setStencilFailureOperation(m3_STENCIL_OPERATION_TO_MTL[descriptor.fail])
-	mtl->setDepthFailureOperation(m3_STENCIL_OPERATION_TO_MTL[descriptor.depth_fail])
+	mtl->setStencilCompareFunction(_m3_COMPARE_OPERATION_TO_MTL[descriptor.test])
+	mtl->setDepthStencilPassOperation(_m3_STENCIL_OPERATION_TO_MTL[descriptor.pass])
+	mtl->setStencilFailureOperation(_m3_STENCIL_OPERATION_TO_MTL[descriptor.fail])
+	mtl->setDepthFailureOperation(_m3_STENCIL_OPERATION_TO_MTL[descriptor.depth_fail])
 	mtl->setReadMask(descriptor.read_mask)
 	mtl->setWriteMask(descriptor.write_mask)
 
@@ -65,7 +65,7 @@ m3_stencil_descriptor_to_mtl :: proc(descriptor: Stencil_Descriptor) -> (mtl: ^M
 }
 
 @(rodata)
-m3_COMPARE_OPERATION_TO_MTL := [Compare_Operation]MTL.CompareFunction {
+_m3_COMPARE_OPERATION_TO_MTL := [Compare_Operation]MTL.CompareFunction {
 	.Never		= .Never,
 	.Less		= .Less,
 	.Equal		= .Equal,
@@ -77,7 +77,7 @@ m3_COMPARE_OPERATION_TO_MTL := [Compare_Operation]MTL.CompareFunction {
 }
 
 @(rodata)
-m3_STENCIL_OPERATION_TO_MTL := [Stencil_Operation]MTL.StencilOperation {
+_m3_STENCIL_OPERATION_TO_MTL := [Stencil_Operation]MTL.StencilOperation {
 	.Keep			= .Keep,
 	.Zero			= .Zero,
 	.Replace		= .Replace,

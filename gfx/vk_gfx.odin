@@ -1,10 +1,12 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import "base:runtime"
 import "base:intrinsics"
@@ -15,13 +17,13 @@ import "core:os"
 import vk "vendor:vulkan"
 
 when ODIN_OS == .Linux {
-	vk_VULKAN_LOADER_PATHS :: []string {
+	_vk_VULKAN_LOADER_PATHS :: []string {
 		"./libvulkan.so",
 		"libvulkan.so",
 		"/lib64/libvulkan.so",
 	}
 } else when ODIN_OS == .Darwin {
-	vk_VULKAN_LOADER_PATHS :: []string{
+	_vk_VULKAN_LOADER_PATHS :: []string{
 		"./libvulkan.dylib",
 		"../Frameworks/libvulkan.dylib",
 		"./demo/env/macOS/lib/libvulkan.dylib",
@@ -29,7 +31,7 @@ when ODIN_OS == .Linux {
 		"/opt/homebrew/lib/libvulkan.dylib",
 	}
 } else when ODIN_OS == .Windows {
-	vk_VULKAN_LOADER_PATHS :: []string{
+	_vk_VULKAN_LOADER_PATHS :: []string{
 		"./vulkan-1.dll",
 		"vulkan-1.dll",
 		"C:/Windows/System32/vulkan-1.dll",
@@ -38,44 +40,44 @@ when ODIN_OS == .Linux {
 	#panic("Unsupported vulkan target.")
 }
 
-vk_loader_lib:			dynlib.Library
+_vk_loader_lib:			dynlib.Library
 
-vk_debug_messenger:		vk.DebugUtilsMessengerEXT
-vk_debug_messenger_descriptor:	vk.DebugUtilsMessengerCreateInfoEXT
+_vk_debug_messenger:		vk.DebugUtilsMessengerEXT
+_vk_debug_messenger_descriptor:	vk.DebugUtilsMessengerCreateInfoEXT
 
-vk_instance_layers:		[]vk.LayerProperties
-vk_instance_extensions:		[]vk.ExtensionProperties
-vk_enabled_instance_layers:	[dynamic; 8]cstring
-vk_enabled_instance_extensions:	[dynamic; 8]cstring
-vk_instance:			vk.Instance
-vk_has_validation:		bool
-vk_user_logger:			log.Logger
+_vk_instance_layers:		[]vk.LayerProperties
+_vk_instance_extensions:		[]vk.ExtensionProperties
+_vk_enabled_instance_layers:	[dynamic; 8]cstring
+_vk_enabled_instance_extensions:	[dynamic; 8]cstring
+_vk_instance:			vk.Instance
+_vk_has_validation:		bool
+_vk_user_logger:			log.Logger
 
-vk_supports_metal_surfaces:	bool
-vk_supports_win32_surfaces:	bool
-vk_supports_wayland_surfaces:	bool
-vk_supports_xlib_surfaces:	bool
+_vk_supports_metal_surfaces:	bool
+_vk_supports_win32_surfaces:	bool
+_vk_supports_wayland_surfaces:	bool
+_vk_supports_xlib_surfaces:	bool
 
-vk_try_loader_path :: proc(loader_path: string) -> bool {
-	vk_lib := dynlib.load_library(loader_path) or_return
-	vk_loader_lib = vk_lib
+_vk_try_loader_path :: proc(loader_path: string) -> bool {
+	_vk_lib := dynlib.load_library(loader_path) or_return
+	_vk_loader_lib = _vk_lib
 
-	vk_get_proc := dynlib.symbol_address(vk_loader_lib, "vkGetInstanceProcAddr") or_return
-	vk.load_proc_addresses(vk_get_proc)
+	_vk_get_proc := dynlib.symbol_address(_vk_loader_lib, "vkGetInstanceProcAddr") or_return
+	vk.load_proc_addresses(_vk_get_proc)
 	
 	return true
 }
 
-vk_load_instance_procs :: proc() -> Result {
+_vk_load_instance_procs :: proc() -> Result {
 	user_path := _settings.vk.loader_path
 	if user_path == "" {
-		if vk_try_loader_path(user_path) {
+		if _vk_try_loader_path(user_path) {
 			return nil
 		}
 	}
 
-	for loader_path in vk_VULKAN_LOADER_PATHS {
-		if vk_try_loader_path(loader_path) {
+	for loader_path in _vk_VULKAN_LOADER_PATHS {
+		if _vk_try_loader_path(loader_path) {
 			return nil
 		}
 	}
@@ -83,8 +85,8 @@ vk_load_instance_procs :: proc() -> Result {
 	return .Not_Initialized
 }
 
-vk_try_use_instance_layer :: proc(layer: cstring) -> (found_layer: bool) {
-	for &layer_properties in vk_instance_layers {
+_vk_try_use_instance_layer :: proc(layer: cstring) -> (found_layer: bool) {
+	for &layer_properties in _vk_instance_layers {
 		layer_name := cast(cstring)&layer_properties.layerName[0]
 
 		if layer_name == layer {
@@ -94,14 +96,14 @@ vk_try_use_instance_layer :: proc(layer: cstring) -> (found_layer: bool) {
 	}
 
 	if found_layer {
-		append(&vk_enabled_instance_layers, layer)
+		append(&_vk_enabled_instance_layers, layer)
 	}
 
 	return
 }
 
-vk_try_use_instance_extension :: proc(extension: cstring) -> (found_extension: bool) {
-	for &extension_properties in vk_instance_extensions {
+_vk_try_use_instance_extension :: proc(extension: cstring) -> (found_extension: bool) {
+	for &extension_properties in _vk_instance_extensions {
 		layer_name := cast(cstring)&extension_properties.extensionName[0]
 
 		if layer_name == extension {
@@ -111,22 +113,22 @@ vk_try_use_instance_extension :: proc(extension: cstring) -> (found_extension: b
 	}
 
 	if found_extension {
-		append(&vk_enabled_instance_extensions, extension)
+		append(&_vk_enabled_instance_extensions, extension)
 	}
 
 	return
 }
 
-vk_init_instance :: proc() -> Result {
-	vk_has_validation = ENABLE_VALIDATION
+_vk_init_instance :: proc() -> Result {
+	_vk_has_validation = ENABLE_VALIDATION
 
 	instance_layer_count: u32
-	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, nil)) or_return
-	vk_instance_layers = make([]vk.LayerProperties, instance_layer_count, _global_allocator)
-	vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, raw_data(vk_instance_layers))) or_return
+	_vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, nil)) or_return
+	_vk_instance_layers = make([]vk.LayerProperties, instance_layer_count, _global_allocator)
+	_vk_call(vk.EnumerateInstanceLayerProperties(&instance_layer_count, raw_data(_vk_instance_layers))) or_return
 
 	log.debugf("Available instance layers:")
-	for &layer in vk_instance_layers {
+	for &layer in _vk_instance_layers {
 		log.debugf(
 			"\t- %s: %s",
 			cast(cstring)&layer.layerName[0],
@@ -135,12 +137,12 @@ vk_init_instance :: proc() -> Result {
 	}
 
 	instance_extension_count: u32 
-	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, nil)) or_return
-	vk_instance_extensions = make([]vk.ExtensionProperties, instance_extension_count, _global_allocator)
-	vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, raw_data(vk_instance_extensions))) or_return
+	_vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, nil)) or_return
+	_vk_instance_extensions = make([]vk.ExtensionProperties, instance_extension_count, _global_allocator)
+	_vk_call(vk.EnumerateInstanceExtensionProperties(nil, &instance_extension_count, raw_data(_vk_instance_extensions))) or_return
 
 	log.debugf("Available instance extensions:")
-	for &extension in vk_instance_extensions {
+	for &extension in _vk_instance_extensions {
 		log.debugf(
 			"\t- %s",
 			cast(cstring)&extension.extensionName[0],
@@ -149,47 +151,47 @@ vk_init_instance :: proc() -> Result {
 
 	has_validation_layer: bool
 	when ENABLE_VALIDATION {
-		has_validation_layer = vk_try_use_instance_layer("VK_LAYER_KHRONOS_validation")
+		has_validation_layer = _vk_try_use_instance_layer("VK_LAYER_KHRONOS_validation")
 	}
-	log.debugf("Creating vulkan instance with layers: %v.", vk_enabled_instance_layers)
+	log.debugf("Creating vulkan instance with layers: %v.", _vk_enabled_instance_layers)
 
 	when ODIN_OS == .Darwin {
-		vk_try_use_instance_extension("VK_KHR_portability_enumeration")
+		_vk_try_use_instance_extension("VK_KHR_portability_enumeration")
 	}
-	has_debug_utils := vk_try_use_instance_extension("VK_EXT_debug_utils")
+	has_debug_utils := _vk_try_use_instance_extension("VK_EXT_debug_utils")
 
-	supports_surfaces := vk_try_use_instance_extension("VK_KHR_surface")
+	supports_surfaces := _vk_try_use_instance_extension("VK_KHR_surface")
 	ensure(supports_surfaces, "The vulkan instace does not support presentation. Headless rendering is not yet supported.")
 	when ODIN_OS == .Darwin {
-		vk_supports_metal_surfaces = vk_try_use_instance_extension("VK_EXT_metal_surface")
+		_vk_supports_metal_surfaces = _vk_try_use_instance_extension("VK_EXT_metal_surface")
 	} else when ODIN_OS == .Windows {
-		vk_supports_win32_surfaces = vk_try_use_instance_extension("VK_KHR_win32_surface")
+		_vk_supports_win32_surfaces = _vk_try_use_instance_extension("VK_KHR_win32_surface")
 	} else {
-		vk_supports_wayland_surfaces = vk_try_use_instance_extension("VK_KHR_wayland_surface")
-		vk_supports_xlib_surfaces = vk_try_use_instance_extension("VK_KHR_xlib_surface")
+		_vk_supports_wayland_surfaces = _vk_try_use_instance_extension("VK_KHR_wayland_surface")
+		_vk_supports_xlib_surfaces = _vk_try_use_instance_extension("VK_KHR_xlib_surface")
 	}
 	ensure(
-		vk_supports_metal_surfaces ||
-		vk_supports_win32_surfaces ||
-		vk_supports_wayland_surfaces ||
-		vk_supports_xlib_surfaces,
+		_vk_supports_metal_surfaces ||
+		_vk_supports_win32_surfaces ||
+		_vk_supports_wayland_surfaces ||
+		_vk_supports_xlib_surfaces,
 		"The instance does not support presenting neither with Metal surfaces, Win32 surfaces, Wayland " +
 		"surfaces nor XLib surfaces.",
 	)
 
 	if !has_debug_utils || !has_validation_layer {
 		log.warn("The instance does not meet the requirements to enable validation.")
-		vk_has_validation = false
+		_vk_has_validation = false
 	}
 
-	log.debugf("Creating vulkan instance with extensions: %v.", vk_enabled_instance_extensions)
+	log.debugf("Creating vulkan instance with extensions: %v.", _vk_enabled_instance_extensions)
 
 	instance_desc := vk.InstanceCreateInfo {
 		sType			= .INSTANCE_CREATE_INFO,
-		enabledLayerCount	= cast(u32)len(vk_enabled_instance_layers),
-		ppEnabledLayerNames	= raw_data(vk_enabled_instance_layers[:]),
-		enabledExtensionCount	= cast(u32)len(vk_enabled_instance_extensions),
-		ppEnabledExtensionNames	= raw_data(vk_enabled_instance_extensions[:]),
+		enabledLayerCount	= cast(u32)len(_vk_enabled_instance_layers),
+		ppEnabledLayerNames	= raw_data(_vk_enabled_instance_layers[:]),
+		enabledExtensionCount	= cast(u32)len(_vk_enabled_instance_extensions),
+		ppEnabledExtensionNames	= raw_data(_vk_enabled_instance_extensions[:]),
 		flags			= {} when ODIN_OS != .Darwin else { .ENUMERATE_PORTABILITY_KHR },
 		pApplicationInfo	= &{
 			sType			= .APPLICATION_INFO,
@@ -200,14 +202,14 @@ vk_init_instance :: proc() -> Result {
 		},
 	}
 	if has_debug_utils {
-		vk_link(&instance_desc, &vk_debug_messenger_descriptor)
+		_vk_link(&instance_desc, &_vk_debug_messenger_descriptor)
 	}
 
-	vk_call(vk.CreateInstance(&instance_desc, nil, &vk_instance)) or_return
-	vk.load_proc_addresses(vk_instance)
+	_vk_call(vk.CreateInstance(&instance_desc, nil, &_vk_instance)) or_return
+	vk.load_proc_addresses(_vk_instance)
 
-	if vk_has_validation {
-		vk_call(vk.CreateDebugUtilsMessengerEXT(vk_instance, &vk_debug_messenger_descriptor, nil, &vk_debug_messenger)) or_return
+	if _vk_has_validation {
+		_vk_call(vk.CreateDebugUtilsMessengerEXT(_vk_instance, &_vk_debug_messenger_descriptor, nil, &_vk_debug_messenger)) or_return
 	}
 
 	version: u32
@@ -217,7 +219,7 @@ vk_init_instance :: proc() -> Result {
 	return nil
 }
 
-vk_prepare_debug_messenger :: proc() {
+_vk_prepare_debug_messenger :: proc() {
 	messenger_callback :: proc "system" (
 		message_severity: vk.DebugUtilsMessageSeverityFlagsEXT,
 		message_types: vk.DebugUtilsMessageTypeFlagsEXT,
@@ -252,7 +254,7 @@ vk_prepare_debug_messenger :: proc() {
 		}
 
 		context = runtime.default_context()
-		context.logger = vk_user_logger
+		context.logger = _vk_user_logger
 
 		logging_proc(
 			"[VULKAN - %v] %s - %s",
@@ -264,9 +266,9 @@ vk_prepare_debug_messenger :: proc() {
 		return true
 	}
 
-	vk_user_logger = context.logger
+	_vk_user_logger = context.logger
 
-	vk_debug_messenger_descriptor = vk.DebugUtilsMessengerCreateInfoEXT {
+	_vk_debug_messenger_descriptor = vk.DebugUtilsMessengerCreateInfoEXT {
 		sType		= .DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
 		messageSeverity	= { .WARNING, .ERROR },
 		messageType	= { .GENERAL, .VALIDATION, .PERFORMANCE },
@@ -274,46 +276,46 @@ vk_prepare_debug_messenger :: proc() {
 	}
 }
 
-vk_init :: proc() -> Result {
-	vk_load_instance_procs() or_return
-	vk_prepare_debug_messenger()
-	vk_init_instance() or_return
+_vk_init :: proc() -> Result {
+	_vk_load_instance_procs() or_return
+	_vk_prepare_debug_messenger()
+	_vk_init_instance() or_return
 
 	return nil
 }
 
-vk_pre_fini :: proc() {
+_vk_pre_fini :: proc() {
 	vk.QueueWaitIdle(_queues[.Default].vk.queue)
 	if _device_info.properties.transfer_queue {
 		vk.QueueWaitIdle(_queues[.Transfer].vk.queue)
 	}
 
 	when ODIN_OS == .Darwin && ENABLE_TRACING {
-		m3_end_tracing()
+		_m3_end_tracing()
 	}
 }
 
-vk_fini :: proc() {
+_vk_fini :: proc() {
 	if _is_device_selected {
-		vk.DestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, nil)
-		vk.DestroyDescriptorPool(vk_device, vk_descriptor_pool, nil)
-		vk.DestroyPipelineLayout(vk_device, vk_compute_pipeline_layout, nil)
-		vk.DestroyPipelineLayout(vk_device, vk_render_pipeline_layout, nil)
-		vk.DestroyPipelineCache(vk_device, vk_pipeline_cache, nil)
+		vk.DestroyDescriptorSetLayout(_vk_device, _vk_descriptor_set_layout, nil)
+		vk.DestroyDescriptorPool(_vk_device, _vk_descriptor_pool, nil)
+		vk.DestroyPipelineLayout(_vk_device, _vk_compute_pipeline_layout, nil)
+		vk.DestroyPipelineLayout(_vk_device, _vk_render_pipeline_layout, nil)
+		vk.DestroyPipelineCache(_vk_device, _vk_pipeline_cache, nil)
 
-		vk.DestroyDevice(vk_device, nil)
+		vk.DestroyDevice(_vk_device, nil)
 	}
 
-	if vk_has_validation {
-		vk.DestroyDebugUtilsMessengerEXT(vk_instance, vk_debug_messenger, nil)
+	if _vk_has_validation {
+		vk.DestroyDebugUtilsMessengerEXT(_vk_instance, _vk_debug_messenger, nil)
 	}
-	vk.DestroyInstance(vk_instance, nil)
+	vk.DestroyInstance(_vk_instance, nil)
 
-	dynlib.unload_library(vk_loader_lib)
+	dynlib.unload_library(_vk_loader_lib)
 }
 
-vk_label_object_with_cstring :: proc(object: $T, type: vk.ObjectType, label: cstring) -> Result {
-	if !vk_has_validation {
+_vk_label_object_with_cstring :: proc(object: $T, type: vk.ObjectType, label: cstring) -> Result {
+	if !_vk_has_validation {
 		return nil
 	}
 
@@ -323,13 +325,13 @@ vk_label_object_with_cstring :: proc(object: $T, type: vk.ObjectType, label: cst
 		objectHandle	= cast(u64)cast(uintptr)object,
 		pObjectName	= label,
 	}
-	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label)) or_return
+	_vk_call(vk.SetDebugUtilsObjectNameEXT(_vk_device, &label)) or_return
 
 	return nil
 }
 
-vk_label_object_with_string :: proc(object: $T, type: vk.ObjectType, label: string) -> Result {
-	if !vk_has_validation {
+_vk_label_object_with_string :: proc(object: $T, type: vk.ObjectType, label: string) -> Result {
+	if !_vk_has_validation {
 		return nil
 	}
 
@@ -339,26 +341,26 @@ vk_label_object_with_string :: proc(object: $T, type: vk.ObjectType, label: stri
 		objectHandle	= cast(u64)object,
 		pObjectName	= strings.clone_to_cstring(label, _temp_allocator),
 	}
-	vk_call(vk.SetDebugUtilsObjectNameEXT(vk_device, &label)) or_return
+	_vk_call(vk.SetDebugUtilsObjectNameEXT(_vk_device, &label)) or_return
 
 	return nil
 }
 
-vk_label_object :: proc {
-	vk_label_object_with_string,
-	vk_label_object_with_cstring,
+_vk_label_object :: proc {
+	_vk_label_object_with_string,
+	_vk_label_object_with_cstring,
 }
 
-vk_call :: proc(res: vk.Result, expr := #caller_expression, loc := #caller_location) -> Result {
+_vk_call :: proc(res: vk.Result, expr := #caller_expression, loc := #caller_location) -> Result {
 	if res == .SUCCESS || res == .SUBOPTIMAL_KHR {
 		return nil
 	}
 	
 	log.errorf("Operation `%s` caused a vulkan error (%v).", expr, res, location=loc)
-	return vk_result_to_gfx(res)
+	return _vk_result_to_gfx(res)
 }
 
-vk_link :: proc(a: ^$T, b: ^$U)
+_vk_link :: proc(a: ^$T, b: ^$U)
 	where intrinsics.type_has_field(T, "pNext"),
 		intrinsics.type_has_field(U, "pNext") {
 
@@ -368,7 +370,7 @@ vk_link :: proc(a: ^$T, b: ^$U)
 	b.pNext = old_link
 }
 
-vk_result_to_gfx :: proc(res: vk.Result) -> Result {
+_vk_result_to_gfx :: proc(res: vk.Result) -> Result {
 	#partial switch res {
 	case .SUCCESS:				return nil
 	case .ERROR_OUT_OF_DEVICE_MEMORY:	return .Out_Of_Gpu_Memory

@@ -1,28 +1,28 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import "core:mem"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/metal"
 
-m3_Current_Encoder :: enum {
+_m3_Current_Encoder :: enum {
 	None,
 	Compute,
 	Blit,
 	Render,
 }
 
-m3_Command_Buffer_Metadata :: struct {
+_m3_Command_Buffer_Metadata :: struct {
 	command_buffer:			^MTL.CommandBuffer,
 
-	current_encoder:		m3_Current_Encoder,
+	current_encoder:		_m3_Current_Encoder,
 
 	compute_encoder:		^MTL.ComputeCommandEncoder,
 	blit_encoder:			^MTL.BlitCommandEncoder,
@@ -42,8 +42,8 @@ m3_Command_Buffer_Metadata :: struct {
 	barrier_fence_pending:		bool,
 }
 
-m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
-	metadata.m3.barrier_fence = m3_device->newFence()
+_m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+	metadata.m3.barrier_fence = _m3_device->newFence()
 	if metadata.m3.barrier_fence == nil {
 		return .Out_Of_Gpu_Memory
 	}
@@ -51,11 +51,11 @@ m3_setup_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metad
 	return nil
 }
 
-m3_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {
+_m3_destroy_command_buffer :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) {
 	metadata.m3.barrier_fence->release()
 }
 
-m3_emit_mem_copy :: proc(
+_m3_emit_mem_copy :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Mem_Copy,
@@ -67,7 +67,7 @@ m3_emit_mem_copy :: proc(
 	destination_metadata, destination_res := _metadata_of(command.destination.buffer)
 	_check_internal_emission_result(destination_res) or_return
 
-	m3_enable_blit_encoder(metadata) or_return
+	_m3_enable_blit_encoder(metadata) or_return
 	metadata.m3.blit_encoder->copyFromBuffer(
 		source_metadata.m3.buffer,
 		cast(NS.UInteger)command.source.offset,
@@ -79,7 +79,7 @@ m3_emit_mem_copy :: proc(
 	return nil
 }
 
-m3_emit_copy_texture_to_texture :: proc(
+_m3_emit_copy_texture_to_texture :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Copy_Texture_To_Texture,
@@ -91,7 +91,7 @@ m3_emit_copy_texture_to_texture :: proc(
 	destination_metadata, destination_res := _metadata_of(command.destination)
 	_check_internal_emission_result(destination_res) or_return
 
-	m3_enable_blit_encoder(metadata) or_return
+	_m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.source_region.layer_count {
 		source_layer := command.source_region.base_layer + i
 		destination_layer := command.destination_region.base_layer + i
@@ -100,19 +100,19 @@ m3_emit_copy_texture_to_texture :: proc(
 			source_metadata.m3.texture,
 			cast(NS.UInteger)source_layer,
 			cast(NS.UInteger)command.source_region.mip,
-			m3_origin_to_mtl(command.source_region.origin),
-			m3_size_to_mtl(command.source_region.size),
+			_m3_origin_to_mtl(command.source_region.origin),
+			_m3_size_to_mtl(command.source_region.size),
 			destination_metadata.m3.texture,
 			cast(NS.UInteger)destination_layer,
 			cast(NS.UInteger)command.destination_region.mip,
-			m3_origin_to_mtl(command.destination_region.origin),
+			_m3_origin_to_mtl(command.destination_region.origin),
 		)
 	}
 	
 	return nil
 }
 
-m3_emit_copy_buffer_to_texture :: proc(
+_m3_emit_copy_buffer_to_texture :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Copy_Buffer_To_Texture,
@@ -128,25 +128,25 @@ m3_emit_copy_buffer_to_texture :: proc(
 	row_size := _size_of_texture_region_row(texture_metadata, command.region)
 	image_size := _size_of_texture_region_2d_image(texture_metadata, command.region)
 
-	m3_enable_blit_encoder(metadata) or_return
+	_m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.region.layer_count {
 		metadata.m3.blit_encoder->copyFromBufferEx(
 			source_metadata.m3.buffer,
 			cast(NS.UInteger)(cast(int)command.source.offset + layer_size * i),
 			cast(NS.UInteger)row_size,
 			cast(NS.UInteger)(command.region.size.z == 1 ? 0 : image_size),
-			m3_size_to_mtl(command.region.size),
+			_m3_size_to_mtl(command.region.size),
 			texture_metadata.m3.texture,
 			cast(NS.UInteger)(command.region.base_layer + i),
 			cast(NS.UInteger)command.region.mip,
-			m3_origin_to_mtl(command.region.origin),
+			_m3_origin_to_mtl(command.region.origin),
 		)
 	}
 
 	return nil
 }
 
-m3_emit_copy_texture_to_buffer :: proc(
+_m3_emit_copy_texture_to_buffer :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Copy_Texture_To_Buffer,
@@ -162,14 +162,14 @@ m3_emit_copy_texture_to_buffer :: proc(
 	row_size := _size_of_texture_region_row(texture_metadata, command.region)
 	image_size := _size_of_texture_region_2d_image(texture_metadata, command.region)
 
-	m3_enable_blit_encoder(metadata) or_return
+	_m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.region.layer_count {
 		metadata.m3.blit_encoder->copyFromTextureEx(
 			texture_metadata.m3.texture,
 			cast(NS.UInteger)(command.region.base_layer + i),
 			cast(NS.UInteger)command.region.mip,
-			m3_origin_to_mtl(command.region.origin),
-			m3_size_to_mtl(command.region.size),
+			_m3_origin_to_mtl(command.region.origin),
+			_m3_size_to_mtl(command.region.size),
 			destination_metadata.m3.buffer,
 			cast(NS.UInteger)(cast(int)command.destination.offset + layer_size * i),
 			cast(NS.UInteger)row_size,
@@ -180,7 +180,7 @@ m3_emit_copy_texture_to_buffer :: proc(
 	return nil
 }
 
-m3_emit_generate_mipmaps :: proc(
+_m3_emit_generate_mipmaps :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
 	command: _Command_Generate_Mipmaps,
@@ -189,13 +189,13 @@ m3_emit_generate_mipmaps :: proc(
 	texture_metadata, texture_res := _metadata_of(command.texture)
 	_check_internal_emission_result(texture_res) or_return
 
-	m3_enable_blit_encoder(metadata) or_return
+	_m3_enable_blit_encoder(metadata) or_return
 	metadata.m3.blit_encoder->generateMipmapsForTexture(texture_metadata.m3.texture)
 
 	return nil
 }
 
-m3_emit_dispatch :: proc(
+_m3_emit_dispatch :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Dispatch,
@@ -209,9 +209,9 @@ m3_emit_dispatch :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	m3_enable_compute_encoder(metadata) or_return
-	m3_bind_resource_set(metadata, command.resource_set) or_return
-	m3_bind_compute_pipeline(metadata, command.pipeline)
+	_m3_enable_compute_encoder(metadata) or_return
+	_m3_bind_resource_set(metadata, command.resource_set) or_return
+	_m3_bind_compute_pipeline(metadata, command.pipeline)
 	metadata.m3.compute_encoder->setBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.compute_encoder->dispatchThreadgroups(
 		{
@@ -225,7 +225,7 @@ m3_emit_dispatch :: proc(
 	return nil
 }
 
-m3_emit_barrier :: proc(
+_m3_emit_barrier :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
 	command: _Command_Barrier,
@@ -241,14 +241,14 @@ m3_emit_barrier :: proc(
 		case .Render:
 			panic("Barriers are not allowed during render passes.")
 		}
-		m3_flush_encoder(metadata)
+		_m3_flush_encoder(metadata)
 		metadata.m3.barrier_fence_pending = true
 	}
 
 	return nil
 }
 
-m3_emit_begin_render_pass :: proc(
+_m3_emit_begin_render_pass :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
 	command: _Command_Begin_Render_Pass,
@@ -266,10 +266,10 @@ m3_emit_begin_render_pass :: proc(
 		mtl_color_attachment := MTL.RenderPassColorAttachmentDescriptor.alloc()->init()
 		defer mtl_color_attachment->release()
 
-		mtl_color_attachment->setClearColor(m3_clear_color_to_mtl(color_attachment.clear_value.([4]f64)))
-		mtl_color_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[color_attachment.load_operation])
+		mtl_color_attachment->setClearColor(_m3_clear_color_to_mtl(color_attachment.clear_value.([4]f64)))
+		mtl_color_attachment->setLoadAction(_m3_LOAD_OPERATION_TO_MTL[color_attachment.load_operation])
 		mtl_color_attachment->setStoreAction(
-			m3_store_operation_to_mtl(color_attachment.store_operation, has_resolve_view))
+			_m3_store_operation_to_mtl(color_attachment.store_operation, has_resolve_view))
 		mtl_color_attachment->setTexture(view_metadata.m3.view)
 
 		if has_resolve_view {
@@ -290,8 +290,8 @@ m3_emit_begin_render_pass :: proc(
 		defer mtl_depth_attachment->release()
 
 		mtl_depth_attachment->setClearDepth(depth_attachment.clear_value.(f64))
-		mtl_depth_attachment->setLoadAction(m3_LOAD_OPERATION_TO_MTL[depth_attachment.load_operation])
-		mtl_depth_attachment->setStoreAction(m3_store_operation_to_mtl(depth_attachment.store_operation, false))
+		mtl_depth_attachment->setLoadAction(_m3_LOAD_OPERATION_TO_MTL[depth_attachment.load_operation])
+		mtl_depth_attachment->setStoreAction(_m3_store_operation_to_mtl(depth_attachment.store_operation, false))
 		mtl_depth_attachment->setTexture(view_metadata.m3.view)
 
 		descriptor->setDepthAttachment(mtl_depth_attachment)
@@ -306,20 +306,20 @@ m3_emit_begin_render_pass :: proc(
 
 		mtl_stencil_attachment->setClearStencil(stencil_attachment.clear_value.(u32))
 		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setLoadAction(
-			m3_LOAD_OPERATION_TO_MTL[stencil_attachment.load_operation])
+			_m3_LOAD_OPERATION_TO_MTL[stencil_attachment.load_operation])
 		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setStoreAction(
-			m3_store_operation_to_mtl(stencil_attachment.store_operation, false))
+			_m3_store_operation_to_mtl(stencil_attachment.store_operation, false))
 		(cast(^MTL.RenderPassAttachmentDescriptor)mtl_stencil_attachment)->setTexture(view_metadata.m3.view)
 
 		descriptor->setStencilAttachment(mtl_stencil_attachment)
 	}
 
-	m3_enable_render_encoder(metadata, descriptor)
+	_m3_enable_render_encoder(metadata, descriptor)
 
 	return nil
 }
 
-m3_emit_end_render_pass :: proc(
+_m3_emit_end_render_pass :: proc(
 	metadata: ^_Command_Buffer_Metadata,
 	queue_metadata: ^_Queue_Metadata,
 	command: _Command_End_Render_Pass,
@@ -330,12 +330,12 @@ m3_emit_end_render_pass :: proc(
 	metadata.m3.render_encoder->updateFence(metadata.m3.barrier_fence, { .Vertex, .Fragment })
 	metadata.m3.barrier_fence_pending = true
 	
-	m3_flush_encoder(metadata)
+	_m3_flush_encoder(metadata)
 
 	return nil
 }
 
-m3_emit_draw :: proc(
+_m3_emit_draw :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Draw,
@@ -349,15 +349,15 @@ m3_emit_draw :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	m3_bind_resource_set(metadata, command.resource_set) or_return
-	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
-	m3_bind_render_pipeline(metadata, command.pipeline) or_return
-	m3_bind_blend_constant(metadata, command.blend_constant) or_return
-	m3_bind_scissor(metadata, command.scissor) or_return
+	_m3_bind_resource_set(metadata, command.resource_set) or_return
+	_m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
+	_m3_bind_render_pipeline(metadata, command.pipeline) or_return
+	_m3_bind_blend_constant(metadata, command.blend_constant) or_return
+	_m3_bind_scissor(metadata, command.scissor) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->drawPrimitivesWithInstanceCount(
-		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
+		_m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		cast(NS.UInteger)command.base_vertex,
 		cast(NS.UInteger)command.vertex_count,
 		cast(NS.UInteger)command.instance_count,
@@ -366,7 +366,7 @@ m3_emit_draw :: proc(
 	return nil
 }
 
-m3_emit_draw_indexed :: proc(
+_m3_emit_draw_indexed :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	queue_metadata:	^_Queue_Metadata,
 	command:	_Command_Draw_Indexed,
@@ -383,17 +383,17 @@ m3_emit_draw_indexed :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
-	m3_bind_resource_set(metadata, command.resource_set) or_return
-	m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
-	m3_bind_render_pipeline(metadata, command.pipeline) or_return
-	m3_bind_blend_constant(metadata, command.blend_constant) or_return
-	m3_bind_scissor(metadata, command.scissor) or_return
+	_m3_bind_resource_set(metadata, command.resource_set) or_return
+	_m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
+	_m3_bind_render_pipeline(metadata, command.pipeline) or_return
+	_m3_bind_blend_constant(metadata, command.blend_constant) or_return
+	_m3_bind_scissor(metadata, command.scissor) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->drawIndexedPrimitivesWithInstanceCount(
-		m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
+		_m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		cast(NS.UInteger)command.index_count,
-		m3_INDEX_TYPE_TO_MTL[command.index_type],
+		_m3_INDEX_TYPE_TO_MTL[command.index_type],
 		indices_metadata.m3.buffer,
 		cast(NS.UInteger)command.indices.offset,
 		cast(NS.UInteger)command.instance_count,
@@ -402,7 +402,7 @@ m3_emit_draw_indexed :: proc(
 	return nil
 }
 
-m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
+_m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_Queue_Metadata) -> Result {
 
 	metadata.m3.bound_resource_set = {}
 	metadata.m3.bound_depth_stencil_state = {}
@@ -424,37 +424,37 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 	}
 
 	for command in metadata.commands {
-		// m3_check_for_and_emit_waits(metadata, queue_metadata, command) or_return
+		// _m3_check_for_and_emit_waits(metadata, queue_metadata, command) or_return
 
 		switch v in command {
 		case _Command_Mem_Copy:
-			m3_emit_mem_copy(metadata, queue_metadata, v)or_return
+			_m3_emit_mem_copy(metadata, queue_metadata, v)or_return
 		case _Command_Copy_Texture_To_Texture:
-			m3_emit_copy_texture_to_texture(metadata, queue_metadata, v) or_return
+			_m3_emit_copy_texture_to_texture(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Buffer_To_Texture:
-			m3_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
+			_m3_emit_copy_buffer_to_texture(metadata, queue_metadata, v) or_return
 		case _Command_Copy_Texture_To_Buffer:
-			m3_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
+			_m3_emit_copy_texture_to_buffer(metadata, queue_metadata, v) or_return
 		case _Command_Generate_Mipmaps:
-			m3_emit_generate_mipmaps(metadata, queue_metadata, v) or_return
+			_m3_emit_generate_mipmaps(metadata, queue_metadata, v) or_return
 		case _Command_Dispatch:
-			m3_emit_dispatch(metadata, queue_metadata, v) or_return
+			_m3_emit_dispatch(metadata, queue_metadata, v) or_return
 		case _Command_Barrier:
-			m3_emit_barrier(metadata, queue_metadata, v) or_return
+			_m3_emit_barrier(metadata, queue_metadata, v) or_return
 		case _Command_Begin_Render_Pass:
-			m3_emit_begin_render_pass(metadata, queue_metadata, v) or_return
+			_m3_emit_begin_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_End_Render_Pass:
-			m3_emit_end_render_pass(metadata, queue_metadata, v) or_return
+			_m3_emit_end_render_pass(metadata, queue_metadata, v) or_return
 		case _Command_Draw:
-			m3_emit_draw(metadata, queue_metadata, v) or_return
+			_m3_emit_draw(metadata, queue_metadata, v) or_return
 		case _Command_Draw_Indexed:
-			m3_emit_draw_indexed(metadata, queue_metadata, v) or_return
+			_m3_emit_draw_indexed(metadata, queue_metadata, v) or_return
 		}
 
-		// m3_check_for_and_emit_signals(metadata, queue_metadata, i) or_return
+		// _m3_check_for_and_emit_signals(metadata, queue_metadata, i) or_return
 	}
 
-	m3_flush_encoder(metadata)
+	_m3_flush_encoder(metadata)
 	for signal in metadata.synchronization_group.signal {
 		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
 		_check_internal_emission_result(semaphore_res) or_continue
@@ -467,7 +467,7 @@ m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^_
 	return nil
 }
 
-m3_submit :: proc(
+_m3_submit :: proc(
 	queue_metadata: ^_Queue_Metadata,
 	command_buffers: []Command_Buffer,
 ) -> Result {
@@ -477,13 +477,13 @@ m3_submit :: proc(
 		metadata, metadata_res := _metadata_of(command_buffer)
 		_check_internal_emission_result(metadata_res) or_return
 
-		m3_emit_commands(metadata, queue_metadata) or_return
+		_m3_emit_commands(metadata, queue_metadata) or_return
 	}
 
 	return nil
 }
 
-m3_bind_scissor :: proc(metadata: ^_Command_Buffer_Metadata, scissor: Scissor) -> Result {
+_m3_bind_scissor :: proc(metadata: ^_Command_Buffer_Metadata, scissor: Scissor) -> Result {
 
 	assert(metadata.m3.current_encoder == .Render)
 	if metadata.scissor == scissor {
@@ -502,7 +502,7 @@ m3_bind_scissor :: proc(metadata: ^_Command_Buffer_Metadata, scissor: Scissor) -
 	return nil
 }
 
-m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata, resource_set: Resource_Set) -> Result {
+_m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata, resource_set: Resource_Set) -> Result {
 	assert(metadata.m3.current_encoder != .Blit)
 	if metadata.m3.current_encoder == .None {
 		return nil
@@ -528,7 +528,7 @@ m3_bind_resource_set :: proc(metadata: ^_Command_Buffer_Metadata, resource_set: 
 	return nil
 }
 
-m3_bind_depth_stencil :: proc(metadata: ^_Command_Buffer_Metadata, depth_stencil: Depth_Stencil_State) -> Result {
+_m3_bind_depth_stencil :: proc(metadata: ^_Command_Buffer_Metadata, depth_stencil: Depth_Stencil_State) -> Result {
 	assert(metadata.m3.current_encoder == .Render)
 	if depth_stencil == metadata.m3.bound_depth_stencil_state {
 		return nil
@@ -553,7 +553,7 @@ m3_bind_depth_stencil :: proc(metadata: ^_Command_Buffer_Metadata, depth_stencil
 	return nil
 }
 
-m3_bind_blend_constant :: proc(
+_m3_bind_blend_constant :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	constant:	[4]f64,
 ) -> Result {
@@ -575,7 +575,7 @@ m3_bind_blend_constant :: proc(
 	return nil
 }
 
-m3_bind_compute_pipeline :: proc(
+_m3_bind_compute_pipeline :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	pipeline:	Pipeline,
 ) -> Result {
@@ -595,7 +595,7 @@ m3_bind_compute_pipeline :: proc(
 	return nil
 }
 
-m3_bind_render_pipeline :: proc(
+_m3_bind_render_pipeline :: proc(
 	metadata:	^_Command_Buffer_Metadata,
 	pipeline:	Pipeline,
 ) -> Result {
@@ -627,12 +627,12 @@ m3_bind_render_pipeline :: proc(
 	return nil
 }
 
-m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
+_m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	if metadata.m3.current_encoder == .Blit {
 		return nil
 	}
 
-	m3_flush_encoder(metadata)
+	_m3_flush_encoder(metadata)
 
 	metadata.m3.blit_encoder = metadata.m3.command_buffer->blitCommandEncoder()
 	metadata.m3.current_encoder = .Blit
@@ -645,12 +645,12 @@ m3_enable_blit_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	return nil
 }
 
-m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
+_m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result {
 	if metadata.m3.current_encoder == .Compute {
 		return nil
 	}
 
-	m3_flush_encoder(metadata)
+	_m3_flush_encoder(metadata)
 
 	metadata.m3.compute_encoder = metadata.m3.command_buffer->computeCommandEncoderWithDispatchType(.Concurrent)
 	metadata.m3.current_encoder = .Compute
@@ -663,8 +663,8 @@ m3_enable_compute_encoder :: proc(metadata: ^_Command_Buffer_Metadata) -> Result
 	return nil
 }
 
-m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descriptor: ^MTL.RenderPassDescriptor) -> Result {
-	m3_flush_encoder(metadata)
+_m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descriptor: ^MTL.RenderPassDescriptor) -> Result {
+	_m3_flush_encoder(metadata)
 
 	metadata.m3.render_encoder = metadata.m3.command_buffer->renderCommandEncoderWithDescriptor(descriptor)
 	metadata.m3.current_encoder = .Render
@@ -677,7 +677,7 @@ m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descriptor
 	return nil
 }
 
-m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
+_m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	switch metadata.m3.current_encoder {
 	case .None:
 	case .Compute:
@@ -700,7 +700,7 @@ m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 	metadata.m3.bound_scissor		= {}
 }
 
-m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {
+_m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {
 	return {
 		cast(NS.Integer)size.x,
 		cast(NS.Integer)size.y,
@@ -708,7 +708,7 @@ m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {
 	}
 }
 
-m3_origin_to_mtl :: proc(origin: [3]int) -> MTL.Origin {
+_m3_origin_to_mtl :: proc(origin: [3]int) -> MTL.Origin {
 	return {
 		cast(NS.Integer)origin.x,
 		cast(NS.Integer)origin.y,
@@ -716,13 +716,13 @@ m3_origin_to_mtl :: proc(origin: [3]int) -> MTL.Origin {
 	}
 }
 
-m3_clear_color_to_mtl :: proc(clear_color: [4]f64) -> MTL.ClearColor {
+_m3_clear_color_to_mtl :: proc(clear_color: [4]f64) -> MTL.ClearColor {
 	return {
 		**clear_color,
 	}
 }
 
-m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target: bool) -> (action: MTL.StoreAction) {
+_m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target: bool) -> (action: MTL.StoreAction) {
 	switch {
 	case operation == .Dont_Care:
 		return .DontCare
@@ -737,7 +737,7 @@ m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target
 	unreachable()
 }
 
-// m3_check_for_and_emit_waits :: proc(
+// _m3_check_for_and_emit_waits :: proc(
 // 	metadata:	^_Command_Buffer_Metadata,
 // 	queue_metadata: ^_Queue_Metadata,
 // 	command:	_Command,
@@ -776,7 +776,7 @@ m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target
 // 		}
 // 	}
 
-// 	m3_flush_encoder(metadata)
+// 	_m3_flush_encoder(metadata)
 // 	for wait in waits {
 // 		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
 // 		_check_internal_emission_result(semaphore_res) or_return
@@ -789,7 +789,7 @@ m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target
 // 	return nil
 // }
 
-// m3_check_for_and_emit_signals :: proc(
+// _m3_check_for_and_emit_signals :: proc(
 // 	metadata:	^_Command_Buffer_Metadata,
 // 	queue_metadata: ^_Queue_Metadata,
 // 	command_index:	int,
@@ -813,7 +813,7 @@ m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target
 // 		}
 // 	}
 
-// 	m3_flush_encoder(metadata)
+// 	_m3_flush_encoder(metadata)
 // 	for signal in signals {
 // 		semaphore_metadata, semaphore_res := _metadata_of(signal.semaphore)
 // 		_check_internal_emission_result(semaphore_res) or_return
@@ -825,14 +825,14 @@ m3_store_operation_to_mtl :: proc(operation: Store_Operation, has_resolve_target
 // }
 
 @(rodata)
-m3_LOAD_OPERATION_TO_MTL := [Load_Operation]MTL.LoadAction {
+_m3_LOAD_OPERATION_TO_MTL := [Load_Operation]MTL.LoadAction {
 	.Clear		= .Clear,
 	.Load		= .Load,
 	.Dont_Care	= .DontCare,
 }
 
 @(rodata)
-m3_INDEX_TYPE_TO_MTL := [Index_Type]MTL.IndexType {
+_m3_INDEX_TYPE_TO_MTL := [Index_Type]MTL.IndexType {
 	.U16	= .UInt16,
 	.U32	= .UInt32,
 }

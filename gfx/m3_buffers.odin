@@ -1,11 +1,11 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-#+build darwin
-package vicixdev_gfx
 
 import "core:fmt"
 import "core:sync"
@@ -34,7 +34,7 @@ _m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Resul
 	heap_desc->setSize(cast(NS.UInteger)size)
 	heap_desc->setType(.Placement)
 
-	heap := m3_device->newHeap(heap_desc)
+	heap := _m3_device->newHeap(heap_desc)
 	if heap == nil {
 		return .Out_Of_Gpu_Memory
 	}

@@ -1,26 +1,28 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import vk "vendor:vulkan"
 
-vk_Blend_State_Metadata :: struct {}
+_vk_Blend_State_Metadata :: struct {}
 
-vk_create_blend_state :: proc(
+_vk_create_blend_state :: proc(
 	metadata:	^_Blend_State_Metadata,
 	descriptor:	Blend_Descriptor,
 ) -> Result {
 	return nil
 }
 
-vk_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {}
+_vk_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {}
 
 @(rodata)
-vk_BLEND_OP_TO_VK := [Blend_Operation]vk.BlendOp {
+_vk_BLEND_OP_TO_VK := [Blend_Operation]vk.BlendOp {
 	.Add			= .ADD,
 	.Subtract		= .SUBTRACT,
 	.Reverse_Subtract	= .REVERSE_SUBTRACT,
@@ -29,7 +31,7 @@ vk_BLEND_OP_TO_VK := [Blend_Operation]vk.BlendOp {
 }
 
 @(rodata)
-vk_BLEND_FACTOR_TO_VK := [Blend_Factor]vk.BlendFactor {
+_vk_BLEND_FACTOR_TO_VK := [Blend_Factor]vk.BlendFactor {
 	.Zero				= .ZERO,
 	.One				= .ONE,
 	.Source_Color			= .SRC_COLOR,

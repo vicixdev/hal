@@ -1,10 +1,12 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import "core:strings"
 import "core:bytes"
@@ -12,55 +14,55 @@ import "core:sync"
 import "core:mem"
 import vk "vendor:vulkan"
 
-vk_Shader_Stage_Metadata :: struct {
+_vk_Shader_Stage_Metadata :: struct {
 	module:		vk.ShaderModule,
 }
 
-vk_Pipeline_Metadata :: struct {
+_vk_Pipeline_Metadata :: struct {
 	using type_metadata: struct #raw_union {
-		compute:	vk_Shader_Stage_Metadata,
+		compute:	_vk_Shader_Stage_Metadata,
 		render:		struct {
-			vertex:		vk_Shader_Stage_Metadata,
-			fragment:	vk_Shader_Stage_Metadata,
+			vertex:		_vk_Shader_Stage_Metadata,
+			fragment:	_vk_Shader_Stage_Metadata,
 		},
 	},
 
 	pipeline:	vk.Pipeline,
 }
 
-vk_create_compute_pipeline :: proc(
+_vk_create_compute_pipeline :: proc(
 	metadata:	^_Pipeline_Metadata,
 	descriptor:	Shader_Stage_Descriptor,
 ) -> Result {
 
-	shader_module_info := vk_shader_stage_descriptor_to_vk(descriptor)
-	vk_res := vk.CreateShaderModule(vk_device, &shader_module_info, nil, &metadata.vk.compute.module)
-	if vk_res == .ERROR_INITIALIZATION_FAILED || vk_res == .ERROR_INVALID_SHADER_NV {
+	shader_module_info := _vk_shader_stage_descriptor_to_vk(descriptor)
+	_vk_res := vk.CreateShaderModule(_vk_device, &shader_module_info, nil, &metadata.vk.compute.module)
+	if _vk_res == .ERROR_INITIALIZATION_FAILED || _vk_res == .ERROR_INVALID_SHADER_NV {
 		return .Invalid_Pipeline_Bytecode
-	} else if vk_res != .SUCCESS {
-		return vk_result_to_gfx(vk_res)
+	} else if _vk_res != .SUCCESS {
+		return _vk_result_to_gfx(_vk_res)
 	}
 
 	pipeline_info: vk.ComputePipelineCreateInfo
 	if descriptor.constants != nil {
-		specialization_info := vk_constants_to_specialization_info(descriptor)
-		pipeline_info = vk_make_compute_pipeline_desc(
+		specialization_info := _vk_constants_to_specialization_info(descriptor)
+		pipeline_info = _vk_make_compute_pipeline_desc(
 			metadata.vk.compute.module,
 			descriptor,
 			&specialization_info,
 		)
 	} else {
-		pipeline_info = vk_make_compute_pipeline_desc(
+		pipeline_info = _vk_make_compute_pipeline_desc(
 			metadata.vk.compute.module,
 			descriptor,
 			nil,
 		)
 	}
 
-	if sync.mutex_guard(&vk_pipeline_cache_mutex) {
-		vk_call(vk.CreateComputePipelines(
-			vk_device,
-			vk_pipeline_cache,
+	if sync.mutex_guard(&_vk_pipeline_cache_mutex) {
+		_vk_call(vk.CreateComputePipelines(
+			_vk_device,
+			_vk_pipeline_cache,
 			1,
 			&pipeline_info,
 			nil,
@@ -71,38 +73,38 @@ vk_create_compute_pipeline :: proc(
 	return nil
 }
 
-vk_create_render_pipeline :: proc(
+_vk_create_render_pipeline :: proc(
 	metadata: ^_Pipeline_Metadata,
 	descriptor: Render_Pipeline_Descriptor,
 	blend_metadata: ^_Blend_State_Metadata,
 ) -> Result {
-	vertex_module_info := vk_shader_stage_descriptor_to_vk(descriptor.vertex_stage)
-	vertex_module_res := vk.CreateShaderModule(vk_device, &vertex_module_info, nil, &metadata.vk.render.vertex.module)
+	vertex_module_info := _vk_shader_stage_descriptor_to_vk(descriptor.vertex_stage)
+	vertex_module_res := vk.CreateShaderModule(_vk_device, &vertex_module_info, nil, &metadata.vk.render.vertex.module)
 	if vertex_module_res == .ERROR_INITIALIZATION_FAILED || vertex_module_res == .ERROR_INVALID_SHADER_NV {
 		return .Invalid_Pipeline_Bytecode
 	} else if vertex_module_res != .SUCCESS {
-		return vk_result_to_gfx(vertex_module_res)
+		return _vk_result_to_gfx(vertex_module_res)
 	}
 
 	vertex_specialization: vk.SpecializationInfo
 	if descriptor.vertex_stage.constants != nil {
-		vk_constants_to_specialization_info(descriptor.vertex_stage)
+		_vk_constants_to_specialization_info(descriptor.vertex_stage)
 	}
 
-	fragment_module_info := vk_shader_stage_descriptor_to_vk(descriptor.fragment_stage)
-	fragment_module_res := vk.CreateShaderModule(vk_device, &fragment_module_info, nil, &metadata.vk.render.fragment.module)
+	fragment_module_info := _vk_shader_stage_descriptor_to_vk(descriptor.fragment_stage)
+	fragment_module_res := vk.CreateShaderModule(_vk_device, &fragment_module_info, nil, &metadata.vk.render.fragment.module)
 	if fragment_module_res == .ERROR_INITIALIZATION_FAILED || fragment_module_res == .ERROR_INVALID_SHADER_NV {
 		return .Invalid_Pipeline_Bytecode
 	} else if fragment_module_res != .SUCCESS {
-		return vk_result_to_gfx(fragment_module_res)
+		return _vk_result_to_gfx(fragment_module_res)
 	}
 
 	fragment_specialization: vk.SpecializationInfo
 	if descriptor.fragment_stage.constants != nil {
-		vk_constants_to_specialization_info(descriptor.fragment_stage)
+		_vk_constants_to_specialization_info(descriptor.fragment_stage)
 	}
 
-	pipeline_info := vk_make_render_pipeline_desc(
+	pipeline_info := _vk_make_render_pipeline_desc(
 		metadata.vk.render.vertex.module,
 		metadata.vk.render.fragment.module,
 		descriptor,
@@ -111,10 +113,10 @@ vk_create_render_pipeline :: proc(
 		&fragment_specialization,
 	)
 
-	if sync.mutex_guard(&vk_pipeline_cache_mutex) {
-		vk_call(vk.CreateGraphicsPipelines(
-			vk_device,
-			vk_pipeline_cache,
+	if sync.mutex_guard(&_vk_pipeline_cache_mutex) {
+		_vk_call(vk.CreateGraphicsPipelines(
+			_vk_device,
+			_vk_pipeline_cache,
 			1,
 			&pipeline_info,
 			nil,
@@ -125,20 +127,20 @@ vk_create_render_pipeline :: proc(
 	return {}
 }
 
-vk_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
+_vk_destroy_pipeline :: proc(metadata: ^_Pipeline_Metadata) {
 	switch metadata.type {
 	case .Compute:
-		vk.DestroyShaderModule(vk_device, metadata.vk.compute.module, nil)
-		vk.DestroyPipeline(vk_device, metadata.vk.pipeline, nil)
+		vk.DestroyShaderModule(_vk_device, metadata.vk.compute.module, nil)
+		vk.DestroyPipeline(_vk_device, metadata.vk.pipeline, nil)
 
 	case .Render:
-		vk.DestroyShaderModule(vk_device, metadata.vk.render.vertex.module, nil)
-		vk.DestroyShaderModule(vk_device, metadata.vk.render.fragment.module, nil)
-		vk.DestroyPipeline(vk_device, metadata.vk.pipeline, nil)
+		vk.DestroyShaderModule(_vk_device, metadata.vk.render.vertex.module, nil)
+		vk.DestroyShaderModule(_vk_device, metadata.vk.render.fragment.module, nil)
+		vk.DestroyPipeline(_vk_device, metadata.vk.pipeline, nil)
 	}
 }
 
-vk_shader_stage_descriptor_to_vk :: proc(descriptor: Shader_Stage_Descriptor) -> (info: vk.ShaderModuleCreateInfo) {
+_vk_shader_stage_descriptor_to_vk :: proc(descriptor: Shader_Stage_Descriptor) -> (info: vk.ShaderModuleCreateInfo) {
 	kMVKMagicNumberMSLCompiledCode: u32 : 0x19981215
 
 	info.sType	= .SHADER_MODULE_CREATE_INFO
@@ -159,7 +161,7 @@ vk_shader_stage_descriptor_to_vk :: proc(descriptor: Shader_Stage_Descriptor) ->
 	return
 }
 
-vk_make_compute_pipeline_desc :: proc(
+_vk_make_compute_pipeline_desc :: proc(
 	module:		vk.ShaderModule,
 	descriptor:	Shader_Stage_Descriptor,
 	specialization:	^vk.SpecializationInfo,
@@ -167,7 +169,7 @@ vk_make_compute_pipeline_desc :: proc(
 
 	info.sType	= .COMPUTE_PIPELINE_CREATE_INFO
 
-	info.layout	= vk_compute_pipeline_layout
+	info.layout	= _vk_compute_pipeline_layout
 	info.stage	= {
 		sType			= .PIPELINE_SHADER_STAGE_CREATE_INFO,
 		stage			= { .COMPUTE },
@@ -180,7 +182,7 @@ vk_make_compute_pipeline_desc :: proc(
 }
 
 
-vk_make_render_pipeline_desc :: proc(
+_vk_make_render_pipeline_desc :: proc(
 	vertex_module:			vk.ShaderModule,
 	fragment_module:		vk.ShaderModule,
 	descriptor:			Render_Pipeline_Descriptor,
@@ -213,7 +215,7 @@ vk_make_render_pipeline_desc :: proc(
 	input_assembly_state := new(vk.PipelineInputAssemblyStateCreateInfo, _temp_allocator)
 	input_assembly_state^ = {
 		sType		= .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		topology	= vk_TOPOLOGY_TO_VK[descriptor.topology],
+		topology	= _vk_TOPOLOGY_TO_VK[descriptor.topology],
 	}
 
 	viewport_state := new(vk.PipelineViewportStateCreateInfo, _temp_allocator)
@@ -227,7 +229,7 @@ vk_make_render_pipeline_desc :: proc(
 	rasterization_state^ = {
 		sType			= .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
 		polygonMode		= .FILL,
-		cullMode		= vk_CULL_MODE_TO_VK[descriptor.cull],
+		cullMode		= _vk_CULL_MODE_TO_VK[descriptor.cull],
 		frontFace		= .CLOCKWISE,
 		lineWidth		= 1.0,
 	}
@@ -242,14 +244,14 @@ vk_make_render_pipeline_desc :: proc(
 
 		if blend_metadata != nil {
 			color_blend_state.blendEnable = true
-			color_blend_state.colorBlendOp		= vk_BLEND_OP_TO_VK[blend_metadata.color_op]
-			color_blend_state.srcColorBlendFactor	= vk_BLEND_FACTOR_TO_VK[blend_metadata.source_color_factor]
-			color_blend_state.dstColorBlendFactor	= vk_BLEND_FACTOR_TO_VK[blend_metadata.destination_color_factor]
-			color_blend_state.alphaBlendOp		= vk_BLEND_OP_TO_VK[blend_metadata.alpha_op]
-			color_blend_state.srcAlphaBlendFactor	= vk_BLEND_FACTOR_TO_VK[blend_metadata.source_alpha_factor]
-			color_blend_state.dstAlphaBlendFactor	= vk_BLEND_FACTOR_TO_VK[blend_metadata.destination_alpha_factor]
+			color_blend_state.colorBlendOp		= _vk_BLEND_OP_TO_VK[blend_metadata.color_op]
+			color_blend_state.srcColorBlendFactor	= _vk_BLEND_FACTOR_TO_VK[blend_metadata.source_color_factor]
+			color_blend_state.dstColorBlendFactor	= _vk_BLEND_FACTOR_TO_VK[blend_metadata.destination_color_factor]
+			color_blend_state.alphaBlendOp		= _vk_BLEND_OP_TO_VK[blend_metadata.alpha_op]
+			color_blend_state.srcAlphaBlendFactor	= _vk_BLEND_FACTOR_TO_VK[blend_metadata.source_alpha_factor]
+			color_blend_state.dstAlphaBlendFactor	= _vk_BLEND_FACTOR_TO_VK[blend_metadata.destination_alpha_factor]
 		}
-		color_blend_state.colorWriteMask = vk_PIXEL_FORMAT_TO_VK_COLOR_COMPONENTS[format]
+		color_blend_state.colorWriteMask = _vk_PIXEL_FORMAT_TO_VK_COLOR_COMPONENTS[format]
 
 		color_blend_states[i] = color_blend_state
 	}
@@ -263,21 +265,21 @@ vk_make_render_pipeline_desc :: proc(
 	multisample_state := new(vk.PipelineMultisampleStateCreateInfo, _temp_allocator)
 	multisample_state^ = {
 		sType			= .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		rasterizationSamples	= vk_SAMPLE_COUNT_TO_VK[descriptor.sample_count],
+		rasterizationSamples	= _vk_SAMPLE_COUNT_TO_VK[descriptor.sample_count],
 		alphaToCoverageEnable	= cast(b32)descriptor.alpha_to_coverage,
 	}
 
 	color_attachment_formats := make([]vk.Format, len(descriptor.color_formats), _temp_allocator)
 	for format, i in descriptor.color_formats {
-		color_attachment_formats[i] = vk_PIXEL_FORMAT_TO_VK[format]
+		color_attachment_formats[i] = _vk_PIXEL_FORMAT_TO_VK[format]
 	}
 	render_info := new(vk.PipelineRenderingCreateInfo, _temp_allocator)
 	render_info^ = {
 		sType			= .PIPELINE_RENDERING_CREATE_INFO,
 		colorAttachmentCount	= cast(u32)len(color_attachment_formats),
 		pColorAttachmentFormats	= raw_data(color_attachment_formats),
-		depthAttachmentFormat	= vk_PIXEL_FORMAT_TO_VK[descriptor.depth_format],
-		stencilAttachmentFormat	= vk_PIXEL_FORMAT_TO_VK[descriptor.stencil_format],
+		depthAttachmentFormat	= _vk_PIXEL_FORMAT_TO_VK[descriptor.depth_format],
+		stencilAttachmentFormat	= _vk_PIXEL_FORMAT_TO_VK[descriptor.stencil_format],
 	}
 
 	depth_stencil_state := new(vk.PipelineDepthStencilStateCreateInfo, _temp_allocator)
@@ -323,12 +325,12 @@ vk_make_render_pipeline_desc :: proc(
 	info.pColorBlendState		= color_blend_state
 	info.pDepthStencilState		= depth_stencil_state
 	info.pDynamicState		= dynamic_state
-	info.layout			= vk_render_pipeline_layout
+	info.layout			= _vk_render_pipeline_layout
 
 	return
 }
 
-vk_constants_to_specialization_info :: proc(
+_vk_constants_to_specialization_info :: proc(
 	descriptor:	Shader_Stage_Descriptor,
 ) -> (info: vk.SpecializationInfo) {
 
@@ -364,20 +366,20 @@ vk_constants_to_specialization_info :: proc(
 }
 
 @(rodata)
-vk_TOPOLOGY_TO_VK := [Topology]vk.PrimitiveTopology {
+_vk_TOPOLOGY_TO_VK := [Topology]vk.PrimitiveTopology {
 	.Triangle_List	= .TRIANGLE_LIST,
 	.Triangle_Strip	= .TRIANGLE_STRIP,
 }
 
 @(rodata)
-vk_CULL_MODE_TO_VK := [Cull_Mode]vk.CullModeFlags {
+_vk_CULL_MODE_TO_VK := [Cull_Mode]vk.CullModeFlags {
 	.None			= {},
 	.Clockwise		= { .FRONT },
 	.Counter_Clockwise	= { .BACK },
 }
 
 @(rodata)
-vk_PIXEL_FORMAT_TO_VK_COLOR_COMPONENTS := [Pixel_Format]vk.ColorComponentFlags {
+_vk_PIXEL_FORMAT_TO_VK_COLOR_COMPONENTS := [Pixel_Format]vk.ColorComponentFlags {
 	.None			= {},
 	.R8_Unorm		= { .R, },
 	.RG8_Unorm		= { .R, .G },

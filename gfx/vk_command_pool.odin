@@ -1,31 +1,33 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-package vicixdev_gfx
+
 
 import "base:runtime"
 import vk "vendor:vulkan"
 
 // Usage:
-//	pool := vk_create_command_pool() or_return
-//	fence := vk_begin_command_group(&pool)
-//	cb1 := vk_acquire_command_buffer_from(&pool)
-//	cb2 := vk_acquire_command_buffer_from(&pool)
+//	pool := _vk_create_command_pool() or_return
+//	fence := _vk_begin_command_group(&pool)
+//	cb1 := _vk_acquire_command_buffer_from(&pool)
+//	cb2 := _vk_acquire_command_buffer_from(&pool)
 //	// both cb1 and cb2 are related with fence
-//	vk_end_command_group(&pool)
+//	_vk_end_command_group(&pool)
 //
-//	fence2 := vk_begin_command_group(&pool)
-//	cb3 := vk_acquire_command_buffer_from(&pool)
+//	fence2 := _vk_begin_command_group(&pool)
+//	cb3 := _vk_acquire_command_buffer_from(&pool)
 //	// cb3 is related with fence2
-//	vk_end_command_group(&pool)
+//	_vk_end_command_group(&pool)
 //
 //	// submit cb1 and cb2 toghether signaling fence...
 //	// submit cb3 signaling fence2...
 //
-vk_Command_Pool :: struct {
+_vk_Command_Pool :: struct {
 	allocator:			runtime.Allocator,
 
 	command_pool:			vk.CommandPool,
@@ -39,17 +41,17 @@ vk_Command_Pool :: struct {
 	current_command_buffers:	[dynamic]vk.CommandBuffer,
 }
 
-vk_create_command_pool :: proc(
+_vk_create_command_pool :: proc(
 	queue_family: u32,
 	allocator: runtime.Allocator,
-) -> (pool: vk_Command_Pool, res: Result) {
+) -> (pool: _vk_Command_Pool, res: Result) {
 
 	pool_info := vk.CommandPoolCreateInfo {
 		sType			= .COMMAND_POOL_CREATE_INFO,
 		flags			= { .TRANSIENT, .RESET_COMMAND_BUFFER },
 		queueFamilyIndex	= queue_family,
 	}
-	vk_call(vk.CreateCommandPool(vk_device, &pool_info, nil, &pool.command_pool)) or_return
+	_vk_call(vk.CreateCommandPool(_vk_device, &pool_info, nil, &pool.command_pool)) or_return
 
 	pool.free_command_buffers	= make([dynamic]vk.CommandBuffer, allocator) or_return
 	pool.free_fences		= make([dynamic]vk.Fence, allocator) or_return
@@ -60,11 +62,11 @@ vk_create_command_pool :: proc(
 	return
 }
 
-vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
+_vk_destroy_command_pool :: proc(pool: _vk_Command_Pool) {
 	for fence, command_buffers in pool.pending_command_buffers {
 		if len(command_buffers) > 0 {
 			vk.FreeCommandBuffers(
-				vk_device,
+				_vk_device,
 				pool.command_pool,
 				cast(u32)len(command_buffers),
 				raw_data(command_buffers),
@@ -72,17 +74,17 @@ vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
 		}
 
 		if fence != pool.current_fence {
-			vk.DestroyFence(vk_device, fence, nil)
+			vk.DestroyFence(_vk_device, fence, nil)
 		}
 
 		delete(command_buffers, pool.allocator)
 	}
 	for fence in pool.free_fences {
-		vk.DestroyFence(vk_device, fence, nil)
+		vk.DestroyFence(_vk_device, fence, nil)
 	}
 	if len(pool.current_command_buffers) > 0 {
 		vk.FreeCommandBuffers(
-			vk_device,
+			_vk_device,
 			pool.command_pool,
 			cast(u32)len(pool.current_command_buffers),
 			raw_data(pool.current_command_buffers),
@@ -90,15 +92,15 @@ vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
 	}
 	if len(pool.free_command_buffers) > 0 {
 		vk.FreeCommandBuffers(
-			vk_device,
+			_vk_device,
 			pool.command_pool,
 			cast(u32)len(pool.free_command_buffers),
 			raw_data(pool.free_command_buffers),
 		)
 	}
 
-	vk.DestroyFence(vk_device, pool.current_fence, nil)
-	vk.DestroyCommandPool(vk_device, pool.command_pool, nil)
+	vk.DestroyFence(_vk_device, pool.current_fence, nil)
+	vk.DestroyCommandPool(_vk_device, pool.command_pool, nil)
 
 	delete(pool.free_command_buffers)
 	delete(pool.free_fences)
@@ -106,11 +108,11 @@ vk_destroy_command_pool :: proc(pool: vk_Command_Pool) {
 	delete(pool.pending_command_buffers)
 }
 
-vk_begin_command_group :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, res: Result) {
+_vk_begin_command_group :: proc(pool: ^_vk_Command_Pool) -> (fence: vk.Fence, res: Result) {
 
 	assert(pool.current_fence == {}, "Previous command group not closed.")
 
-	vk_refresh_command_buffer_pool(pool) or_return
+	_vk_refresh_command_buffer_pool(pool) or_return
 
 	if len(pool.free_fences) > 0 {
 		fence = pop(&pool.free_fences)
@@ -118,7 +120,7 @@ vk_begin_command_group :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, res:
 		fence_info := vk.FenceCreateInfo {
 			sType	= .FENCE_CREATE_INFO,
 		}
-		vk_call(vk.CreateFence(vk_device, &fence_info, nil, &fence)) or_return
+		_vk_call(vk.CreateFence(_vk_device, &fence_info, nil, &fence)) or_return
 	}
 
 	pool.current_fence = fence
@@ -126,7 +128,7 @@ vk_begin_command_group :: proc(pool: ^vk_Command_Pool) -> (fence: vk.Fence, res:
 	return
 }
 
-vk_end_command_group :: proc(pool: ^vk_Command_Pool) {
+_vk_end_command_group :: proc(pool: ^_vk_Command_Pool) {
 	
 	assert(pool.current_fence != {}, "Command group not opened.")
 
@@ -135,18 +137,18 @@ vk_end_command_group :: proc(pool: ^vk_Command_Pool) {
 
 		pool.current_command_buffers = make([dynamic]vk.CommandBuffer, pool.allocator)
 	} else {
-		vk.ResetFences(vk_device, 1, &pool.current_fence)
+		vk.ResetFences(_vk_device, 1, &pool.current_fence)
 		append(&pool.free_fences, pool.current_fence)
 	}
 	
 	pool.current_fence = {}
 }
 
-vk_acquire_command_buffer_from :: proc(
-	pool: ^vk_Command_Pool,
+_vk_acquire_command_buffer_from :: proc(
+	pool: ^_vk_Command_Pool,
 ) -> (command_buffer: vk.CommandBuffer, res: Result) {
 
-	vk_refresh_command_buffer_pool(pool) or_return
+	_vk_refresh_command_buffer_pool(pool) or_return
 
 	if len(pool.free_command_buffers) > 0 {
 		command_buffer = pop(&pool.free_command_buffers)
@@ -157,7 +159,7 @@ vk_acquire_command_buffer_from :: proc(
 			commandPool		= pool.command_pool,
 			level			= .PRIMARY,
 		}
-		vk_call(vk.AllocateCommandBuffers(vk_device, &command_buffer_info, &command_buffer)) or_return
+		_vk_call(vk.AllocateCommandBuffers(_vk_device, &command_buffer_info, &command_buffer)) or_return
 	}
 
 	append(&pool.current_command_buffers, command_buffer)
@@ -167,11 +169,11 @@ vk_acquire_command_buffer_from :: proc(
 	return
 }
 
-vk_refresh_command_buffer_pool :: proc(pool: ^vk_Command_Pool) -> Result {
+_vk_refresh_command_buffer_pool :: proc(pool: ^_vk_Command_Pool) -> Result {
 
 	ok_fences := make([dynamic]vk.Fence, 0, len(pool.pending_command_buffers), context.temp_allocator) or_return
 	for fence in pool.pending_command_buffers {
-		if vk.GetFenceStatus(vk_device, fence) != .SUCCESS {
+		if vk.GetFenceStatus(_vk_device, fence) != .SUCCESS {
 			continue
 		}
 
@@ -181,7 +183,7 @@ vk_refresh_command_buffer_pool :: proc(pool: ^vk_Command_Pool) -> Result {
 	for &fence in ok_fences {
 		_, command_buffers := delete_key(&pool.pending_command_buffers, fence)
 
-		vk.ResetFences(vk_device, 1, &fence)
+		vk.ResetFences(_vk_device, 1, &fence)
 
 		append(&pool.free_command_buffers, ..command_buffers) or_return
 		append(&pool.free_fences, fence) or_return

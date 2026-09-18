@@ -1,11 +1,11 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-#+build darwin
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:mem"
@@ -16,16 +16,16 @@ import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import MTLe "darwext/Metal"
 
-m3_Device_Info :: struct {
+_m3_Device_Info :: struct {
 	device:	^MTL.Device,
 }
 
-m3_device:	^MTL.Device
-m3_is_tracing:	bool
+_m3_device:	^MTL.Device
+_m3_is_tracing:	bool
 
-m3_resource_set_heap:	^MTL.Heap
+_m3_resource_set_heap:	^MTL.Heap
 
-m3_enumerate_devices :: proc(
+_m3_enumerate_devices :: proc(
 	allocator: runtime.Allocator,
 ) -> (available_devices: []Device_Info, res:Result) {
 	NS.scoped_autoreleasepool()
@@ -39,7 +39,7 @@ m3_enumerate_devices :: proc(
 	for i: NS.UInteger; i < mtl_devices->count(); i += 1 {
 		device := mtl_devices->objectAs(i, ^MTL.Device)
 
-		if !m3_is_device_suitable(device) {
+		if !_m3_is_device_suitable(device) {
 			continue
 		}
 
@@ -76,42 +76,42 @@ m3_enumerate_devices :: proc(
 	return devices[:], nil
 }
 
-m3_select_device :: proc(device: Device_Id) -> Result {
+_m3_select_device :: proc(device: Device_Id) -> Result {
 	NS.scoped_autoreleasepool()
 
-	m3_device = _available_devices[device]._platform.m3.device
+	_m3_device = _available_devices[device]._platform.m3.device
 
 	when ENABLE_TRACING {
-		m3_begin_tracing()
+		_m3_begin_tracing()
 	}
 
 	residency_set_descriptor := MTLe.ResidencySetDescriptor.alloc()->init()
 	defer residency_set_descriptor->release()
 
 	residency_set_descriptor->setInitialCapacity(128)
-	_m3_residency_set = MTLe.Device_newResidencySetWithDescriptor(auto_cast m3_device, residency_set_descriptor, nil)
+	_m3_residency_set = MTLe.Device_newResidencySetWithDescriptor(auto_cast _m3_device, residency_set_descriptor, nil)
 	if _m3_residency_set == nil {
 		return .Generic_Backend_Error
 	}
 
-	m3_create_resource_set_heap() or_return
+	_m3_create_resource_set_heap() or_return
 
 	return nil
 }
 
-m3_is_device_suitable :: proc(device: ^MTL.Device) -> bool {
+_m3_is_device_suitable :: proc(device: ^MTL.Device) -> bool {
 	return device->supportsFamily(.Metal3) &&
 		device->hasUnifiedMemory()
 }
 
-m3_begin_tracing :: proc() {
-	m3_begin_tracing_on_device(m3_device)
+_m3_begin_tracing :: proc() {
+	_m3_begin_tracing_on_device(_m3_device)
 }
 
-m3_begin_tracing_on_device :: proc(device: ^MTL.Device) {
+_m3_begin_tracing_on_device :: proc(device: ^MTL.Device) {
 	NS.scoped_autoreleasepool()
 
-	if m3_is_tracing {
+	if _m3_is_tracing {
 		log.errorf("Could not start a capture. Another capture is already active.")
 	}
 
@@ -150,11 +150,11 @@ m3_begin_tracing_on_device :: proc(device: ^MTL.Device) {
 		)
 	}
 
-	m3_is_tracing = true
+	_m3_is_tracing = true
 }
 
-m3_end_tracing :: proc() {
-	if !m3_is_tracing {
+_m3_end_tracing :: proc() {
+	if !_m3_is_tracing {
 		return
 	}
 
@@ -162,7 +162,7 @@ m3_end_tracing :: proc() {
 	capture_manager->stopCapture()
 }
 
-m3_create_resource_set_heap :: proc() -> Result {
+_m3_create_resource_set_heap :: proc() -> Result {
 	heap_desc := MTL.HeapDescriptor.alloc()->init()
 	defer heap_desc->release()
 
@@ -171,12 +171,12 @@ m3_create_resource_set_heap :: proc() -> Result {
 	heap_desc->setStorageMode(.Shared)
 	heap_desc->setType(.Automatic)
 
-	m3_resource_set_heap = m3_device->newHeap(heap_desc)
-	if m3_resource_set_heap == nil {
+	_m3_resource_set_heap = _m3_device->newHeap(heap_desc)
+	if _m3_resource_set_heap == nil {
 		return .Out_Of_Gpu_Memory
 	}
 
-	_m3_residency_set->addAllocation(m3_resource_set_heap)
+	_m3_residency_set->addAllocation(_m3_resource_set_heap)
 	_m3_residency_set->commit()
 
 	return nil

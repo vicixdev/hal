@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -52,8 +52,8 @@ _Blend_State_Metadata :: struct {
 	using desc:	Blend_Descriptor,
 
 	using platform:	struct #raw_union {
-		m3:	m3_Blend_State_Metadata,
-		vk:	vk_Blend_State_Metadata,
+		m3:	_m3_Blend_State_Metadata,
+		vk:	_vk_Blend_State_Metadata,
 	},
 }
 
@@ -70,9 +70,9 @@ create_blend_state :: proc(
 	metadata.desc = descriptor
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_blend_state(metadata, descriptor)
+		res = _vk_create_blend_state(metadata, descriptor)
 	} else when TARGET_API == .Metal_3 {
-		res = m3_create_blend_state(metadata, descriptor)
+		res = _m3_create_blend_state(metadata, descriptor)
 	}
 
 	_check_generic_backend_error(res, location)
@@ -86,9 +86,9 @@ destroy_blend_state :: proc(blend_state: Blend_State, location := #caller_locati
 	if metadata_res != nil do return
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_blend_state(metadata)
+		_vk_destroy_blend_state(metadata)
 	} else when TARGET_API == .Metal_3 {
-		m3_destroy_blend_state(metadata)
+		_m3_destroy_blend_state(metadata)
 	}
 
 	_remove_blend_state_metadata(blend_state)

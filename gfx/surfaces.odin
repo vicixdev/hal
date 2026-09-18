@@ -1,10 +1,10 @@
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
-
-package vicixdev_gfx
 
 import "base:runtime"
 import "core:sync"
@@ -62,8 +62,8 @@ _Surface_Metadata :: struct {
 	using desc:	Surface_Descriptor,
 
 	using platform:	struct #raw_union {
-		m3:	m3_Surface_Metadata,
-		vk:	vk_Surface_Metadata,
+		m3:	_m3_Surface_Metadata,
+		vk:	_vk_Surface_Metadata,
 	},
 }
 
@@ -79,9 +79,9 @@ supported_formats_of :: proc(
 	_check_surface_target(descriptor.target, location) or_return
 
 	when TARGET_API == .Vulkan {
-		formats, res = vk_supported_formats_for_target(descriptor, allocator)
+		formats, res = _vk_supported_formats_for_target(descriptor, allocator)
 	} else when TARGET_API == .Metal_3 {
-		formats, res = m3_supported_formats_for_target(descriptor, allocator)
+		formats, res = _m3_supported_formats_for_target(descriptor, allocator)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -113,9 +113,9 @@ create_surface :: proc(
 	metadata.desc = descriptor
 
 	when TARGET_API == .Vulkan {
-		res = vk_create_surface(metadata, descriptor)
+		res = _vk_create_surface(metadata, descriptor)
 	} else {
-		res = m3_create_surface(metadata, descriptor)
+		res = _m3_create_surface(metadata, descriptor)
 	}
 
 	_check_generic_backend_error(res, location) or_return
@@ -130,9 +130,9 @@ destroy_surface :: proc(surface: Surface, location := #caller_location) {
 	if metadata_res != nil do return
 
 	when TARGET_API == .Vulkan {
-		vk_destroy_surface(metadata)
+		_vk_destroy_surface(metadata)
 	} else {
-		m3_destroy_surface(metadata)
+		_m3_destroy_surface(metadata)
 	}
 
 	_remove_surface_metadata(surface)
@@ -165,9 +165,9 @@ acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> 
 	view_metadata.mip_count		= 1
 
 	when TARGET_API == .Vulkan {
-		res = vk_acquire_surface_view(metadata, view_metadata, semaphore_metadata)
+		res = _vk_acquire_surface_view(metadata, view_metadata, semaphore_metadata)
 	} else {
-		res = m3_acquire_surface_view(metadata, view_metadata, semaphore_metadata)
+		res = _m3_acquire_surface_view(metadata, view_metadata, semaphore_metadata)
 	}
 
 	if res == .Surface_Unavailable {
@@ -229,9 +229,9 @@ present :: proc(
 
 	if sync.guard(&queue_metadata.emission_mutex) {
 		when TARGET_API == .Vulkan {
-			res = vk_present(queue_metadata, surface_metadata, view_metadata, waits)
+			res = _vk_present(queue_metadata, surface_metadata, view_metadata, waits)
 		} else {
-			res = m3_present(queue_metadata, surface_metadata, view_metadata, waits)
+			res = _m3_present(queue_metadata, surface_metadata, view_metadata, waits)
 		}
 	}
 
@@ -255,9 +255,9 @@ resize_surface :: proc(surface: Surface, dimensions: [2]int, location := #caller
 	}
 
 	when TARGET_API == .Vulkan {
-		res = vk_resize_surface(metadata, dimensions)
+		res = _vk_resize_surface(metadata, dimensions)
 	} else {
-		res = m3_resize_surface(metadata, dimensions)
+		res = _m3_resize_surface(metadata, dimensions)
 	}
 
 	res = _check_generic_backend_error(res, location)
@@ -277,9 +277,9 @@ _destroy_surface_view :: proc(view: View, location := #caller_location) {
 
 	res: Result
 	when TARGET_API == .Vulkan {
-		res = vk_destroy_surface_view(surface_metadata, view_metadata)
+		res = _vk_destroy_surface_view(surface_metadata, view_metadata)
 	} else {
-		res = m3_destroy_surface_view(surface_metadata, view_metadata)
+		res = _m3_destroy_surface_view(surface_metadata, view_metadata)
 	}
 
 	_remove_view_metadata(view)

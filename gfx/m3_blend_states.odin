@@ -1,18 +1,18 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 // import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
-m3_Blend_State_Metadata :: struct {}
+_m3_Blend_State_Metadata :: struct {}
 
-m3_create_blend_state :: proc(
+_m3_create_blend_state :: proc(
 	metadata:	^_Blend_State_Metadata,
 	descriptor:	Blend_Descriptor,
 ) -> Result {
@@ -21,12 +21,12 @@ m3_create_blend_state :: proc(
 	return nil
 }
 
-m3_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {
+_m3_destroy_blend_state :: proc(metadata: ^_Blend_State_Metadata) {
 	// NS.scoped_autoreleasepool()
 }
 
 @(rodata)
-m3_BLEND_OPERATION_TO_MTL := [Blend_Operation]MTL.BlendOperation {
+_m3_BLEND_OPERATION_TO_MTL := [Blend_Operation]MTL.BlendOperation {
 	.Add			= .Add,
 	.Subtract		= .Subtract,
 	.Reverse_Subtract	= .ReverseSubtract,
@@ -35,7 +35,7 @@ m3_BLEND_OPERATION_TO_MTL := [Blend_Operation]MTL.BlendOperation {
 }
 
 @(rodata)
-m3_BLEND_FACTOR_TO_MTL := [Blend_Factor]MTL.BlendFactor {
+_m3_BLEND_FACTOR_TO_MTL := [Blend_Factor]MTL.BlendFactor {
 	.Zero				= .Zero,
 	.One				= .One,
 	.Source_Color			= .SourceColor,

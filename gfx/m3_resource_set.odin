@@ -1,44 +1,44 @@
+#+build darwin
+package vicixdev_gfx
+
 /*
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
-#+build darwin
-package vicixdev_gfx
-
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
 // NOTE: Gpu repr
-m3_Resource_Set_Root :: struct #align(16) {
+_m3_Resource_Set_Root :: struct #align(16) {
 	sampler_set:		u64,
 	texture_sets:		[View_Type]u64,
 	storage_texture_sets:	[Storage_View_Type]u64,
 }
-#assert(size_of(m3_Resource_Set_Root) == 112)
+#assert(size_of(_m3_Resource_Set_Root) == 112)
 
-m3_Resource_Set_Metadata :: struct {
+_m3_Resource_Set_Metadata :: struct {
 	texture_sets:		[View_Type]^MTL.Buffer,
 	storage_texture_sets:	[Storage_View_Type]^MTL.Buffer,
 	sampler_set:		^MTL.Buffer,
 
 	root_buffer:		^MTL.Buffer,
-	root:			^m3_Resource_Set_Root,
+	root:			^_m3_Resource_Set_Root,
 }
 
-m3_create_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
+_m3_create_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 	
-	root_buffer := m3_resource_set_heap->newBufferWithLength(
-		size_of(m3_Resource_Set_Root),
+	root_buffer := _m3_resource_set_heap->newBufferWithLength(
+		size_of(_m3_Resource_Set_Root),
 		{ .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked },
 	)
 	if root_buffer == nil {
 		return .Out_Of_Gpu_Memory
 	}
 
-	root := root_buffer->contentsAsType(m3_Resource_Set_Root)
+	root := root_buffer->contentsAsType(_m3_Resource_Set_Root)
 	root^ = {}
 
 	metadata.m3.root_buffer = root_buffer
@@ -47,7 +47,7 @@ m3_create_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	return nil
 }
 
-m3_destroy_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
+_m3_destroy_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 	
 	for texture_set in metadata.m3.texture_sets {
@@ -66,7 +66,7 @@ m3_destroy_resource_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	return nil
 }
 
-m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -> Result {
+_m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -> Result {
 	NS.scoped_autoreleasepool()
 	
 	textures := metadata.texture_sets[type]
@@ -75,7 +75,7 @@ m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -
 		metadata.m3.texture_sets[type]->release()
 	}
 
-	texture_set := m3_resource_set_heap->newBufferWithLength(
+	texture_set := _m3_resource_set_heap->newBufferWithLength(
 		size_of(MTL.ResourceID) * cast(NS.UInteger)len(textures),
 		{ .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked},
 	)
@@ -95,7 +95,7 @@ m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) -
 	return nil
 }
 
-m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Storage_View_Type) -> Result {
+_m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Storage_View_Type) -> Result {
 	NS.scoped_autoreleasepool()
 	
 	textures := metadata.storage_texture_sets[type]
@@ -104,7 +104,7 @@ m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Stor
 		metadata.m3.storage_texture_sets[type]->release()
 	}
 
-	texture_set := m3_resource_set_heap->newBufferWithLength(
+	texture_set := _m3_resource_set_heap->newBufferWithLength(
 		size_of(MTL.ResourceID) * cast(NS.UInteger)len(textures),
 		{ .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked},
 	)
@@ -124,7 +124,7 @@ m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Stor
 	return nil
 }
 
-m3_set_sampler_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
+_m3_set_sampler_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	NS.scoped_autoreleasepool()
 	
 	samplers := metadata.sampler_set
@@ -133,7 +133,7 @@ m3_set_sampler_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 		metadata.m3.sampler_set->release()
 	}
 
-	sampler_set := m3_resource_set_heap->newBufferWithLength(
+	sampler_set := _m3_resource_set_heap->newBufferWithLength(
 		size_of(MTL.ResourceID) * cast(NS.UInteger)len(samplers),
 		{ .CPUCacheModeWriteCombined, .HazardTrackingModeUntracked},
 	)
