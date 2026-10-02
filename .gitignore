@@ -5,4 +5,5 @@
 **/.DS_Store
 **/*.dSYM
 release*.tar.gz
+.gdb_history
 
