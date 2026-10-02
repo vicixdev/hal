@@ -4,4 +4,5 @@
 !build/.gitkeep
 **/.DS_Store
 **/*.dSYM
+release*.tar.gz
 
