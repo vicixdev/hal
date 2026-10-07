@@ -462,7 +462,7 @@ _tx_add_glyph_to :: proc(
 	font:		^ttf.fontinfo,
 	scale:		f32,
 	glyph:		int,
-	shift:		[2]f32 = {}
+	shift:		[2]f32 = {},
 ) -> (glyph_idx: int, res: Result) {
 
 	BORDER		:: 4

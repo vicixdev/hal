@@ -131,3 +131,8 @@ CommandBuffer_useResidencySet :: #force_inline proc "c" (self: ^CommandBuffer, r
 CommandBuffer_useResidencySets :: #force_inline proc "c" (self: ^CommandBuffer, residencySets: [^]^ResidencySet, count: u32) {
 	msgSend(nil, self, "useResidencySets:", residencySets, count)
 }
+
+@(init, private = "file")
+odin_7793_workaround :: proc "contextless" () {
+	_ = intrinsics.objc_find_class("NSObject")
+}

@@ -156,7 +156,7 @@ size_align_of :: proc(
 create_texture :: proc(
 	address:	rawptr,
 	descriptor:	Texture_Descriptor,
-	location	:= #caller_location
+	location	:= #caller_location,
 ) -> (handle: Texture, res: Result) {
 
 	descriptor := descriptor

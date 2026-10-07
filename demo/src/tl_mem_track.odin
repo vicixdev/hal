@@ -7,12 +7,10 @@ import "core:strings"
 import vmem "core:mem/virtual"
 import ui "shared:clay"
 import "root:gfx"
-import gmem "root:gfx/mem"
 
 tl_Tracked_Memory_Target :: union #no_nil {
 	^mem.Arena,
 	^mem.Scratch,
-	^gmem.Scratch,
 	^vmem.Arena,
 	^gfx.Arena,
 	^gfx.Scratch,
@@ -62,9 +60,6 @@ tl_begin_frame :: proc() {
 		case ^mem.Scratch:
 			memory.next_start = v.curr_offset
 
-		case ^gmem.Scratch:
-			memory.next_start = v.curr_offset
-
 		case ^vmem.Arena:
 			memory.next_start = cast(int)v.total_used
 
@@ -85,10 +80,6 @@ tl_end_frame :: proc() {
 			memory.max = len(v.data)
 
 		case ^mem.Scratch:
-			memory.end = v.curr_offset
-			memory.max = len(v.data)
-
-		case ^gmem.Scratch:
 			memory.end = v.curr_offset
 			memory.max = len(v.data)
 
@@ -269,13 +260,6 @@ _tl_memory_target_info :: proc(memory: tl_Tracked_Memory) -> (info: _tl_Memory_T
 
 	case ^mem.Scratch:
 		info.structure	= "mem::Scratch"
-		info.type	= "Cpu memory"
-		info.used	= memory.end - memory.start
-		info.available	= memory.max - info.used
-		info.start	= memory.start
-
-	case ^gmem.Scratch:
-		info.structure	= "vicixdev_gfx_mem::Scratch"
 		info.type	= "Cpu memory"
 		info.used	= memory.end - memory.start
 		info.available	= memory.max - info.used

@@ -3,6 +3,7 @@
   - [ ] Support MultiDrawIndirect (using ICB under metal)
 - [ ] Improve validation
 - [ ] Move ALL validation code to `_vl_*` procedures
+- [ ] Optimize surface resizing (it lags...)
 - [ ] Reorganize device global variables
 - [ ] Procedures documentation
 - [ ] Project documentation/handguide
