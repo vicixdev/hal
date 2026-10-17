@@ -20,4 +20,7 @@ _m3_Command_Buffer_Metadata	:: struct {}
 _m3_Resource_Set_Metadata	:: struct {}
 _m3_Semaphore_Metadata		:: struct {}
 _m3_Fence_Metadata		:: struct {}
+_m3_Blend_State_Metadata	:: struct {}
+_m3_Surface_Metadata		:: struct {}
+_m3_Depth_Stencil_State_Metadata :: struct {}
 

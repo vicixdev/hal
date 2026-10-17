@@ -24,7 +24,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "name": "Debug (cppvsdbg)",
-            "program": "${workspaceFolder}/demo/build/out",
+            "program": "${workspaceFolder}/demo/build/out.exe",
             "args": [],
             "cwd": "${workspaceFolder}/demo"
         },
@@ -48,7 +48,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "name": "Tests (cppvsdbg)",
-            "program": "${workspaceFolder}/tests",
+            "program": "${workspaceFolder}/tests.exe",
             "args": [],
             "cwd": "${workspaceFolder}"
         }

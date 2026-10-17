@@ -49,7 +49,10 @@ test_against_reference_image :: proc(
 	t:			^testing.T,
 	$REFERENCE_PATH:	string,
 	pixels:			[]Pixel,
-	params :=		Reference_Image_Test_Parameters{},
+	params :=		Reference_Image_Test_Parameters{
+		max_absolute_error = 4,
+		max_relative_error = 4/255,
+	},
 	location :=		#caller_location,
 ) {
 

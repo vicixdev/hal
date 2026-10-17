@@ -160,6 +160,7 @@ tx_register_font :: proc(path: string, height: f32) -> (font: tx_Font, res: Resu
 	return tx_instantiate_font(root_id, height)
 }
 
+import "core:log"
 tx_instantiate_font :: proc(root_id: int, height: f32) -> (font: tx_Font, res: Result) {
 
 	if root_id >= len(_tx.font_roots) {
@@ -167,15 +168,16 @@ tx_instantiate_font :: proc(root_id: int, height: f32) -> (font: tx_Font, res: R
 	}
 
 	height := _tx_quantize(height, 4)
-
 	root := &_tx.font_roots[root_id]
+	key := _tx_Font_Key{ root.name, height }
 
 	is_already_present: bool
-	font, is_already_present = _tx.registered_fonts[{ root.name, height }]
+	font, is_already_present = _tx.registered_fonts[key]
 	if is_already_present {
 		return font, .Exists_Already
 	}
 
+	log.info("Before: ", key, _tx.registered_fonts)
 	scale := ttf.ScaleForPixelHeight(&root.font, height)
 
 	metadata := _tx_Font_Metadata {
@@ -187,7 +189,9 @@ tx_instantiate_font :: proc(root_id: int, height: f32) -> (font: tx_Font, res: R
 	_tx_init_font_atlas(&metadata.atlas, _tx.private_memory, _tx.default_memory, _tx.allocator) or_return
 
 	font = hm.add(&_tx.fonts, metadata) or_return
-	map_insert(&_tx.registered_fonts, _tx_Font_Key { root.name, height }, font)
+	map_insert(&_tx.registered_fonts, key, font)
+
+	log.info("After: ", _tx.registered_fonts)
 	
 	return
 }
@@ -363,10 +367,10 @@ _tx_use_glyph :: proc(
 ) -> (draw_info: tx_Glyph_Draw_Info, glyph_rect: _tx_Glyph_Rect, res: Result) {
 
 	normalized_shift := [2]f32 {
-		// _tx_quantize(shift.x, 16),
-		shift.x,
-		// _tx_quantize(shift.y, 16),
-		shift.y,
+		_tx_quantize(shift.x, 16),
+		// shift.x,
+		_tx_quantize(shift.y, 16),
+		// shift.y,
 	}
 
 	glyph_idx, already_registered := metadata.glyphs[{glyph, shift}]

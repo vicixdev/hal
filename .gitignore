@@ -1,5 +1,7 @@
 /tests
 /.test_outputs
+/tests.exe
+/tests.pdb
 **/build/**
 !build/.gitkeep
 **/.DS_Store

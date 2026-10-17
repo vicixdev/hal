@@ -162,6 +162,7 @@ default_memory:		gfx.Arena
 private_memory:		gfx.Arena
 framebuffers_memory:	gfx.Arena
 staging_memory:		gfx.Scratch
+staging_memory2:	gfx.Arena
 frame_memory:		gfx.Scratch
 
 color_vertices:		[]Color_Vertex
@@ -249,14 +250,14 @@ setup :: proc() {
 		}
 	} else when ODIN_OS == .Windows {
 		target = gfx.Surface_HWND_Target {
-			h_wnd	= sdl.GetPointerProperty(sdl3.GetWindowProperties(window), sdl.PROP_WINDOW_WIN32_HWND_POINTER, nil),
+			h_wnd	= sdl.GetPointerProperty(sdl.GetWindowProperties(window), sdl.PROP_WINDOW_WIN32_HWND_POINTER, nil),
 		}
 	} else {
 		#panic("*nix is not yet supported.")
 	}
 
 	surface_descriptor := gfx.Surface_Descriptor {
-		type			= .V_Sync,
+		type			= .Immediate,
 		dimensions		= window_state.dimensions,
 		frames_in_flight	= 3,
 		target			= target,
@@ -534,11 +535,12 @@ app :: proc() -> Result {
 
 	frame_semaphore = gfx.create_semaphore(.Cpu) or_return
 
-	gfx.create_arena	(&default_memory,	.Default, 256	* mem.Megabyte) or_return
+	gfx.create_arena	(&default_memory,	.Default, 64	* mem.Megabyte) or_return
 	gfx.create_arena	(&framebuffers_memory,	.Private, 512	* mem.Megabyte) or_return
-	gfx.create_arena	(&private_memory,	.Private, 256	* mem.Megabyte) or_return
+	gfx.create_arena	(&private_memory,	.Private, 512 * mem.Megabyte) or_return
 	gfx.create_scratch	(&staging_memory,	.Staging, 32	* mem.Megabyte) or_return
-	gfx.create_scratch	(&frame_memory,		.Default, 32	* mem.Megabyte) or_return
+	gfx.create_arena	(&staging_memory2, 	.Staging, 512	* mem.Megabyte) or_return
+	gfx.create_scratch	(&frame_memory,		.Default, 16	* mem.Megabyte) or_return
 
 	tl_track_memory("default_memory", &default_memory)
 	tl_track_memory("private_memory", &private_memory)
@@ -549,7 +551,7 @@ app :: proc() -> Result {
 
 	rd_init_resource_manager(rd_resource_manager()) or_return
 
-	tx_init(&private_memory, &default_memory, context.allocator)
+	tx_init(&private_memory, &staging_memory2, context.allocator)
 	defer tx_fini()
 
 	ui_init(window_state.dimensions, &framebuffers_memory, &frame_memory, context.allocator) or_return
