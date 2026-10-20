@@ -171,7 +171,7 @@ _Command_Draw_Indexed :: struct {
 	indices:		_Address_Info,
 	index_count:		int,
 	instance_count:		int,
-	base_vertex:		int,
+	base_index:		int,
 	index_type:		Index_Type,
 	scissor:		Scissor,
 }
@@ -1256,6 +1256,7 @@ draw_indexed :: proc(
 	indices:		rawptr,
 	index_count:		int,
 	instance_count :=	1,
+	base_index :=		0,
 	index_type :=		Index_Type.U16,
 	location :=		#caller_location,
 ) -> (res: Result) {
@@ -1287,6 +1288,7 @@ draw_indexed :: proc(
 		arguments		= arguments_info,
 		indices			= indices_info,
 		index_count		= index_count,
+		base_index		= base_index,
 		instance_count		= instance_count,
 		index_type		= index_type,
 		scissor			= metadata.scissor,
@@ -1667,5 +1669,11 @@ _set_last_command_of :: proc(
 	stage:		Stage,
 ) {
 	metadata.last_command[stage] = len(metadata.commands) - 1
+}
+
+@(rodata)
+_SIZE_OF_INDEX_TYPE := [Index_Type]int {
+	.U16	= 2,
+	.U32	= 4,
 }
 

@@ -751,7 +751,7 @@ _vk_emit_draw_indexed :: proc(
 		metadata.vk.command_buffer,
 		cast(u32)command.index_count,
 		cast(u32)command.instance_count,
-		0,
+		cast(u32)command.base_index,
 		0,
 		0,
 	)

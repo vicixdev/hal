@@ -385,6 +385,8 @@ _m3_emit_draw_indexed :: proc(
 	arguments_ptr, arguments_res := _to_gpu_address(command.arguments)
 	_check_internal_emission_result(arguments_res) or_return
 
+	indices_offset := command.indices.offset + cast(uintptr)(command.base_index * _SIZE_OF_INDEX_TYPE[command.index_type])
+
 	_m3_bind_resource_set(metadata, command.resource_set) or_return
 	_m3_bind_depth_stencil(metadata, command.depth_stencil_state) or_return
 	_m3_bind_render_pipeline(metadata, command.pipeline) or_return
@@ -397,7 +399,7 @@ _m3_emit_draw_indexed :: proc(
 		cast(NS.UInteger)command.index_count,
 		_m3_INDEX_TYPE_TO_MTL[command.index_type],
 		indices_metadata.m3.buffer,
-		cast(NS.UInteger)command.indices.offset,
+		cast(NS.UInteger)indices_offset,
 		cast(NS.UInteger)command.instance_count,
 	)
 
@@ -838,3 +840,4 @@ _m3_INDEX_TYPE_TO_MTL := [Index_Type]MTL.IndexType {
 	.U16	= .UInt16,
 	.U32	= .UInt32,
 }
+
