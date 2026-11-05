@@ -13,7 +13,6 @@ import "core:fmt"
 import "core:sync"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "darwext/Metal"
 
 _m3_Buffer_Metadata :: struct {
 	heap:		^MTL.Heap,
@@ -21,7 +20,7 @@ _m3_Buffer_Metadata :: struct {
 	buffer:		^MTL.Buffer,
 }
 
-_m3_residency_set:		^MTLe.ResidencySet
+_m3_residency_set:		^MTL.ResidencySet
 _m3_residency_set_mutex:	sync.Mutex
 
 _m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Result {
@@ -36,18 +35,18 @@ _m3_alloc :: proc(metadata: ^_Buffer_Metadata, type: Memory, size: int) -> Resul
 	heap_desc->setSize(cast(NS.UInteger)size)
 	heap_desc->setType(.Placement)
 
-	heap := _m3_device->newHeap(heap_desc)
+	heap := _m3_device->newHeapWithDescriptor(heap_desc)
 	if heap == nil {
 		return .Out_Of_Gpu_Memory
 	}
 
-	buffer := heap->newBufferWithOptions(cast(NS.UInteger)size, resource_options, 0)
+	buffer := heap->newBufferWithLength(cast(NS.UInteger)size, resource_options, 0)
 	assert(buffer != nil, "If the MTLHeap allocation succeded, then the buffer allocation should succede.")
 
 	gpu_address := buffer->gpuAddress()
 	cpu_address: rawptr
 	if type != .Private {
-		cpu_address = buffer->contentsPointer()
+		cpu_address = buffer->contents()
 	}
 
 	metadata.gpu_address	= cast(uintptr)gpu_address

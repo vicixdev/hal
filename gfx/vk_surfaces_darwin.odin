@@ -10,12 +10,12 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
 import vk "vendor:vulkan"
-import NS "core:sys/darwin/Foundation"
+import UI "vendor:darwin/AppKit"
 
 _vk_create_surface_from_descriptor :: proc(descriptor: Surface_Descriptor) -> (surface: vk.SurfaceKHR, res: Result) {
 	assert(_vk_supports_metal_surfaces)
 
-	view := cast(^NS.View)descriptor.target.(Surface_Cocoa_Target).ns_view
+	view := cast(^UI.View)descriptor.target.(Surface_Cocoa_Target).ns_view
 
 	layer := _m3_create_metal_layer_from_descriptor(descriptor)
 
@@ -35,7 +35,7 @@ _vk_destroy_surface_and_restore_target :: proc(surface: vk.SurfaceKHR, target: S
 
 	vk.DestroySurfaceKHR(_vk_instance, surface, nil)
 
-	view := cast(^NS.View)target.(Surface_Cocoa_Target).ns_view
+	view := cast(^UI.View)target.(Surface_Cocoa_Target).ns_view
 	view->layer()->release()
 
 	view->setWantsLayer(false)

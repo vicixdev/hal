@@ -92,7 +92,7 @@ _m3_set_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: View_Type) 
 	}
 
 	metadata.m3.texture_sets[type] = texture_set
-	metadata.m3.root.texture_sets[type] = texture_set->gpuAddress()
+	metadata.m3.root.texture_sets[type] = cast(u64)texture_set->gpuAddress()
 
 	return nil
 }
@@ -121,7 +121,7 @@ _m3_set_storage_texture_set :: proc(metadata: ^_Resource_Set_Metadata, type: Sto
 	}
 
 	metadata.m3.storage_texture_sets[type] = texture_set
-	metadata.m3.root.storage_texture_sets[type] = texture_set->gpuAddress()
+	metadata.m3.root.storage_texture_sets[type] = cast(u64)texture_set->gpuAddress()
 
 	return nil
 }
@@ -150,7 +150,7 @@ _m3_set_sampler_set :: proc(metadata: ^_Resource_Set_Metadata) -> Result {
 	}
 
 	metadata.m3.sampler_set = sampler_set
-	metadata.m3.root.sampler_set = sampler_set->gpuAddress()
+	metadata.m3.root.sampler_set = cast(u64)sampler_set->gpuAddress()
 
 	return nil
 }

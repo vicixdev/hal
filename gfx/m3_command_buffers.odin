@@ -12,7 +12,6 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import "core:mem"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "darwext/metal"
 
 _m3_Current_Encoder :: enum {
 	None,
@@ -98,7 +97,7 @@ _m3_emit_copy_texture_to_texture :: proc(
 		source_layer := command.source_region.base_layer + i
 		destination_layer := command.destination_region.base_layer + i
 
-		metadata.m3.blit_encoder->copyFromTextureWithDestinationOrigin(
+		metadata.m3.blit_encoder->copyFromTexture(
 			source_metadata.m3.texture,
 			cast(NS.UInteger)source_layer,
 			cast(NS.UInteger)command.source_region.mip,
@@ -132,7 +131,7 @@ _m3_emit_copy_buffer_to_texture :: proc(
 
 	_m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.region.layer_count {
-		metadata.m3.blit_encoder->copyFromBufferEx(
+		metadata.m3.blit_encoder->copyFromBuffer(
 			source_metadata.m3.buffer,
 			cast(NS.UInteger)(cast(int)command.source.offset + layer_size * i),
 			cast(NS.UInteger)row_size,
@@ -166,7 +165,7 @@ _m3_emit_copy_texture_to_buffer :: proc(
 
 	_m3_enable_blit_encoder(metadata) or_return
 	for i in 0..<command.region.layer_count {
-		metadata.m3.blit_encoder->copyFromTextureEx(
+		metadata.m3.blit_encoder->copyFromTexture(
 			texture_metadata.m3.texture,
 			cast(NS.UInteger)(command.region.base_layer + i),
 			cast(NS.UInteger)command.region.mip,
@@ -217,11 +216,11 @@ _m3_emit_dispatch :: proc(
 	metadata.m3.compute_encoder->setBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.compute_encoder->dispatchThreadgroups(
 		{
-			cast(NS.Integer)command.group_count.x,
-			cast(NS.Integer)command.group_count.y,
-			cast(NS.Integer)command.group_count.z,
+			cast(NS.UInteger)command.group_count.x,
+			cast(NS.UInteger)command.group_count.y,
+			cast(NS.UInteger)command.group_count.z,
 		},
-		{ cast(NS.Integer)group_size.x, cast(NS.Integer)group_size.y, cast(NS.Integer)group_size.z },
+		{ cast(NS.UInteger)group_size.x, cast(NS.UInteger)group_size.y, cast(NS.UInteger)group_size.z },
 	)
 
 	return nil
@@ -329,7 +328,7 @@ _m3_emit_end_render_pass :: proc(
 
 	assert(metadata.m3.current_encoder == .Render)
 	
-	metadata.m3.render_encoder->updateFence(metadata.m3.barrier_fence, { .Vertex, .Fragment })
+	metadata.m3.render_encoder->updateFence(metadata.m3.barrier_fence, { .StageVertex, .StageFragment })
 	metadata.m3.barrier_fence_pending = true
 	
 	_m3_flush_encoder(metadata)
@@ -358,7 +357,7 @@ _m3_emit_draw :: proc(
 	_m3_bind_scissor(metadata, command.scissor) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
-	metadata.m3.render_encoder->drawPrimitivesWithInstanceCount(
+	metadata.m3.render_encoder->drawPrimitives(
 		_m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		cast(NS.UInteger)command.base_vertex,
 		cast(NS.UInteger)command.vertex_count,
@@ -394,7 +393,7 @@ _m3_emit_draw_indexed :: proc(
 	_m3_bind_scissor(metadata, command.scissor) or_return
 	metadata.m3.render_encoder->setVertexBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
 	metadata.m3.render_encoder->setFragmentBytes(mem.byte_slice(&arguments_ptr, size_of(arguments_ptr)), 0)
-	metadata.m3.render_encoder->drawIndexedPrimitivesWithInstanceCount(
+	metadata.m3.render_encoder->drawIndexedPrimitives(
 		_m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		cast(NS.UInteger)command.index_count,
 		_m3_INDEX_TYPE_TO_MTL[command.index_type],
@@ -418,7 +417,7 @@ _m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^
 	metadata.m3.barrier_fence_pending = false
 
 	metadata.m3.command_buffer = queue_metadata.m3.queue->commandBuffer()
-	MTLe.CommandBuffer_useResidencySet(auto_cast metadata.m3.command_buffer, _m3_residency_set)
+	metadata.m3.command_buffer->useResidencySet(_m3_residency_set)
 
 	for wait in metadata.synchronization_group.wait {
 		semaphore_metadata, semaphore_res := _metadata_of(wait.semaphore)
@@ -495,10 +494,10 @@ _m3_bind_scissor :: proc(metadata: ^_Command_Buffer_Metadata, scissor: Scissor) 
 	}
 
 	metadata.m3.render_encoder->setScissorRect({
-		cast(NS.Integer)scissor.offset.x,
-		cast(NS.Integer)scissor.offset.y,
-		cast(NS.Integer)scissor.dimensions.x,
-		cast(NS.Integer)scissor.dimensions.y,
+		cast(NS.UInteger)scissor.offset.x,
+		cast(NS.UInteger)scissor.offset.y,
+		cast(NS.UInteger)scissor.dimensions.x,
+		cast(NS.UInteger)scissor.dimensions.y,
 	})
 
 	metadata.scissor = scissor
@@ -674,7 +673,7 @@ _m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descripto
 	metadata.m3.current_encoder = .Render
 
 	if metadata.m3.barrier_fence_pending {
-		metadata.m3.render_encoder->waitForFence(metadata.m3.barrier_fence, { .Vertex })
+		metadata.m3.render_encoder->waitForFence(metadata.m3.barrier_fence, { .StageVertex })
 		metadata.m3.barrier_fence_pending = false
 	}
 
@@ -706,17 +705,17 @@ _m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
 
 _m3_size_to_mtl :: proc(size: [3]int) -> MTL.Size {
 	return {
-		cast(NS.Integer)size.x,
-		cast(NS.Integer)size.y,
-		cast(NS.Integer)size.z,
+		cast(NS.UInteger)size.x,
+		cast(NS.UInteger)size.y,
+		cast(NS.UInteger)size.z,
 	}
 }
 
 _m3_origin_to_mtl :: proc(origin: [3]int) -> MTL.Origin {
 	return {
-		cast(NS.Integer)origin.x,
-		cast(NS.Integer)origin.y,
-		cast(NS.Integer)origin.z,
+		cast(NS.UInteger)origin.x,
+		cast(NS.UInteger)origin.y,
+		cast(NS.UInteger)origin.z,
 	}
 }
 

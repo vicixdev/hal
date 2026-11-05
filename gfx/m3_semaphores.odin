@@ -11,7 +11,6 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "darwext/metal"
 
 _m3_Semaphore_Metadata :: struct {
 	// Only when `.Default` semaphore.
@@ -73,8 +72,7 @@ _m3_wait_semaphore :: proc(metadata: ^_Semaphore_Metadata, value: int) -> Result
 	NS.scoped_autoreleasepool()
 
 	assert(metadata.type == .Cpu)
-
-	MTLe.SharedEvent_waitUntilSignaledValue(auto_cast metadata.m3.shared_event, cast(u64)value, max(u64))
+	metadata.m3.shared_event->waitUntilSignaledValue(cast(u64)value, max(u64))
 
 	return nil
 }

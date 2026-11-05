@@ -16,7 +16,6 @@ import "core:os"
 import "core:strings"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "darwext/Metal"
 
 _m3_Device_Info :: struct {
 	device:	^MTL.Device,
@@ -39,7 +38,7 @@ _m3_enumerate_devices :: proc(
 
 	device_id: Device_Id
 	for i: NS.UInteger; i < mtl_devices->count(); i += 1 {
-		device := mtl_devices->objectAs(i, ^MTL.Device)
+		device := cast(^MTL.Device)mtl_devices->objectAtIndex(i)
 
 		if !_m3_is_device_suitable(device) {
 			continue
@@ -87,11 +86,11 @@ _m3_select_device :: proc(device: Device_Id) -> Result {
 		_m3_begin_tracing()
 	}
 
-	residency_set_descriptor := MTLe.ResidencySetDescriptor.alloc()->init()
+	residency_set_descriptor := MTL.ResidencySetDescriptor.alloc()->init()
 	defer residency_set_descriptor->release()
 
 	residency_set_descriptor->setInitialCapacity(128)
-	_m3_residency_set = MTLe.Device_newResidencySetWithDescriptor(auto_cast _m3_device, residency_set_descriptor, nil)
+	_m3_residency_set, _ = _m3_device->newResidencySetWithDescriptor(residency_set_descriptor)
 	if _m3_residency_set == nil {
 		return .Generic_Backend_Error
 	}
@@ -173,7 +172,7 @@ _m3_create_resource_set_heap :: proc() -> Result {
 	heap_desc->setStorageMode(.Shared)
 	heap_desc->setType(.Automatic)
 
-	_m3_resource_set_heap = _m3_device->newHeap(heap_desc)
+	_m3_resource_set_heap = _m3_device->newHeapWithDescriptor(heap_desc)
 	if _m3_resource_set_heap == nil {
 		return .Out_Of_Gpu_Memory
 	}

@@ -11,13 +11,13 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import "base:runtime"
 import "core:slice"
-import CF "core:sys/darwin/CoreFoundation"
 import NS "core:sys/darwin/Foundation"
+import UI "vendor:darwin/AppKit"
 import CA "vendor:darwin/QuartzCore"
 
 _m3_Surface_Metadata :: struct {
 	layer:	^CA.MetalLayer,
-	view:	^NS.View,
+	view:	^UI.View,
 }
 
 _m3_supported_formats_for_target :: proc(
@@ -34,7 +34,7 @@ _m3_supported_formats_for_target :: proc(
 _m3_create_surface :: proc(metadata: ^_Surface_Metadata, descriptor: Surface_Descriptor) -> Result {
 	NS.scoped_autoreleasepool()
 	
-	view := cast(^NS.View)descriptor.target.(Surface_Cocoa_Target).ns_view
+	view := cast(^UI.View)descriptor.target.(Surface_Cocoa_Target).ns_view
 	layer := _m3_create_metal_layer_from_descriptor(descriptor)
 
 	view->retain()
@@ -59,7 +59,7 @@ _m3_destroy_surface :: proc(metadata: ^_Surface_Metadata) {
 
 _m3_resize_surface :: proc(metadata: ^_Surface_Metadata, dimensions: [2]int) -> Result {
 	metadata.m3.layer->setDrawableSize({
-		cast(CF.CGFloat)dimensions.x, cast(CF.CGFloat)dimensions.y,
+		cast(f64)dimensions.x, cast(f64)dimensions.y,
 	})
 
 	return nil
@@ -112,7 +112,7 @@ _m3_create_metal_layer_from_descriptor :: proc(descriptor: Surface_Descriptor) -
 
 	layer->setDisplaySyncEnabled(descriptor.type == .V_Sync ? true : false)
 	layer->setDrawableSize({
-		cast(CF.CGFloat)descriptor.dimensions.x, cast(CF.CGFloat)descriptor.dimensions.y,
+		cast(f64)descriptor.dimensions.x, cast(f64)descriptor.dimensions.y,
 	})
 	layer->setDevice(_m3_device)
 	layer->setMaximumDrawableCount(cast(NS.UInteger)descriptor.frames_in_flight)

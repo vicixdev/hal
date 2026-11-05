@@ -3,7 +3,7 @@
 /tests.exe
 /tests.pdb
 **/build/**
-!build/.gitkeep
+!demo/build/.gitkeep
 **/.DS_Store
 **/*.dSYM
 release*.tar.gz

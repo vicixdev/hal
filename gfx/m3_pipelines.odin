@@ -9,9 +9,9 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
+import CF "core:sys/darwin/CoreFoundation"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import "darwext/dispatch"
 
 _m3_Pipeline_Stage_Metadata :: struct {
 	library:	^MTL.Library,
@@ -179,14 +179,14 @@ _m3_render_pipeline_descriptor_to_mtl :: proc(
 _m3_compile_pipeline_stage :: proc(
 	descriptor: Shader_Stage_Descriptor,
 ) -> (^MTL.Library, ^MTL.Function, Result) {
-	
-	bytecode_data := dispatch.data_create(
+
+	bytecode_data := CF.dispatch_data_create(
 		raw_data(descriptor.bytecode),
-		cast(uintptr)len(descriptor.bytecode),
-		dispatch.get_global_queue(),
-		dispatch.DATA_DESTRUCTOR_DEFAULT,
+		len(descriptor.bytecode),
+		CF.dispatch_get_current_queue(),
+		nil,
 	)
-	defer bytecode_data->release()
+	defer (cast(^NS.Object)bytecode_data)->release()
 
 	library, library_err := _m3_device->newLibraryWithData(bytecode_data)
 	if library_err != nil {
@@ -228,7 +228,7 @@ _m3_compile_pipeline_stage :: proc(
 		}
 
 		function_err: ^NS.Error
-		function, function_err = library->newFunctionWithConstantValues(function_name, constants)
+		function, function_err = library->newFunctionWithName(function_name, constants)
 		if function_err != nil {
 			_log_generic_message(
 				.Error,

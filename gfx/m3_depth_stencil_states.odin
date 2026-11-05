@@ -24,7 +24,7 @@ _m3_create_depth_stencil_state :: proc(
 
 	mtl_descriptor := _m3_depth_stencil_descriptor_to_mtl(descriptor)
 
-	depth_stencil_state := _m3_device->newDepthStencilState(mtl_descriptor)
+	depth_stencil_state := _m3_device->newDepthStencilStateWithDescriptor(mtl_descriptor)
 	if depth_stencil_state == nil {
 		return .Generic_Backend_Error
 	}

@@ -69,7 +69,7 @@ test_against_reference_image :: proc(
 
 	assert(reference.channels == 4, "The testing framework only supports images with 4 channels.")
 	assert(reference.depth == 8, "The testing framework only supports images with 8 bit channels.")
-	reference_pixels := slice.reinterpret([][4]u8, reference.pixels.buf[:])
+	reference_pixels := slice.reinterpret([][4]u8, reference.pixels[:])
 
 	ensure(len(pixels) == len(reference_pixels), "The provided pixel count does not match with the reference.")
 

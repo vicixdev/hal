@@ -20,7 +20,7 @@ _m3_create_sampler :: proc(metadata: ^_Sampler_Metadata, descriptor: Sampler_Des
 	NS.scoped_autoreleasepool()
 
 	sampler_desc := _m3_sampler_descriptor_to_mtl(descriptor)
-	sampler := _m3_device->newSamplerState(sampler_desc)
+	sampler := _m3_device->newSamplerStateWithDescriptor(sampler_desc)
 	if sampler == nil {
 		return .Generic_Backend_Error
 	}

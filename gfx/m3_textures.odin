@@ -25,9 +25,9 @@ _m3_size_align_of :: proc(descriptor: Texture_Descriptor) -> (size: int, align: 
 	NS.scoped_autoreleasepool()
 
 	mtl_desc := _m3_texture_descriptor_to_mtl(descriptor)
-	mtl_size, mtl_align := _m3_device->heapTextureSizeAndAlignWithDescriptor(mtl_desc)
+	mtl_size_align := _m3_device->heapTextureSizeAndAlignWithDescriptor(mtl_desc)
 
-	return cast(int)mtl_size, cast(int)mtl_align, nil
+	return cast(int)mtl_size_align.size, cast(int)mtl_size_align.align, nil
 }
 
 _m3_create_texture :: proc(
@@ -42,7 +42,7 @@ _m3_create_texture :: proc(
 	mtl_desc := _m3_texture_descriptor_to_mtl(descriptor)
 	mtl_desc->setResourceOptions(_m3_MEMORY_TO_RESOURCEOPTIONS[buffer_metadata.memory_type])
 
-	texture := buffer_metadata.m3.heap->newTextureWithDescriptorAndOffset(
+	texture := buffer_metadata.m3.heap->newTextureWithDescriptor_offset(
 		mtl_desc,
 		cast(NS.UInteger)address_info.offset,
 	)
@@ -102,7 +102,7 @@ _m3_create_view_with_descriptor :: proc(
 ) -> Result {
 	NS.scoped_autoreleasepool()
 
-	view := texture_metadata.m3.texture->newTextureViewWithLevels(
+	view := texture_metadata.m3.texture->newTextureViewWithPixelFormat(
 		_m3_PIXEL_FORMAT_TO_MTL[texture_metadata.format],
 		_m3_view_type_to_mtl(texture_metadata^, descriptor.type),
 		NS.Range_Make(cast(NS.UInteger)descriptor.base_mip, cast(NS.UInteger)descriptor.mip_count),
@@ -145,22 +145,22 @@ _m3_texture_usages_to_mtl :: proc(usages: Texture_Usages) -> (mtl: MTL.TextureUs
 _m3_texture_type_to_mtl :: proc(descriptor: Texture_Descriptor) -> MTL.TextureType {
 	switch {
 	case descriptor.type == .D1:
-		return .Type1D
+		return ._1D
 
 	case descriptor.type == .D2_Array && descriptor.layer_count == 1 && descriptor.sample_count == 1:
-		return .Type2D
+		return ._2D
 
 	case descriptor.type == .D2_Array && descriptor.layer_count == 1 && descriptor.sample_count > 1:
-		return .Type2DMultisample
+		return ._2DMultisample
 
 	case descriptor.type == .D2_Array && descriptor.layer_count > 1 && descriptor.sample_count == 1:
-		return .Type2DArray
+		return ._2DArray
 
 	case descriptor.type == .D2_Array && descriptor.layer_count > 1 && descriptor.sample_count > 1:
-		return .Type2DMultisampleArray
+		return ._2DMultisampleArray
 
 	case descriptor.type == .D3:
-		return .Type3D
+		return ._3D
 	}
 
 	unreachable()
@@ -169,34 +169,34 @@ _m3_texture_type_to_mtl :: proc(descriptor: Texture_Descriptor) -> MTL.TextureTy
 _m3_view_type_to_mtl :: proc(texture_metadata: _Texture_Metadata, view_type: View_Type) -> MTL.TextureType {
 	switch {
 	case view_type == .D1:
-		return .Type1D
+		return ._1D
 
 	case view_type == .D2 && texture_metadata.sample_count == 1:
-		return .Type2D
+		return ._2D
 
 	case view_type == .D2 && texture_metadata.sample_count > 1:
-		return .Type2DMultisample
+		return ._2DMultisample
 
 	case view_type == .D2_Array && texture_metadata.layer_count == 1 && texture_metadata.sample_count == 1:
-		return .Type2D
+		return ._2D
 
 	case view_type == .D2_Multisample && texture_metadata.layer_count == 1 && texture_metadata.sample_count > 1:
-		return .Type2DMultisample
+		return ._2DMultisample
 
 	case view_type == .D2_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count == 1:
-		return .Type2DArray
+		return ._2DArray
 
 	case view_type == .D2_Multisample_Array && texture_metadata.layer_count > 1 && texture_metadata.sample_count > 1:
-		return .Type2DMultisampleArray
+		return ._2DMultisampleArray
 
 	case view_type == .Cube:
-		return .TypeCube
+		return .Cube
 
 	case view_type == .Cube_Array:
-		return .TypeCubeArray
+		return .CubeArray
 
 	case view_type == .D3:
-		return .Type3D
+		return ._3D
 	}
 	
 	unreachable()

@@ -12,7 +12,6 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import "core:sync"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
-import MTLe "darwext/metal"
 
 _m3_Queue_Metadata :: struct {
 	queue:	^MTL.CommandQueue,
@@ -51,7 +50,7 @@ _m3_wait_idle :: proc(metadata: ^_Queue_Metadata) -> Result {
 		command_buffer->commit()
 	}
 
-	MTLe.SharedEvent_waitUntilSignaledValue(auto_cast event, 1, max(u64))
+	event->waitUntilSignaledValue(1, max(u64))
 
 	return nil
 }

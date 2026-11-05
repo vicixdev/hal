@@ -400,7 +400,8 @@ _vk_setup_descriptor_pool :: proc() -> Result {
 }
 
 _vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res: Result) {
-	_vk_info := &info._platform.vk
+	// NOTE: This is required to make the odin compiler happy
+	_vk_info := cast(^_vk_Device_Info)cast(uintptr)&info._platform.vk
 
 	extension_count: u32
 	_vk_call(vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, nil)) or_return
@@ -446,7 +447,7 @@ _vk_device_info_of :: proc(device: vk.PhysicalDevice) -> (info: Device_Info, res
 	info.limits.min_allocation_size		= 16 * mem.Kilobyte
 	info.properties.transfer_queue		= _vk_info.has_transfer_queue_family
 
-	return
+	return info, nil
 }
 
 _vk_device_has_extension :: proc(info: ^Device_Info, extension: string) -> bool {
