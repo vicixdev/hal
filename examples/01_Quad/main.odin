@@ -37,11 +37,11 @@ setup :: proc() {
 			h_wnd	= glfw.GetWin32Window(window),
 		}
 	} else {
-		#panic("*nix is not yet supported.")
+		#panic("*nix is not yet supported in this example.")
 	}
 
 	surface_descriptor := gfx.Surface_Descriptor {
-		type			= .V_Sync,
+		type			= .Immediate,
 		dimensions		= { 640, 480 },
 		frames_in_flight	= 3,
 		target			= target,
@@ -86,7 +86,7 @@ app :: proc() -> gfx.Result {
 	}
 
 	Arguments :: struct #packed {
-		vertices:	uintptr,
+		vertices:	rawptr,
 	}
 
 	frame_semaphore := gfx.create_semaphore(.Cpu) or_return
@@ -94,6 +94,8 @@ app :: proc() -> gfx.Result {
 
 	default_memory: gfx.Arena
 	gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
+	default_scratch: gfx.Scratch
+	gfx.create_scratch(&default_scratch, .Default, 16 * mem.Megabyte) or_return
 
 	vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
 	copy(vertices, VERTICES[:])
@@ -155,7 +157,7 @@ app :: proc() -> gfx.Result {
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-			arguments := gfx.arena_alloc(&default_memory, Arguments) or_return
+			arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
 			arguments^ = Arguments {
 				vertices = gpu_vertices,
 			}
@@ -199,5 +201,4 @@ main :: proc() {
 	res := app()
 	if res != nil do log.fatalf("Example failed with error %v.", res)
 }
-
 

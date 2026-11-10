@@ -54,7 +54,10 @@ struct Resource_Set {
 }
 
 [vk_binding(1, 0)]
-ConstantBuffer<Resource_Set>	resource_set: register(b1);
+ConstantBuffer<Resource_Set>	resource_set:	register(b1);
+
+[vk_binding(2, 0)]
+ConstantBuffer<uint16_t>	_draw_id:	register(b2);
 
 SamplerState sampler_at(int index) {
 	return resource_set.sampler_set[index].handle;
@@ -108,16 +111,14 @@ RWTexture3D storage_texture_3d_at(int index) {
 	return resource_set.storage_texture_3d_set[index].handle;
 }
 
+uint16_t draw_id() {
+	return _draw_id;
+}
+
 #endif
 
 #ifdef GFX_VULKAN
 
-// static const float4x4 NORMALIZE_CLIP_COORDS = {
-// 	1,  0,   0, 0,
-// 	0, -1,   0, 0,
-// 	0,  0, 0.5, 0,
-// 	0,  0, 0.5, 1,
-// };
 static const float4x4 NORMALIZE_CLIP_COORDS = {
 	1,  0, 0, 0,
 	0, -1, 0, 0,
@@ -160,6 +161,8 @@ RWTexture2D		storage_texture_2d_set[];
 RWTexture2DArray	storage_texture_2d_array_set[];
 [vk_binding(12)]
 RWTexture3D		storage_texture_3d_set[];
+
+static uint16_t		_draw_id: SV_DrawIndex;
 
 SamplerState sampler_at(int index) {
 	return sampler_set[index];
@@ -211,6 +214,10 @@ RWTexture2DArray storage_texture_2d_array_at(int index) {
 
 RWTexture3D storage_texture_3d_at(int index) {
 	return storage_texture_3d_set[index];
+}
+
+uint16_t draw_id() {
+	return _draw_id;
 }
 
 #endif

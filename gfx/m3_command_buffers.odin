@@ -452,6 +452,10 @@ _m3_emit_commands :: proc(metadata: ^_Command_Buffer_Metadata, queue_metadata: ^
 			_m3_emit_draw(metadata, queue_metadata, v) or_return
 		case _Command_Draw_Indexed:
 			_m3_emit_draw_indexed(metadata, queue_metadata, v) or_return
+		case _Command_Encode_Indirect:
+			_m3_emit_encode_indirect(metadata, queue_metadata, v) or_return
+		case _Command_Execute_Indirect:
+			_m3_emit_execute_indirect(metadata, queue_metadata, v) or_return
 		}
 
 		// _m3_check_for_and_emit_signals(metadata, queue_metadata, i) or_return
@@ -680,16 +684,30 @@ _m3_enable_render_encoder :: proc(metadata: ^_Command_Buffer_Metadata, descripto
 	return nil
 }
 
-_m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata) {
+_m3_flush_encoder :: proc(metadata: ^_Command_Buffer_Metadata, force_barrier := false) {
 	switch metadata.m3.current_encoder {
 	case .None:
 	case .Compute:
+		if force_barrier {
+			metadata.m3.compute_encoder->updateFence(metadata.m3.barrier_fence)
+			metadata.m3.barrier_fence_pending = true
+		}
 		metadata.m3.compute_encoder->endEncoding()
 		metadata.m3.compute_encoder = nil
+
 	case .Blit:
+		if force_barrier {
+			metadata.m3.blit_encoder->updateFence(metadata.m3.barrier_fence)
+			metadata.m3.barrier_fence_pending = true
+		}
 		metadata.m3.blit_encoder->endEncoding()
 		metadata.m3.blit_encoder = nil
+
 	case .Render:
+		if force_barrier {
+			metadata.m3.render_encoder->updateFence(metadata.m3.barrier_fence, { .StageVertex, .StageFragment })
+			metadata.m3.barrier_fence_pending = true
+		}
 		metadata.m3.render_encoder->endEncoding()
 		metadata.m3.render_encoder = nil
 	}
@@ -839,4 +857,3 @@ _m3_INDEX_TYPE_TO_MTL := [Index_Type]MTL.IndexType {
 	.U16	= .UInt16,
 	.U32	= .UInt32,
 }
-

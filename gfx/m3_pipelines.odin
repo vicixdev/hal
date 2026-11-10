@@ -136,6 +136,7 @@ _m3_render_pipeline_descriptor_to_mtl :: proc(
 	mtl->setInputPrimitiveTopology(.Triangle)
 	mtl->setAlphaToCoverageEnabled(descriptor.alpha_to_coverage)
 	mtl->setSampleCount(cast(NS.UInteger)descriptor.sample_count)
+	mtl->setSupportIndirectCommandBuffers(true)
 	
 	for color_format, i in descriptor.color_formats {
 		if color_format == .None {

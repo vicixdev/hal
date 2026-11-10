@@ -804,6 +804,10 @@ _vk_emit_commands :: proc(
 			_vk_emit_draw(metadata, queue_metadata, v) or_return
 		case _Command_Draw_Indexed:
 			_vk_emit_draw_indexed(metadata, queue_metadata, v) or_return
+		case _Command_Encode_Indirect:
+			_vk_emit_encode_indirect(metadata, queue_metadata, v) or_return
+		case _Command_Execute_Indirect:
+			_vk_emit_execute_indirect(metadata, queue_metadata, v) or_return
 		}
 	}
 	_vk_call(vk.EndCommandBuffer(metadata.vk.command_buffer)) or_return
@@ -949,6 +953,7 @@ _vk_size_to_vk_extent :: proc(size: [3]int) -> vk.Extent3D {
 _vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
 	.Transfer			= { .TRANSFER },
 	.Compute			= { .COMPUTE_SHADER },
+	.Indirect_Encode		= { .COMPUTE_SHADER },
 	.Vertex				= { .VERTEX_INPUT },
 	.Fragment			= { .FRAGMENT_SHADER },
 	.Color_Attachment		= { .COLOR_ATTACHMENT_OUTPUT },

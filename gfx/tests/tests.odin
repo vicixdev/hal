@@ -526,9 +526,9 @@ generic_compute_test :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct {
-			in_a:	uintptr,
-			in_b:	uintptr,
-			out:	uintptr,
+			in_a:	rawptr,
+			in_b:	rawptr,
+			out:	rawptr,
 		}
 
 		half: f32 = 0.5
@@ -592,6 +592,122 @@ generic_compute_test :: proc(t: ^testing.T) {
 }
 
 @(test)
+indirect_compute_test :: proc(t: ^testing.T) {
+
+	ARRAY_LENGTH :: 4096
+
+	reference :: proc() -> (values: []f32) {
+		values = make([]f32, ARRAY_LENGTH, context.temp_allocator)
+
+		for &value, i in values {
+			a	:= cast(f32)i
+			b	:= cast(f32)i * 4
+			half	:= cast(f32)0.5
+
+			value	= a + b * half
+		}
+
+		return
+	}
+
+	test :: proc(results_memory: ^gfx.Arena) -> (output: []f32, res: gfx.Result) {
+
+		when gfx.TARGET_API == .Vulkan {
+			ADD_BYTECODE := #load("./shaders/basic.spv")
+		} else when gfx.TARGET_API == .Metal_3 {
+			ADD_BYTECODE := #load("./shaders/basic.metallib")
+		}
+
+		Parameters :: struct {
+			in_a:	rawptr,
+			in_b:	rawptr,
+			out:	rawptr,
+		}
+
+		half: f32 = 0.5
+		add_pipeline := gfx.create_compute_pipeline({
+			bytecode	= ADD_BYTECODE[:],
+			entrypoint	= "add",
+			constants	= {
+				{ type = .F32, value = &half },
+			},
+			group_size = { 128, 1, 1 },
+		}) or_return
+		defer gfx.destroy_pipeline(add_pipeline)
+
+		semaphore := gfx.create_semaphore(.Cpu) or_return
+		defer gfx.destroy_semaphore(semaphore)
+
+		default_memory: gfx.Arena
+		gfx.create_arena(&default_memory, .Default, 64 * mem.Kilobyte * 3) or_return
+		defer gfx.destroy_arena(default_memory)
+
+		in_a := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
+		in_b := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
+		output = gfx.arena_alloc(results_memory, []f32, ARRAY_LENGTH) or_return
+
+		for i := 0; i < ARRAY_LENGTH; i += 1 {
+			in_a[i] = cast(f32)i
+			in_b[i] = cast(f32)i * 4
+		}
+
+		gpu_a := gfx.gpu_address_of(raw_data(in_a)) or_return
+		gpu_b := gfx.gpu_address_of(raw_data(in_b)) or_return
+		gpu_out := gfx.gpu_address_of(raw_data(output)) or_return
+
+		command_pool := gfx.create_indirect_command_pool(gfx.Indirect_Command_Pool_Descriptor{
+			type		= .Dispatch,
+			command_count	= 1,
+			call_count	= 1,
+		}) or_return
+		defer gfx.destroy_indirect_command_pool(command_pool)
+
+		indirect_dispatch_params := gfx.arena_alloc(&default_memory, gfx.Dispatch_Indirect_Parameters) or_return
+		indirect_dispatch_params^ = {
+			{ ARRAY_LENGTH / 128, 1, 1 },
+		}
+
+		command_buffer := gfx.begin_command_encoding(.Default) or_return
+
+		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments^ = Parameters {
+			in_a	= gpu_a,
+			in_b	= gpu_b,
+			out	= gpu_out,
+		}
+		indirect_command := gfx.encode_dispatch_indirect(
+			command_buffer,
+			command_pool,
+			add_pipeline,
+			// TODO: Make EVERY function take gpu addresses.
+			gfx.gpu_address_of(arguments) or_return,
+			gfx.gpu_address_of(indirect_dispatch_params) or_return,
+		) or_return
+
+		gfx.barrier(command_buffer, { .Indirect_Encode }, { .Compute }) or_return
+		gfx.execute_indirect(command_buffer, indirect_command) or_return
+
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
+
+		gfx.wait_semaphore(semaphore, 1)
+
+		return
+	}
+
+	results_memory := acquire_test_resources()
+	reference_values := reference()
+
+	output, res := test(&results_memory)
+	check_result(t, res)
+	test_agains_reference_bytes(t, reference_values, output)
+}
+
+@(test)
 draw_triangle :: proc(t: ^testing.T) {
 
 	FRAMEBUFFER_SIZE :: [2]int{ 640, 480 }
@@ -617,7 +733,7 @@ draw_triangle :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct #packed {
-			vertices:	uintptr,
+			vertices:	rawptr,
 		}
 
 		default_memory: gfx.Arena
@@ -711,6 +827,148 @@ draw_triangle :: proc(t: ^testing.T) {
 }
 
 @(test)
+draw_triangle_indirect :: proc(t: ^testing.T) {
+
+	FRAMEBUFFER_SIZE :: [2]int{ 640, 480 }
+
+	REFERENCE_PATH :: "./images/triangle_indirect.png"
+
+	test :: proc(results_memory: ^gfx.Arena) -> (output: []Pixel, res: gfx.Result) {
+		
+		when gfx.TARGET_API == .Vulkan {
+			TRIANGLE_BYTECODE := #load("./shaders/triangle.spv")
+		} else when gfx.TARGET_API == .Metal_3 {
+			TRIANGLE_BYTECODE := #load("./shaders/triangle.metallib")
+		}
+
+		Vertex :: struct #packed {
+			position:	[3]f32,
+			color:		[3]f32,
+		}
+		VERTICES := [?]Vertex {
+			{ { -0.5, -0.5, 1.0 }, { 1.0, 0.0, 0.0 } },
+			{ {  0.5, -0.5, 1.0 }, { 0.0, 1.0, 0.0 } },
+			{ {  0.0,  0.5, 1.0 }, { 0.0, 0.0, 1.0 } },
+		}
+
+		Parameters :: struct #packed {
+			vertices:	rawptr,
+		}
+
+		default_memory: gfx.Arena
+		gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
+		defer gfx.destroy_arena(default_memory)
+
+		private_memory: gfx.Arena
+		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
+		defer gfx.destroy_arena(private_memory)
+
+		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		copy(vertices, VERTICES[:])
+		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
+
+		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+
+		command_pool := gfx.create_indirect_command_pool({
+			type		= .Draw,
+			command_count	= 1,
+			call_count	= 1,
+		}) or_return
+		defer gfx.destroy_indirect_command_pool(command_pool)
+
+		pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+			vertex_stage	= {
+				bytecode	= TRIANGLE_BYTECODE[:],
+				entrypoint	= "vertex_main",
+			},
+			fragment_stage	= {
+				bytecode	= TRIANGLE_BYTECODE[:],
+				entrypoint	= "fragment_main",
+			},
+			topology	= .Triangle_List,
+			cull		= .None,
+			sample_count	= 1,
+			color_formats	= { .RGBA8_Unorm },
+		}
+		pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
+		defer gfx.destroy_pipeline(pipeline)
+
+		framebuffer_descriptor := gfx.Texture_Descriptor {
+			type		= .D2_Array,
+			format		= .RGBA8_Unorm,
+			dimensions	= { **FRAMEBUFFER_SIZE, 1 },
+			usage		= { .Color_Attachment },
+		}
+		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
+		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+
+		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
+		defer gfx.destroy_texture(framebuffer)
+		framebuffer_view := gfx.default_view_of(framebuffer) or_return
+
+		semaphore := gfx.create_semaphore(.Cpu) or_return
+		defer gfx.destroy_semaphore(semaphore)
+
+		render_pass_descriptor := gfx.Render_Pass_Descriptor {
+			color_attachments = {
+				gfx.Render_Attachment {
+					view		= framebuffer_view,
+					load_operation	= .Clear,
+					store_operation	= .Store,
+					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
+				},
+			},
+		}
+		command_buffer := gfx.begin_command_encoding(.Default) or_return
+
+		indirect_dispatch_params := gfx.arena_alloc(&default_memory, gfx.Draw_Indirect_Parameters) or_return
+		indirect_dispatch_params^ = {
+			3,
+			1,
+			0,
+		}
+		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments^ = Parameters {
+			vertices = gpu_vertices,
+		}
+		indirect_command := gfx.encode_draw_indirect(
+			command_buffer,
+			command_pool,
+			pipeline,
+			gfx.gpu_address_of(arguments) or_return,
+			gfx.gpu_address_of(indirect_dispatch_params) or_return
+		) or_return
+
+		gfx.barrier(command_buffer, { .Indirect_Encode }, { .Vertex }) or_return
+		gfx.begin_render_pass(command_buffer, render_pass_descriptor) or_return
+		gfx.execute_indirect(command_buffer, indirect_command) or_return
+		gfx.end_render_pass(command_buffer) or_return
+
+		gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer }) or_return
+		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
+			layer_count = 1,
+			size = { **FRAMEBUFFER_SIZE, 1 },
+		}, raw_data(output)) or_return
+
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
+		gfx.wait_semaphore(semaphore, 1)
+
+		return
+	}
+
+	results_memory := acquire_test_resources()
+
+	output, res := test(&results_memory)
+	check_result(t, res)
+	test_against_reference_image(t, REFERENCE_PATH, output)
+}
+
+@(test)
 draw_quad :: proc(t: ^testing.T) {
 
 	FRAMEBUFFER_SIZE :: [2]int{ 640, 480 }
@@ -742,7 +1000,7 @@ draw_quad :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct #packed {
-			vertices:	uintptr,
+			vertices:	rawptr,
 		}
 
 		default_memory: gfx.Arena
@@ -840,6 +1098,159 @@ draw_quad :: proc(t: ^testing.T) {
 
 
 @(test)
+draw_quad_indirect :: proc(t: ^testing.T) {
+
+	FRAMEBUFFER_SIZE :: [2]int{ 640, 480 }
+
+	REFERENCE_PATH :: "./images/quad_indirect.png"
+
+	test :: proc(results_memory: ^gfx.Arena) -> (output: []Pixel, res: gfx.Result) {
+		
+		when gfx.TARGET_API == .Vulkan {
+			TRIANGLE_BYTECODE := #load("./shaders/triangle.spv")
+		} else when gfx.TARGET_API == .Metal_3 {
+			TRIANGLE_BYTECODE := #load("./shaders/triangle.metallib")
+		}
+
+		Vertex :: struct #packed {
+			position:	[3]f32,
+			color:		[3]f32,
+		}
+		VERTICES := [?]Vertex {
+			{ { -0.5, -0.5, 1.0 }, { 1.0, 0.0, 0.0 } },
+			{ {  0.5, -0.5, 1.0 }, { 0.0, 1.0, 0.0 } },
+			{ {  0.5,  0.5, 1.0 }, { 0.0, 0.0, 1.0 } },
+			{ { -0.5,  0.5, 1.0 }, { 1.0, 1.0, 0.0 } },
+		}
+
+		INDICES := [?]u16 {
+			0, 1, 2,
+			2, 3, 0,
+		}
+
+		Parameters :: struct #packed {
+			vertices:	rawptr,
+		}
+
+		default_memory: gfx.Arena
+		gfx.create_arena(&default_memory, .Default, 16 * mem.Megabyte) or_return
+		defer gfx.destroy_arena(default_memory)
+
+		private_memory: gfx.Arena
+		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
+		defer gfx.destroy_arena(private_memory)
+
+		command_pool := gfx.create_indirect_command_pool({
+			type		= .Draw,
+			command_count	= 1,
+			call_count	= 1,
+		}) or_return
+		defer gfx.destroy_indirect_command_pool(command_pool)
+
+		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		copy(vertices, VERTICES[:])
+		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
+
+		indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+		copy(indices, INDICES[:])
+
+		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+
+		pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
+			vertex_stage	= {
+				bytecode	= TRIANGLE_BYTECODE[:],
+				entrypoint	= "vertex_main",
+			},
+			fragment_stage	= {
+				bytecode	= TRIANGLE_BYTECODE[:],
+				entrypoint	= "fragment_main",
+			},
+			topology	= .Triangle_List,
+			cull		= .None,
+			sample_count	= 1,
+			color_formats	= { .RGBA8_Unorm },
+		}
+		pipeline := gfx.create_render_pipeline(pipeline_descriptor) or_return
+		defer gfx.destroy_pipeline(pipeline)
+
+		framebuffer_descriptor := gfx.Texture_Descriptor {
+			type		= .D2_Array,
+			format		= .RGBA8_Unorm,
+			dimensions	= { **FRAMEBUFFER_SIZE, 1 },
+			usage		= { .Color_Attachment },
+		}
+		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
+		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+
+		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
+		defer gfx.destroy_texture(framebuffer)
+		framebuffer_view := gfx.default_view_of(framebuffer) or_return
+
+		semaphore := gfx.create_semaphore(.Cpu) or_return
+		defer gfx.destroy_semaphore(semaphore)
+
+		render_pass_descriptor := gfx.Render_Pass_Descriptor {
+			color_attachments = {
+				gfx.Render_Attachment {
+					view		= framebuffer_view,
+					load_operation	= .Clear,
+					store_operation	= .Store,
+					clear_value	= [4]f64{ 0.1, 0.025, 0.2, 1.0 },
+				},
+			},
+		}
+
+		command_buffer := gfx.begin_command_encoding(.Default) or_return
+
+		parameters := gfx.arena_alloc(&default_memory, gfx.Draw_Indexed_Indirect_Parameters) or_return
+		parameters^ = {
+			index_count	= 6,
+			instance_count	= 1,
+		}
+		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments^ = Parameters {
+			vertices = gpu_vertices,
+		}
+		indirect_command := gfx.encode_draw_indexed_indirect(
+			command_buffer,
+			command_pool,
+			pipeline,
+			gfx.gpu_address_of(arguments) or_return,
+			gfx.gpu_address_of(raw_data(indices)) or_return,
+			gfx.gpu_address_of(parameters) or_return,
+		) or_return
+
+		gfx.barrier(command_buffer, { .Indirect_Encode }, { .Vertex, .Fragment }) or_return
+		gfx.begin_render_pass(command_buffer, render_pass_descriptor) or_return
+			gfx.execute_indirect(command_buffer, indirect_command) or_return
+		gfx.end_render_pass(command_buffer) or_return
+
+		gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer }) or_return
+		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
+			layer_count = 1,
+			size = { **FRAMEBUFFER_SIZE, 1 },
+		}, raw_data(output)) or_return
+
+		gfx.synchronize(command_buffer, {
+			signal = {
+				{ semaphore, 1, {} },
+			},
+		})
+		gfx.submit(.Default, command_buffer) or_return
+		gfx.wait_semaphore(semaphore, 1)
+
+		return
+	}
+
+	results_memory := acquire_test_resources()
+
+	output, res := test(&results_memory)
+	check_result(t, res)
+	test_against_reference_image(t, REFERENCE_PATH, output)
+}
+
+
+@(test)
 depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 
 	FRAMEBUFFER_SIZE :: [2]int{ 640, 480 }
@@ -872,7 +1283,7 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 
 		Parameters :: struct #packed {
 			transform:	matrix[4,4]f32,
-			vertices:	uintptr,
+			vertices:	rawptr,
 		}
 
 		default_memory: gfx.Arena
@@ -1005,4 +1416,3 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 	check_result(t, res)
 	test_against_reference_image(t, REFERENCE_PATH, output)
 }
-

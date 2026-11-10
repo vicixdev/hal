@@ -17,7 +17,7 @@ import "core:slice"
 import "core:os"
 import "core:strings"
 import "core:log"
-@(require) import "core:image/png"
+@require import _ "core:image/png"
 import imgwrite "vendor:stb/image"
 import gfx ".."
 

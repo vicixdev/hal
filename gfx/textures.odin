@@ -171,8 +171,8 @@ create_texture :: proc(
 	view, view_metadata := _add_view_metadata() or_return
 	defer if res != nil do _remove_view_metadata(view)
 
-	metadata.desc		= descriptor
-	metadata.cube_compatible = _is_cube_compatible(descriptor)
+	metadata.desc			= descriptor
+	metadata.cube_compatible	= _is_cube_compatible(descriptor)
 
 	view_metadata.mip_count		= metadata.mip_count
 	view_metadata.layer_count	= metadata.layer_count

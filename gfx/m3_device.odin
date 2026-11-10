@@ -14,12 +14,16 @@ import "core:mem"
 import "core:log"
 import "core:os"
 import "core:strings"
+import CF "core:sys/darwin/CoreFoundation"
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
 _m3_Device_Info :: struct {
 	device:	^MTL.Device,
 }
+
+_m3_INTERNAL_SHADER_BYTECODE := #load("./m3_shaders.metallib")
+_m3_internal_shader_library: ^MTL.Library
 
 _m3_device:	^MTL.Device
 _m3_is_tracing:	bool
@@ -95,7 +99,22 @@ _m3_select_device :: proc(device: Device_Id) -> Result {
 		return .Generic_Backend_Error
 	}
 
+	internal_shader_bytecode := CF.dispatch_data_create(
+		raw_data(_m3_INTERNAL_SHADER_BYTECODE),
+		len(_m3_INTERNAL_SHADER_BYTECODE),
+		CF.dispatch_get_current_queue(),
+		nil,
+	)
+	defer (cast(^NS.Object)internal_shader_bytecode)->release()
+
+	library_err: ^NS.Error
+	_m3_internal_shader_library, library_err = _m3_device->newLibraryWithData(internal_shader_bytecode)
+	if library_err != nil {
+		log.panicf("Could not load the internal metal shader. Got error `%s`.", library_err->localizedFailureReason()->odinString())
+	}
+
 	_m3_create_resource_set_heap() or_return
+	_m3_init_indirect() or_return
 
 	return nil
 }

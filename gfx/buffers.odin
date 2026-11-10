@@ -160,19 +160,19 @@ dealloc :: proc(address: rawptr, location := #caller_location) {
 /*
 Returns the Gpu Virtual Address (GVA) of a given Cpu Mapped Virtual Address (CMVA).
 */
-gpu_address_of :: proc(address: rawptr, location := #caller_location) -> (gpu_address: uintptr, res: Result) {
+gpu_address_of :: proc(address: rawptr, location := #caller_location) -> (gpu_address: rawptr, res: Result) {
 	address_info, address_res := _address_info_of(address)
 	_check_address_info(address_res, address, location) or_return
 
 	_vl_gpu_address_of(location) or_return
 
 	if !address_info.is_cpu_address {
-		return address_info.address, nil
+		return cast(rawptr)address_info.address, nil
 	} else {
 		metadata, metadata_res := _metadata_of(address_info.buffer)
 		assert(metadata_res == nil)
 
-		return metadata.gpu_address + address_info.offset, nil
+		return cast(rawptr)(metadata.gpu_address + address_info.offset), nil
 	}
 }
 
@@ -222,6 +222,26 @@ _check_address_info :: proc(result: Result, address: rawptr, location: runtime.S
 		address,
 		location=location,
 	) or_return
+	return nil
+}
+
+_check_gpu_address :: proc(
+	address_info:	_Address_Info,
+	location:	runtime.Source_Code_Location,
+) -> Result {
+
+	_check_condition(
+		!address_info.is_cpu_address,
+		.Incompatible_Address,
+		.Error,
+		"Found CPU address while GPU address expected.",
+		"The provided address `0x%x` is a CPU mapped virtual address (CMVA), while a GPU virtual address "+
+		"(GVA) is expected. Please note that it is possible to obtain the GVA via the " +
+		"`vicixdev_gfx::gpu_address_of` procedure.",
+		address_info.address,
+		location=location,
+	) or_return
+
 	return nil
 }
 

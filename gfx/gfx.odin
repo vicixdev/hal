@@ -68,6 +68,7 @@ Error :: enum {
 	Invalid_Align,
 	Incompatible_Memory_Type,
 	Invalid_Pipeline_Argument,
+	Incompatible_Address,
 	Out_Of_Bounds,
 	Invalid_Command,
 
@@ -93,9 +94,15 @@ Error :: enum {
 	Invalid_Blend_State,
 	Invalid_Depth_Stencil_State,
 	Invalid_Surface,
+	Invalid_Indirect_Command_Pool,
+	Invalid_Indirect_Command,
 
 	No_Available_Command_Buffers,
+	Incompatible_Indirect_Command_Pool,
 	Incompatible_Pipeline,
+	Invalid_Indirect_Command_Lifetime,
+	Incompatible_Command_Buffer_Stage,
+
 	Use_After_Free,
 }
 
@@ -109,6 +116,7 @@ Handle :: hm.Handle64
 Stage :: enum {
 	Transfer,
 	Compute,
+	Indirect_Encode,
 	Vertex,
 	Fragment,
 	Color_Attachment,
@@ -119,10 +127,14 @@ Stages :: bit_set[Stage]
 Vulkan_Shader_Format :: enum {
 	Spirv,
 	// When targeting MoltenVK on MacOS, it is possible to directly load Metallib shaders, instead of Spirv ones.
+	// TODO: This never worked. Remove this.
 	Metallib,
 }
 
 Init_Descriptor :: struct {
+	// TODO: Make this into an actual validation check.
+	// allow_cpu_addresses_in_gpu_arguments:	bool,
+
 	vk:	struct {
 		loader_path:	string,
 		shader_format:	Vulkan_Shader_Format,
@@ -163,6 +175,8 @@ init :: proc(descriptor := Init_Descriptor{}, location := #caller_location) -> (
 	hm.dynamic_init(&_depth_stencil_states, _global_allocator)
 	hm.dynamic_init(&_blend_states, _global_allocator)
 	hm.dynamic_init(&_surfaces, _global_allocator)
+	hm.dynamic_init(&_indirect_command_pools, _global_allocator)
+	hm.dynamic_init(&_indirect_commands, _global_allocator)
 
 	avl.init(&_address_map, _compare_address_map_nodes, _generic_allocator)
 
@@ -188,6 +202,16 @@ fini :: proc() {
 
 	if _is_device_selected {
 		destroy_resource_set(_default_resource_set)
+	}
+
+	command_it := hm.dynamic_iterator_make(&_indirect_commands)
+	for _, command in hm.iterate(&command_it) {
+		destroy_indirect_command(command)
+	}
+
+	icp_it := hm.dynamic_iterator_make(&_indirect_command_pools)
+	for _, pool in hm.iterate(&icp_it) {
+		destroy_indirect_command_pool(pool)
 	}
 
 	surface_it := hm.dynamic_iterator_make(&_surfaces)
@@ -275,6 +299,8 @@ _metadata_of :: proc {
 	_blend_state_metadata_of,
 	_depth_stencil_state_metadata_of,
 	_surface_metadata_of,
+	_indirect_command_pool_metadata_of,
+	_indirect_command_metadata_of,
 }
 
 _check_initialized :: proc(location: runtime.Source_Code_Location) -> Result {

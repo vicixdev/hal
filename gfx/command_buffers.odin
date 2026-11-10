@@ -64,7 +64,6 @@ _Command_Buffer_Metadata :: struct {
 	synchronization_group:			Synchronization_Group,
 
 	commands:				[dynamic]_Command,
-	last_command:				[Stage]int, // index of: commands
 
 	is_encoding_render_pass:		bool,
 	render_pass_attachment_sample_count:	int,
@@ -74,6 +73,7 @@ _Command_Buffer_Metadata :: struct {
 	render_pass_stencil_format:		Pixel_Format,
 
 	used_surface_semaphores:		[dynamic]Semaphore,
+	indirect_commands_to_free:		[dynamic]Indirect_Command,
 
 	using platform:	struct #raw_union {
 		vk:	_vk_Command_Buffer_Metadata,
@@ -93,6 +93,8 @@ _Command :: union {
 	_Command_End_Render_Pass,
 	_Command_Draw,
 	_Command_Draw_Indexed,
+	_Command_Encode_Indirect,
+	_Command_Execute_Indirect,
 }
 
 _Command_Mem_Copy :: struct {
@@ -173,6 +175,18 @@ _Command_Draw_Indexed :: struct {
 	instance_count:		int,
 	base_index:		int,
 	index_type:		Index_Type,
+	scissor:		Scissor,
+}
+
+_Command_Encode_Indirect :: struct {
+	command:	Indirect_Command,
+}
+_Command_Execute_Indirect :: struct {
+	command:	Indirect_Command,
+
+	resource_set:		Resource_Set,
+	depth_stencil_state:	Depth_Stencil_State,
+	blend_constant:		[4]f64,
 	scissor:		Scissor,
 }
 
@@ -260,23 +274,15 @@ begin_command_encoding :: proc(
 
 	vmem.arena_free_all(&metadata.arena)
 
-	metadata.last_command		= {
-		.Transfer		= -1,
-		.Compute		= -1,
-		.Vertex			= -1,
-		.Fragment		= -1,
-		.Color_Attachment	= -1,
-		.Depth_Stencil_Attachment = -1,
-	}
-
-	metadata.resource_set		= _default_resource_set
-	metadata.depth_stencil_state	= _default_depth_stencil_state
-	metadata.blend_constant		= 0
-	metadata.scissor		= {}
-	metadata.is_encoding_render_pass = false
-	metadata.synchronization_group	= {}
-	metadata.used_surface_semaphores = make([dynamic]Semaphore, metadata.allocator) or_return
-	metadata.commands		= make([dynamic]_Command, metadata.allocator) or_return
+	metadata.resource_set			= _default_resource_set
+	metadata.depth_stencil_state		= _default_depth_stencil_state
+	metadata.blend_constant			= 0
+	metadata.scissor			= {}
+	metadata.is_encoding_render_pass	= false
+	metadata.synchronization_group		= {}
+	metadata.used_surface_semaphores	= make([dynamic]Semaphore, metadata.allocator) or_return
+	metadata.indirect_commands_to_free	= make([dynamic]Indirect_Command, metadata.allocator) or_return
+	metadata.commands			= make([dynamic]_Command, metadata.allocator) or_return
 
 	return handle, nil
 }
@@ -440,8 +446,6 @@ mem_copy :: proc(
 	}
 	append(&metadata.commands, command)
 
-	_set_last_command_of(metadata, .Transfer)
-
 	return nil
 }
 
@@ -508,8 +512,6 @@ copy_texture_to_texture :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
-	_set_last_command_of(metadata, .Transfer)
-
 	return nil
 }
 
@@ -569,8 +571,6 @@ copy_buffer_to_texture :: proc(
 		region		= region,
 	}
 	append(&metadata.commands, command) or_return
-
-	_set_last_command_of(metadata, .Transfer)
 
 	return nil
 }
@@ -632,8 +632,6 @@ copy_texture_to_buffer :: proc(
 	}
 	append(&metadata.commands, command) or_return
 
-	_set_last_command_of(metadata, .Transfer)
-
 	return nil
 }
 
@@ -651,9 +649,6 @@ generate_mipmaps_for :: proc(command_buffer: Command_Buffer, texture: Texture, l
 		texture	= texture,
 	}
 	append(&metadata.commands, command) or_return
-
-	// NOTE: Both in Metal and in Vulkan, the generate mipmaps command is done via blit operations, thus .Transfer.
-	_set_last_command_of(metadata, .Transfer)
 
 	return nil
 }
@@ -695,8 +690,6 @@ dispatch :: proc(
 		group_count	= group_count,
 	}
 	append(&metadata.commands, command) or_return
-
-	_set_last_command_of(metadata, .Compute)
 
 	return nil
 }
@@ -1181,17 +1174,6 @@ end_render_pass :: proc(command_buffer:	Command_Buffer, location := #caller_loca
 	command := _Command_End_Render_Pass {}
 	append(&metadata.commands, command) or_return
 
-	// NOTE: This is actually not strictly correct, but since the last commands are only used by Metal and signal
-	//	operations are always applied at the end of the current encoder, this is fine.
-	_set_last_command_of(metadata, .Vertex)
-	_set_last_command_of(metadata, .Fragment)
-	if len(metadata.render_pass_color_formats) != 0 {
-		_set_last_command_of(metadata, .Color_Attachment)
-	}
-	if metadata.render_pass_depth_format != .None || metadata.render_pass_stencil_format != .None {
-		_set_last_command_of(metadata, .Depth_Stencil_Attachment)
-	}
-
 	metadata.is_encoding_render_pass = false
 
 	return nil
@@ -1350,6 +1332,9 @@ submit :: proc(
 
 		for semaphore in command_buffer_metadata.used_surface_semaphores {
 			destroy_semaphore(semaphore)
+		}
+		for indirect_command in command_buffer_metadata.indirect_commands_to_free {
+			_destroy_indirect_command(indirect_command)
 		}
 
 		_remove_command_buffer(command_buffer)
@@ -1662,13 +1647,6 @@ _clone_syncronization_group :: proc(
 	out.wait	= slice.clone(group.wait, allocator)
 
 	return
-}
-
-_set_last_command_of :: proc(
-	metadata:	^_Command_Buffer_Metadata,
-	stage:		Stage,
-) {
-	metadata.last_command[stage] = len(metadata.commands) - 1
 }
 
 @(rodata)
