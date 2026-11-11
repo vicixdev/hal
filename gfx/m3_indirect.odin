@@ -30,7 +30,7 @@ _m3_ICP_Dispatch_Metadata :: struct {
 	/*
 	Gpu buffer of
 		struct {
-			arguments:	[pool.call_count]MTL.DispatchThreadgroupsIndirectArguments,
+			arguments:	[pool.command_count * pool.max_call_count_per_command]MTL.DispatchThreadgroupsIndirectArguments,
 		}
 	*/
 	buffer:	^MTL.Buffer,
@@ -69,7 +69,7 @@ _m3_ICP_Draw_Metadata :: struct {
 	Gpu buffer of _m3_Draw_ICP_Gpu_Base_Data. Dynamic data is instanced with:
 		- ranges:		[command_count]MTL.IndirectCommandBufferExecutionRange,
 		- encode_params:	[command_count]MTL.DispatchThreadgroupsIndirectArguments,
-		- draw_data:		[call_count]_m3_Draw_ICP_Call_Data,
+		- draw_data:		[total_call_count]_m3_Draw_ICP_Call_Data,
 
 	TODO: If we can guarantee that multiple encoding dispatches do not get executed in parallel, we can collapse
 		`pool.encode_params` into a single value.
@@ -81,7 +81,7 @@ _m3_ICP_Draw_Metadata :: struct {
 }
 _m3_Draw_ICP_Gpu_Base_Data :: struct #packed {
 	command_count:	u32,
-	call_count:	u32,
+	total_call_count:	u32,
 	// GPU atomic counter. Points to the first available location in the `buffer.icbs` and the
 	//	`buffer.encode_params`buffer.
 	index:		u32,
@@ -93,7 +93,7 @@ _m3_Draw_ICP_Gpu_Base_Data :: struct #packed {
 	Contains:
 		- ranges:		[command_count]MTL.IndirectCommandBufferExecutionRange,
 		- encode_params:	[command_count]MTL.DispatchThreadgroupsIndirectArguments,
-		- draw_data:		[call_count]_m3_Draw_ICP_Call_Data,
+		- draw_data:		[total_call_count]_m3_Draw_ICP_Call_Data,
 	*/
 	dynamic_data:	[0]u64,
 }
@@ -228,11 +228,12 @@ _m3_create_dispatch_icp :: proc(
 /*
 The size of the dispatch ICP buffer:
 	struct {
-		arguments:	[pool.call_count]MTL.DispatchThreadgroupsIndirectArguments,
+		arguments:	[pool.command_count * pool.max_call_count_per_command]MTL.DispatchThreadgroupsIndirectArguments,
 	}
 */
 _m3_size_of_dispatch_icp_gpu_data :: proc(descriptor: Indirect_Command_Pool_Descriptor) -> int {
-	return size_of(MTL.DispatchThreadgroupsIndirectArguments) * descriptor.call_count
+	return size_of(MTL.DispatchThreadgroupsIndirectArguments) *
+		descriptor.command_count * descriptor.max_call_count_per_command
 }
 
 
@@ -263,7 +264,7 @@ _m3_create_draw_icp :: proc(
 
 	metadata.m3.draw.icbs = _m3_device->newIndirectCommandBufferWithDescriptor(
 		icb_descriptor,
-		cast(NS.UInteger)descriptor.call_count,
+		cast(NS.UInteger)(descriptor.max_call_count_per_command * descriptor.command_count),
 		{ .StorageModePrivate, .HazardTrackingModeUntracked },
 	)
 	if metadata.m3.draw.icbs == nil {
@@ -272,7 +273,7 @@ _m3_create_draw_icp :: proc(
 
 	(cast(^_m3_Draw_ICP_Gpu_Base_Data)metadata.m3.draw.buffer->contents())^ = {
 		command_count	= cast(u32)metadata.command_count,
-		call_count	= cast(u32)metadata.call_count,
+		total_call_count	= cast(u32)(metadata.max_call_count_per_command * metadata.command_count),
 		index		= 0,
 		icbs		= metadata.m3.draw.icbs->gpuResourceID(),
 	}
@@ -290,7 +291,8 @@ _m3_size_of_draw_icp_gpu_data :: proc(descriptor: Indirect_Command_Pool_Descript
 	icp_base_size		:= size_of(_m3_Draw_ICP_Gpu_Base_Data)
 	ranges_size		:= size_of(MTL.IndirectCommandBufferExecutionRange) * descriptor.command_count
 	encode_params_size	:= size_of(MTL.DispatchThreadgroupsIndirectArguments) * descriptor.command_count
-	draw_data_size		:= size_of(_m3_Draw_ICP_Call_Data) * descriptor.call_count
+	draw_data_size		:= size_of(_m3_Draw_ICP_Call_Data) *
+		descriptor.max_call_count_per_command * descriptor.command_count
 
 	return icp_base_size + ranges_size + encode_params_size + draw_data_size
 }

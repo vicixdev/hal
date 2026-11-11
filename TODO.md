@@ -1,9 +1,10 @@
 # TODO
-- [ ] Implement indirect rendering via `Indirect_Command_Pools` and explicit encoding.
-  - [ ] Support MultiDrawIndirect (using ICB under metal)
+- [X] Implement indirect rendering via `Indirect_Command_Pools` and explicit encoding.
+  - [X] Support MultiDrawIndirect (using ICB under metal)
   - [X] Metal
-  - [ ] Vulkan
+  - [X] Vulkan
 - [ ] Improve validation
+- [ ] Specialize the Vertex and Fragment stages (Draw_Indirect, ...)
 - [ ] Move ALL validation code to `_vl_*` procedures
 - [ ] Optimize surface resizing (it lags...)
 - [ ] Reorganize device global variables
@@ -12,7 +13,7 @@
 - [ ] Migrate the deferred command emission logic to an immediate one.
   - [ ] Force `gfx::synchronize` to be at the beginning of the command buffer.
 - [ ] LRU cache for pointer decoding
-- [ ] VK: Analyse resource usage between barriers and change the resource layout accordingly
+- [ ] VK: Analyze resource usage between barriers and change the resource layout accordingly
 - [ ] M3: Migrate to non-resource-retaining command buffers
 
 # MAYBE

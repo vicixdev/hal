@@ -114,7 +114,6 @@ _m3_select_device :: proc(device: Device_Id) -> Result {
 	}
 
 	_m3_create_resource_set_heap() or_return
-	_m3_init_indirect() or_return
 
 	return nil
 }
@@ -201,4 +200,3 @@ _m3_create_resource_set_heap :: proc() -> Result {
 
 	return nil
 }
-

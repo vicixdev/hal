@@ -42,10 +42,9 @@ Indirect_Command_Pool_Descriptor :: struct {
 
 	// The maximum count of indirect parameters that the pool can hold at the same time.
 	// One indirect command can express a command that uses multiple parameters (count > 1).
-	// If `type == .Dispatch`, then `command_count == call_count`, since MultiDispatchIndirect isn't supported.
-	// `call_count >= command_count`
+	// If `type == .Dispatch`, then `max_call_count_per_command == 1`, since MultiDispatchIndirect isn't supported.
 	// NOTE: This is gpu-side
-	call_count:	int,
+	max_call_count_per_command:	int,
 }
 
 Indirect_Command_Pool :: distinct Handle
@@ -121,7 +120,7 @@ _Indirect_Command_Metadata :: struct {
 	},
 
 	using platform: struct #raw_union {
-		vk: struct {},
+		vk: _vk_Indirect_Command_Metadata,
 		m3: _m3_Indirect_Command_Metadata,
 	},
 }
@@ -130,12 +129,18 @@ _indirect_commands_mutex:	sync.RW_Mutex
 
 _init_indirect :: proc() -> Result {
 	when TARGET_API == .Vulkan {
-		unimplemented()
+		return _vk_init_indirect()
 	} else when TARGET_API == .Metal_3 {
 		return _m3_init_indirect()
 	}
 }
-_fini_indirect :: proc() {}
+_fini_indirect :: proc() {
+	when TARGET_API == .Vulkan {
+		_vk_fini_indirect()
+	} else when TARGET_API == .Metal_3 {
+		_m3_fini_indirect()
+	}
+}
 
 create_indirect_command_pool :: proc(
 	descriptor:	Indirect_Command_Pool_Descriptor,
@@ -489,6 +494,8 @@ execute_indirect :: proc(
 	ic_metadata, ic_result := _metadata_of(indirect_command)
 	_check_indirect_command_handle(ic_result, indirect_command, location) or_return
 
+	_vl_execute_indirect(cb_metadata, ic_metadata, location) or_return
+
 	command := _Command_Execute_Indirect{
 		command		= indirect_command,
 		resource_set	= cb_metadata.resource_set,
@@ -504,10 +511,10 @@ execute_indirect :: proc(
 }
 
 _normalize_icp_descriptor :: proc(descriptor: ^Indirect_Command_Pool_Descriptor) {
-	if descriptor.call_count == 0 && descriptor.command_count != 0 {
-		descriptor.call_count = descriptor.command_count
-	} else if descriptor.call_count != 0 && descriptor.command_count == 0 {
-		descriptor.command_count = descriptor.call_count
+	if descriptor.max_call_count_per_command == 0 && descriptor.command_count != 0 {
+		descriptor.max_call_count_per_command = 1
+	} else if descriptor.max_call_count_per_command != 0 && descriptor.command_count == 0 {
+		descriptor.command_count = 1
 	}
 }
 
@@ -518,33 +525,22 @@ _vl_create_indirect_command_pool :: proc(
 	when !ENABLE_VALIDATION do return nil
 
 	_check_condition(
-		_impl(descriptor.type == .Dispatch, descriptor.call_count == descriptor.command_count),
+		_impl(descriptor.type == .Dispatch, descriptor.max_call_count_per_command == 1),
 		.Invalid_Descriptor,
 		.Error,
 		"Invalid descriptor",
-		"Incompatible call and command count: dispatch indirect command pools do not support indirect " +
-		"command count, thus `descriptor.command_count` (%d) must be equal to `descriptor.call_count` (%d).",
-		descriptor.command_count,
-		descriptor.call_count,
+		"Incompatible call count: dispatch indirect command pools do not support multiple indirect calls " +
+		"per command, thus `descriptor.max_call_count_per_command` (%d) must be equal to 1.",
+		descriptor.max_call_count_per_command,
 		location=location,
 	) or_return
 	_check_condition(
-		descriptor.call_count >= descriptor.command_count,
+		descriptor.max_call_count_per_command > 0,
 		.Invalid_Descriptor,
 		.Error,
 		"Invalid descriptor",
-		"Incompatible call and command count: `descriptor.call_count` (%d) must be greater or equal to " +
-		"`descriptor.command_count` (%d).",
-		descriptor.call_count,
-		descriptor.command_count,
-		location=location,
-	) or_return
-	_check_condition(
-		descriptor.call_count > 0,
-		.Invalid_Descriptor,
-		.Error,
-		"Invalid descriptor",
-		"Invalid call count: `descriptor.call_count` must be greater than 0.",
+		"Invalid call count: `descriptor.max_call_count_per_command` (%d) must be greater than 0.",
+		descriptor.max_call_count_per_command,
 		location=location,
 	) or_return
 	_check_condition(
@@ -703,13 +699,13 @@ _vl_encode_draw_indirect :: proc(
 		location=location,
 	)
 	_check_condition(
-		count <= icp_metadata.call_count,
+		count <= icp_metadata.max_call_count_per_command,
 		.Invalid_Arguments,
 		.Error,
 		"Invalid indirect count",
-		"The `count` parameter (%d) cannot greater than the indirect command pool call count (%d).",
+		"The `count` parameter (%d) cannot be greater than the maximum call count per command (%d).",
 		count,
-		icp_metadata.call_count,
+		icp_metadata.max_call_count_per_command,
 		location=location,
 	)
  	
@@ -816,13 +812,13 @@ _vl_encode_draw_indexed_indirect :: proc(
 		location=location,
 	)
 	_check_condition(
-		count <= icp_metadata.call_count,
+		count <= icp_metadata.max_call_count_per_command,
 		.Invalid_Arguments,
 		.Error,
 		"Invalid indirect count",
-		"The `count` parameter (%d) cannot greater than the indirect command pool call count (%d).",
+		"The `count` parameter (%d) cannot be greater than the maximum call count per command (%d).",
 		count,
-		icp_metadata.call_count,
+		icp_metadata.max_call_count_per_command,
 		location=location,
 	)
 	
@@ -992,4 +988,3 @@ _handle_indirect_command_lifetime_at_execution :: proc(
 		ic_metadata.used = true
 	}
 }
-

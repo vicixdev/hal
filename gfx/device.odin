@@ -109,6 +109,8 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 		_check_generic_backend_error(res, location) or_return
 	}
 
+	_init_indirect() or_return
+
 	_device_info = &_available_devices[device]
 	ensure(_init_queues() == nil, "If the device got selected, then the queue setup should not fail.")
 
@@ -157,4 +159,3 @@ _check_device_selected :: proc(location: runtime.Source_Code_Location) -> Result
 	) or_return
 	return nil
 }
-

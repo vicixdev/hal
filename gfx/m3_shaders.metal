@@ -45,7 +45,7 @@ static_assert(sizeof(Draw_ICP_Call_Data) == 16);
 
 struct Draw_ICP {
 	uint32_t	command_count;
-	uint32_t	call_count;
+	uint32_t	total_call_count;
 	// GPU atomic counter. Points to the first available location in the `buffer.icbs` and the
 	//	`buffer.encode_params`buffer.
 	atomic_uint	index;
@@ -56,7 +56,7 @@ struct Draw_ICP {
 	// Contains
 	//	ranges:		[command_count]MTLIndirectCommandBufferExecutionRange,
 	//	encode_params:	[command_count]MTLDispatchThreadgroupsIndirectArguments,
-	//	draw_data:	[call_count]Draw_ICP_Call_Data,
+	//	draw_data:	[total_call_count]Draw_ICP_Call_Data,
 	uint8_t		dynamic_data[1];
 
 	device MTLIndirectCommandBufferExecutionRange*	indirect_execution_range_at(int i) {
@@ -84,7 +84,7 @@ void allocate_execution_range_in(
 	device	MTLIndirectCommandBufferExecutionRange*		destination,
 		uint64_t					count
 ) {
-	if (count > pool->call_count) {
+	if (count > pool->total_call_count) {
 		destination->location = 0;
 		destination->length = 0;
 		return;
@@ -97,7 +97,7 @@ void allocate_execution_range_in(
 
 		start = value;
 		uint next_value = value + count;
-		if (next_value > pool->call_count) {
+		if (next_value > pool->total_call_count) {
 			start = 0;
 			next_value = count;
 		}

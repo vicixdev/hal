@@ -9,6 +9,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
 import "base:runtime"
+import "core:log"
 import "core:strings"
 import "core:slice"
 import "core:mem"
@@ -55,6 +56,9 @@ _vk_pipeline_cache:		vk.PipelineCache
 _vk_pipeline_cache_mutex:	sync.Mutex
 _vk_compute_pipeline_layout:	vk.PipelineLayout
 _vk_render_pipeline_layout:	vk.PipelineLayout
+
+_VK_INTERNAL_SHADER_BYTECODE :=	#load("./vk_shaders.spv")
+_vk_indirect_shader_module:	vk.ShaderModule
 
 _vk_descriptor_set_layout:	vk.DescriptorSetLayout
 _vk_descriptor_pool:		vk.DescriptorPool
@@ -155,6 +159,8 @@ _vk_select_device :: proc(device: Device_Id) -> Result {
 			shaderStorageImageReadWithoutFormat	= true,
 			shaderStorageImageWriteWithoutFormat	= true,
 			shaderInt16				= true,
+			shaderInt64				= true,
+			multiDrawIndirect			= true,
 		},
 	}
 	device_features_11 := vk.PhysicalDeviceVulkan11Features {
@@ -174,6 +180,7 @@ _vk_select_device :: proc(device: Device_Id) -> Result {
 		shaderStorageImageArrayNonUniformIndexing	= true,
 		shaderSampledImageArrayNonUniformIndexing	= true,
 		shaderInt8					= true,
+		drawIndirectCount				= true,
 	}
 	_vk_link(&device_features_11, &device_features_12)
 	dynamic_rendering_features := vk.PhysicalDeviceDynamicRenderingFeaturesKHR {
@@ -215,6 +222,7 @@ _vk_select_device :: proc(device: Device_Id) -> Result {
 	// log.debugf("Creating device with extensions: %v.", _vk_enabled_device_extensions)
 	_vk_call(vk.CreateDevice(_vk_physical_device, &descriptor, nil, &_vk_device)) or_return
 
+	_vk_init_internal_shader_module()
 	_vk_setup_descriptor_pool() or_return
 	_vk_setup_pipeline_layouts() or_return
 	_vk_setup_pipeline_cache() or_return
@@ -264,6 +272,44 @@ _vk_setup_pipeline_cache :: proc() -> Result {
 	_vk_call(vk.CreatePipelineCache(_vk_device, &pipeline_cache_info, nil, &_vk_pipeline_cache)) or_return
 
 	return nil
+}
+
+_vk_init_internal_shader_module :: proc() {
+	module_info := vk.ShaderModuleCreateInfo {
+		sType = .SHADER_MODULE_CREATE_INFO,
+		codeSize = len(_VK_INTERNAL_SHADER_BYTECODE),
+		pCode = cast([^]u32)raw_data(_VK_INTERNAL_SHADER_BYTECODE),
+	}
+	res := vk.CreateShaderModule(_vk_device, &module_info, nil, &_vk_indirect_shader_module)
+	if res != .SUCCESS {
+		log.panicf("Could not create the internal Vulkan shader module. Got error `%v`.", res)
+	}
+}
+
+_vk_compile_internal_compute_kernel :: proc(name: string) -> vk.Pipeline {
+	pipeline_info := vk.ComputePipelineCreateInfo {
+		sType = .COMPUTE_PIPELINE_CREATE_INFO,
+		layout = _vk_compute_pipeline_layout,
+		stage = {
+			sType = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+			stage = { .COMPUTE },
+			module = _vk_indirect_shader_module,
+			pName = strings.clone_to_cstring(name, _temp_allocator),
+		},
+	}
+	pipeline: vk.Pipeline
+	res := vk.CreateComputePipelines(_vk_device, _vk_pipeline_cache, 1, &pipeline_info, nil, &pipeline)
+	if res != .SUCCESS {
+		log.panicf("Could not create the `%s` internal Vulkan compute pipeline. Got error `%v`.", name, res)
+	}
+	return pipeline
+}
+
+_vk_fini_internal_shader_module :: proc() {
+	if _vk_indirect_shader_module != {} {
+		vk.DestroyShaderModule(_vk_device, _vk_indirect_shader_module, nil)
+		_vk_indirect_shader_module = {}
+	}
 }
 
 _vk_setup_descriptor_pool :: proc() -> Result {
@@ -592,6 +638,7 @@ _vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) ->
 		_vk_info.features.features.shaderStorageImageReadWithoutFormat == true &&
 		_vk_info.features.features.shaderStorageImageWriteWithoutFormat == true &&
 		_vk_info.features.features.shaderInt16 == true &&
+		_vk_info.features.features.shaderInt64 == true &&
 		_vk_info.features_11.shaderDrawParameters == true &&
 		_vk_info.features_12.timelineSemaphore == true &&
 		_vk_info.features_12.bufferDeviceAddress == true &&
@@ -603,6 +650,8 @@ _vk_is_device_suitable :: proc(device: vk.PhysicalDevice, info: ^Device_Info) ->
 		_vk_info.features_12.shaderSampledImageArrayNonUniformIndexing == true &&
 		_vk_info.features_12.shaderStorageImageArrayNonUniformIndexing == true &&
 		_vk_info.features_12.shaderInt8 == true &&
+		_vk_info.features.features.multiDrawIndirect == true &&
+		_vk_info.features_12.drawIndirectCount == true &&
 		_vk_info.synchronization2_features.synchronization2 == true &&
 		_vk_info.dynamic_rendering_features.dynamicRendering == true &&
 		_vk_info.has_default_queue_family &&
@@ -619,4 +668,3 @@ _vk_PHYSICAL_DEVICE_TYPE_TO_GFX := [vk.PhysicalDeviceType]Device_Type {
 	.VIRTUAL_GPU	= .Other,
 	.CPU		= .Other,
 }
-

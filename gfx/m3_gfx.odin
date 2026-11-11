@@ -37,8 +37,7 @@ _m3_pre_fini :: proc() {
 		_m3_internal_shader_library = nil
 	}
 
-	_m3_fini_indirect()
+
 }
 
 _m3_fini :: proc() {}
-

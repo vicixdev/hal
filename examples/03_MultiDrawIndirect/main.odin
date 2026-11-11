@@ -187,7 +187,7 @@ app :: proc() -> Result {
 	command_pool := gfx.create_indirect_command_pool(gfx.Indirect_Command_Pool_Descriptor{
 		type		= .Draw,
 		command_count	= 1,
-		call_count	= 3,
+		max_call_count_per_command	= 3,
 	}) or_return
 
 	gfx.wait_idle(.Default)

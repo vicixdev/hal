@@ -201,6 +201,7 @@ fini :: proc() {
 	}
 
 	if _is_device_selected {
+		_fini_indirect()
 		destroy_resource_set(_default_resource_set)
 	}
 
@@ -336,4 +337,3 @@ _check_generic_backend_error :: proc(result: Result, location: runtime.Source_Co
 
 	return nil
 }
-

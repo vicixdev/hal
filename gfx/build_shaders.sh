@@ -26,8 +26,10 @@ case "$target" in
 	Vulkan)
 		case "$opt_level" in
 			Release)
+				slangc ./vk_shaders.slang -profile glsl_450 -target spirv -capability glsl_spirv -capability GL_EXT_buffer_reference -o ./vk_shaders.spv -fvk-use-entrypoint-name
 			;;
 			""|Debug)
+				slangc ./vk_shaders.slang -profile glsl_450 -target spirv -capability glsl_spirv -capability GL_EXT_buffer_reference -o ./vk_shaders.spv -fvk-use-entrypoint-name -g2
 			;;
 			*)
 				echo "Invalid optimization target (expected Debug or Release)."
@@ -40,4 +42,3 @@ case "$target" in
 		exit -1
 	;;
 esac
-

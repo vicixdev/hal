@@ -954,7 +954,7 @@ _vk_STAGE_TO_VK := [Stage]vk.PipelineStageFlags2 {
 	.Transfer			= { .TRANSFER },
 	.Compute			= { .COMPUTE_SHADER },
 	.Indirect_Encode		= { .COMPUTE_SHADER },
-	.Vertex				= { .VERTEX_INPUT },
+	.Vertex				= { .VERTEX_INPUT, .DRAW_INDIRECT },
 	.Fragment			= { .FRAGMENT_SHADER },
 	.Color_Attachment		= { .COLOR_ATTACHMENT_OUTPUT },
 	.Depth_Stencil_Attachment	= { .EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS },
@@ -978,4 +978,3 @@ _vk_INDEX_TYPE_TO_VK := [Index_Type]vk.IndexType {
 	.U16	= .UINT16,
 	.U32	= .UINT32,
 }
-

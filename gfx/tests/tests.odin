@@ -658,7 +658,7 @@ indirect_compute_test :: proc(t: ^testing.T) {
 		command_pool := gfx.create_indirect_command_pool(gfx.Indirect_Command_Pool_Descriptor{
 			type		= .Dispatch,
 			command_count	= 1,
-			call_count	= 1,
+			max_call_count_per_command	= 1,
 		}) or_return
 		defer gfx.destroy_indirect_command_pool(command_pool)
 
@@ -872,7 +872,7 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 		command_pool := gfx.create_indirect_command_pool({
 			type		= .Draw,
 			command_count	= 1,
-			call_count	= 1,
+			max_call_count_per_command	= 1,
 		}) or_return
 		defer gfx.destroy_indirect_command_pool(command_pool)
 
@@ -1143,7 +1143,7 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 		command_pool := gfx.create_indirect_command_pool({
 			type		= .Draw,
 			command_count	= 1,
-			call_count	= 1,
+			max_call_count_per_command	= 1,
 		}) or_return
 		defer gfx.destroy_indirect_command_pool(command_pool)
 

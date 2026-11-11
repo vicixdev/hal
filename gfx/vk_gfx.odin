@@ -27,6 +27,7 @@ when ODIN_OS == .Linux {
 		"./libvulkan.dylib",
 		"../Frameworks/libvulkan.dylib",
 		"./demo/env/macOS/lib/libvulkan.dylib",
+		"../../demo/env/macOS/lib/libvulkan.dylib",
 		"libvulkan.dylib",
 		"/opt/homebrew/lib/libvulkan.dylib",
 	}
@@ -304,6 +305,8 @@ _vk_fini :: proc() {
 		vk.DestroyPipelineCache(_vk_device, _vk_pipeline_cache, nil)
 
 		vk.DestroyDevice(_vk_device, nil)
+
+		_vk_fini_internal_shader_module()
 	}
 
 	if _vk_has_validation {
@@ -390,4 +393,3 @@ setup_vulkan_environment :: proc "contextless" () {
 	os.set_env("VK_LAYER_PATH", "./env/macOS/etc/vulkan/explicit_layer.d:./demo/env/macOS/etc/vulkan/explicit_layer.d")
 	os.set_env("VK_DRIVER_FILES", "./env/macOS/etc/vulkan/icd.d:./demo/env/macOS/etc/vulkan/icd.d")
 }
-
