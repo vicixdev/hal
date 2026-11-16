@@ -92,15 +92,15 @@ create_image :: proc(
 	}
 	size, align := gfx.size_align_of(descriptor) or_return
 
-	texture_buffer := gfx.arena_alloc(image_memory, size, align) or_return
+	_, texture_buffer := gfx.arena_alloc(image_memory, size, align) or_return
 	texture = gfx.create_texture(texture_buffer, descriptor) or_return
 	view = gfx.default_view_of(texture) or_return
 
-	upload_buffer := gfx.scratch_alloc(upload_memory, []byte, len(img.pixels)) or_return
+	upload_buffer, gpu_upload_buffer := gfx.scratch_alloc(upload_memory, []byte, len(img.pixels)) or_return
 	copy(upload_buffer, img.pixels[:])
 	gfx.copy_buffer_to_texture(
 		command_buffer,
-		gfx.gpu_address_of(raw_data(upload_buffer)) or_return,
+		gpu_upload_buffer,
 		texture,
 		gfx.Texture_Region{
 			layer_count	= 1,
@@ -130,7 +130,7 @@ app :: proc() -> Result {
 	}
 
 	Arguments :: struct #packed {
-		vertices:		rawptr,
+		vertices:		uintptr,
 		texture_indices:	[3]u32,
 	}
 
@@ -147,11 +147,10 @@ app :: proc() -> Result {
 	upload_scratch: gfx.Scratch
 	gfx.create_scratch(&upload_scratch, .Staging, 128 * mem.Megabyte) or_return
 
-	vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
+	vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
 	copy(vertices, VERTICES[:])
-	gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-	indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
+	indices, gpu_indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
 	copy(indices, INDICES[:])
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./shaders", context.temp_allocator)
@@ -227,12 +226,12 @@ app :: proc() -> Result {
 		command_buffer = gfx.begin_command_encoding(.Default) or_return
 		gfx.use_resources(command_buffer, resource_set) or_return
 
-		arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
+		arguments, gpu_arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
 		arguments^ = Arguments {
 			vertices	= gpu_vertices,
 			texture_indices	= { 0, 1, 2 },
 		}
-		parameters := gfx.scratch_alloc(&default_scratch, []gfx.Draw_Indexed_Indirect_Parameters, 3) or_return
+		parameters, gpu_parameters := gfx.scratch_alloc(&default_scratch, []gfx.Draw_Indexed_Indirect_Parameters, 3) or_return
 		copy(parameters, []gfx.Draw_Indexed_Indirect_Parameters{
 			{
 				index_count	= 6,
@@ -251,9 +250,9 @@ app :: proc() -> Result {
 			command_buffer,
 			command_pool,
 			pipeline,
-			gfx.gpu_address_of(arguments) or_return,
-			gfx.gpu_address_of(raw_data(indices)) or_return,
-			gfx.gpu_address_of(raw_data(parameters)) or_return,
+			gpu_arguments,
+			gpu_indices,
+			gpu_parameters,
 			3,
 		) or_return
 

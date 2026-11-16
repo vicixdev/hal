@@ -92,15 +92,15 @@ create_image :: proc(
 	}
 	size, align := gfx.size_align_of(descriptor) or_return
 
-	texture_buffer := gfx.arena_alloc(image_memory, size, align) or_return
+	_, texture_buffer := gfx.arena_alloc(image_memory, size, align) or_return
 	texture = gfx.create_texture(texture_buffer, descriptor) or_return
 	view = gfx.default_view_of(texture) or_return
 
-	upload_buffer := gfx.scratch_alloc(upload_memory, []byte, len(img.pixels)) or_return
+	upload_buffer, gpu_upload_buffer := gfx.scratch_alloc(upload_memory, []byte, len(img.pixels)) or_return
 	copy(upload_buffer, img.pixels[:])
 	gfx.copy_buffer_to_texture(
 		command_buffer,
-		gfx.gpu_address_of(raw_data(upload_buffer)) or_return,
+		gpu_upload_buffer,
 		texture,
 		gfx.Texture_Region{
 			layer_count	= 1,
@@ -130,7 +130,7 @@ app :: proc() -> Result {
 	}
 
 	Arguments :: struct #packed {
-		vertices:	rawptr,
+		vertices:	uintptr,
 		texture_index:	u32,
 	}
 
@@ -149,11 +149,10 @@ app :: proc() -> Result {
 	upload_scratch: gfx.Scratch
 	gfx.create_scratch(&upload_scratch, .Staging, 128 * mem.Megabyte) or_return
 
-	vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
+	vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
 	copy(vertices, VERTICES[:])
-	gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-	indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
+	indices, gpu_indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
 	copy(indices, INDICES[:])
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./shaders", context.temp_allocator)
@@ -233,12 +232,12 @@ app :: proc() -> Result {
 		gfx.use_resources(command_buffer, resource_set) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-			arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
+			arguments, gpu_arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
 			arguments^ = Arguments {
 				vertices = gpu_vertices,
 				texture_index = texture_index,
 			}
-			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6)
+			gfx.draw_indexed(command_buffer, pipeline, gpu_arguments, gpu_indices, 6)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.synchronize(command_buffer, {

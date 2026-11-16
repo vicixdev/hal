@@ -168,9 +168,11 @@ frame_memory:		gfx.Scratch
 color_vertices:		[]Color_Vertex
 gpu_color_vertices:	uintptr
 indices:		[]u16
+gpu_indices:		uintptr
 textured_vertices:	[]Textured_Vertex
 gpu_textured_vertices:	uintptr
 textured_indices:	[]u16
+gpu_textured_indices:	uintptr
 
 color_buffer:		gfx.Texture
 color_buffer_view:	gfx.View
@@ -257,7 +259,7 @@ setup :: proc() {
 	}
 
 	surface_descriptor := gfx.Surface_Descriptor {
-		type			= .Immediate,
+		type			= .V_Sync,
 		dimensions		= window_state.dimensions,
 		frames_in_flight	= 3,
 		target			= target,
@@ -305,7 +307,7 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 		usage		= { .Color_Attachment },
 	}
 	color_buffer_size, color_buffer_align := gfx.size_align_of(color_buffer_descriptor) or_return
-	color_buffer_memory := gfx.arena_alloc(&framebuffers_memory, color_buffer_size, color_buffer_align) or_return
+	_, color_buffer_memory := gfx.arena_alloc(&framebuffers_memory, color_buffer_size, color_buffer_align) or_return
 	color_buffer = gfx.create_texture(color_buffer_memory, color_buffer_descriptor) or_return
 	color_buffer_view = gfx.default_view_of(color_buffer) or_return
 
@@ -319,7 +321,7 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 		usage		= { .Depth_Stencil_Attachment },
 	}
 	depth_buffer_size, depth_buffer_align := gfx.size_align_of(depth_buffer_descriptor) or_return
-	depth_buffer_memory := gfx.arena_alloc(&framebuffers_memory, depth_buffer_size, depth_buffer_align) or_return
+	_, depth_buffer_memory := gfx.arena_alloc(&framebuffers_memory, depth_buffer_size, depth_buffer_align) or_return
 	depth_buffer = gfx.create_texture(depth_buffer_memory, depth_buffer_descriptor) or_return
 	depth_buffer_view = gfx.default_view_of(depth_buffer) or_return
 	depth_format = .D32_Float
@@ -337,6 +339,7 @@ prepare_stuff_for_window_size :: proc() -> gfx.Result {
 skybox_vertices:	[][3]f32
 skybox_indices:		[]u16
 gpu_skybox_vertices:	uintptr
+gpu_skybox_indices:	uintptr
 
 skybox_texture:		gfx.Texture
 skybox_view:		gfx.View
@@ -386,7 +389,7 @@ setup_skybox :: proc(image_paths: [6]string, synchronization := gfx.Synchronizat
 		usage		= { .Sampled },
 	}
 	skybox_texture_size, skybox_texture_align := gfx.size_align_of(skybox_texture_descriptor) or_return
-	skybox_texture_memory := gfx.arena_alloc(&private_memory, skybox_texture_size, skybox_texture_align) or_return
+	_, skybox_texture_memory := gfx.arena_alloc(&private_memory, skybox_texture_size, skybox_texture_align) or_return
 	skybox_texture = gfx.create_texture(skybox_texture_memory, skybox_texture_descriptor) or_return
 
 	skybox_view_descriptor := gfx.View_Descriptor {
@@ -395,11 +398,10 @@ setup_skybox :: proc(image_paths: [6]string, synchronization := gfx.Synchronizat
 	}
 	skybox_view = gfx.create_view(skybox_texture, skybox_view_descriptor) or_return
 
-	skybox_vertices = gfx.arena_alloc(&default_memory, [][3]f32, len(SKYBOX_VERTICES)) or_return
-	gpu_skybox_vertices = gfx.gpu_address_of(raw_data(skybox_vertices)) or_return
+	skybox_vertices, gpu_skybox_vertices = gfx.arena_alloc(&default_memory, [][3]f32, len(SKYBOX_VERTICES)) or_return
 	copy(skybox_vertices, SKYBOX_VERTICES[:])
 
-	skybox_indices = gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+	skybox_indices, gpu_skybox_indices = gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
 	copy(skybox_indices, INDICES[:])
 
 	skybox_bytes, _ := gfx.load_bytecode_of("skybox", "build", context.temp_allocator)
@@ -421,12 +423,13 @@ setup_skybox :: proc(image_paths: [6]string, synchronization := gfx.Synchronizat
 
 	command_buffer := gfx.begin_command_encoding(transfer_queue()) or_return
 
-	upload_buffer := gfx.scratch_alloc(&staging_memory, []Pixel, dimensions.x * dimensions.y * 6) or_return
+	upload_buffer, gpu_upload_buffer := gfx.scratch_alloc(&staging_memory, []Pixel, dimensions.x * dimensions.y * 6) or_return
 	for img, i in images {
 		size := dimensions.x * dimensions.y
 		offset := dimensions.x * dimensions.y * i
 
 		current_upload_buffer := upload_buffer[offset:offset+size]
+		gpu_current_upload_buffer := gpu_upload_buffer + cast(uintptr)(offset * size_of(Pixel))
 		copy(slice.to_bytes(current_upload_buffer), slice.bytes_from_ptr(img, size * size_of(Pixel)))
 
 		region := gfx.Texture_Region {
@@ -436,7 +439,7 @@ setup_skybox :: proc(image_paths: [6]string, synchronization := gfx.Synchronizat
 		}
 		gfx.copy_buffer_to_texture(
 			command_buffer,
-			raw_data(current_upload_buffer),
+			gpu_current_upload_buffer,
 			skybox_texture,
 			region,
 		) or_return
@@ -467,7 +470,7 @@ draw_skybox :: proc(
 		sampler_index:		u32,
 	}
 
-	arguments := gfx.scratch_alloc(&frame_memory, Draw_Skybox_Arguments) or_return
+	arguments, gpu_arguments := gfx.scratch_alloc(&frame_memory, Draw_Skybox_Arguments) or_return
 	arguments^ = {
 		view			= la.to_matrix4(la.to_matrix3(camera_view)),
 		proj			= camera_proj,
@@ -476,7 +479,7 @@ draw_skybox :: proc(
 		sampler_index		= cast(u32)sampler_index,
 	}
 
-	gfx.draw_indexed(command_buffer, skybox_pipeline, arguments, raw_data(skybox_indices), 36) or_return
+	gfx.draw_indexed(command_buffer, skybox_pipeline, gpu_arguments, gpu_skybox_indices, 36) or_return
 
 	return nil
 }
@@ -504,12 +507,12 @@ create_texture :: proc(path: string, synchronization := gfx.Synchronization_Grou
 		usage		= { .Sampled },
 	}
 	texture_size, texture_align := gfx.size_align_of(texture_descriptor) or_return
-	texture_memory := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+	_, texture_memory := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
 	texture = gfx.create_texture(texture_memory, texture_descriptor) or_return
 	defer if res != nil do gfx.destroy_texture(texture)
 	view = gfx.default_view_of(texture) or_return
 
-	upload_buffer := gfx.scratch_alloc(&frame_memory, width * height * channels) or_return
+	upload_buffer, gpu_upload_buffer := gfx.scratch_alloc(&frame_memory, width * height * channels) or_return
 	mem.copy(upload_buffer, pixels, cast(int)(width * height * channels))
 
 	command_buffer := gfx.begin_command_encoding(transfer_queue()) or_return
@@ -519,7 +522,7 @@ create_texture :: proc(path: string, synchronization := gfx.Synchronization_Grou
 		}
 		gfx.copy_buffer_to_texture(
 			command_buffer,
-			upload_buffer,
+			gpu_upload_buffer,
 			texture,
 			texture_region,
 		) or_return
@@ -576,18 +579,16 @@ app :: proc() -> Result {
 	// 	window_state.dimensions,
 	// ) or_return
 
-	color_vertices = gfx.arena_alloc(&default_memory, []Color_Vertex, len(COLOR_VERTICES)) or_return
+	color_vertices, gpu_color_vertices = gfx.arena_alloc(&default_memory, []Color_Vertex, len(COLOR_VERTICES)) or_return
 	copy(color_vertices, COLOR_VERTICES[:])
-	gpu_color_vertices = gfx.gpu_address_of(raw_data(color_vertices)) or_return
 
-	indices = gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+	indices, gpu_indices = gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
 	copy(indices, INDICES[:])
 
-	textured_vertices = gfx.arena_alloc(&default_memory, []Textured_Vertex, len(TEXTURED_VERTICES)) or_return
+	textured_vertices, gpu_textured_vertices = gfx.arena_alloc(&default_memory, []Textured_Vertex, len(TEXTURED_VERTICES)) or_return
 	copy(textured_vertices, TEXTURED_VERTICES[:])
-	gpu_textured_vertices = gfx.gpu_address_of(raw_data(textured_vertices)) or_return
 
-	textured_indices = gfx.arena_alloc(&default_memory, []u16, len(TEXTURED_INDICES)) or_return
+	textured_indices, gpu_textured_indices = gfx.arena_alloc(&default_memory, []u16, len(TEXTURED_INDICES)) or_return
 	copy(textured_indices, TEXTURED_INDICES[:])
 
 	prepare_stuff_for_window_size()
@@ -855,16 +856,16 @@ app :: proc() -> Result {
 			gfx.use_resources(command_buffer, resource_set)
 
 			gfx.use_depth_stencil_state(command_buffer, depth_stencil) or_return
-			args := gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
+			args, gpu_args:= gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args^ = {
 				vertices	= gpu_color_vertices,
 				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_rotate_f32(cube_rotation, { 0.0, 1.0, 0.0 }),
 				view		= view,
 				proj		= proj,
 			}
-			gfx.draw_indexed(command_buffer, pipeline, args, raw_data(indices), 36) or_return
+			gfx.draw_indexed(command_buffer, pipeline, gpu_args, gpu_indices, 36) or_return
 
-			tex_args := gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
+			tex_args, gpu_tex_args := gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
 			tex_args^ = {
 				vertices	= gpu_textured_vertices,
 				model		= la.matrix4_translate_f32({ 5.0, 0.0, -5.0}) * la.matrix4_rotate_f32(cube_rotation, { 0.0, 1.0, 0.0 }),
@@ -873,18 +874,18 @@ app :: proc() -> Result {
 				texture		= 0,
 				sampler		= 1,
 			}
-			gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 36) or_return
+			gfx.draw_indexed(command_buffer, textured_pipeline, gpu_tex_args, gpu_textured_indices, 36) or_return
 
-			args = gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
+			args, gpu_args = gfx.scratch_alloc(&frame_memory, Arguments, 16) or_return
 			args^ = {
 				vertices	= gpu_color_vertices,
 				model		= la.matrix4_translate_f32({ 0.0, 0.0, -10.0}) * la.matrix4_scale_f32(15.0),
 				view		= view,
 				proj		= proj,
 			}
-			gfx.draw_indexed(command_buffer, blend_pipeline, args, raw_data(indices), 6) or_return
+			gfx.draw_indexed(command_buffer, blend_pipeline, gpu_args, gpu_indices, 6) or_return
 
-			tex_args = gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
+			tex_args, gpu_tex_args = gfx.scratch_alloc(&frame_memory, Textured_Arguments, 16) or_return
 			tex_args^ = {
 				vertices	= gpu_textured_vertices,
 				model		= la.matrix4_translate_f32({ 0.0, 0.0, -5.0}) * la.matrix4_scale_f32(2.0),
@@ -893,18 +894,18 @@ app :: proc() -> Result {
 				texture		= 1,
 				sampler		= 0,
 			}
-			gfx.draw_indexed(command_buffer, textured_pipeline, tex_args, raw_data(textured_indices), 6) or_return
+			gfx.draw_indexed(command_buffer, textured_pipeline, gpu_tex_args, gpu_textured_indices, 6) or_return
 			draw_skybox(command_buffer, view, proj, 0, 0) or_return
 
 			gfx.use_depth_stencil_state(command_buffer, depth_disabled_stencil)
 			gfx.use_resources(command_buffer, rd_current_resource_set_of(rd_resource_manager()))
-			blit_args := gfx.scratch_alloc(&frame_memory, Blit_Arguments) or_return
+			blit_args, gpu_blit_args := gfx.scratch_alloc(&frame_memory, Blit_Arguments) or_return
 			blit_args^ = {
 				texture	= cast(u32)_ui.resolve_frame_buffer_resource_id,
 				sampler	= cast(u32)_ui.sampler_resource_id,
 				flip_y	= true,
 			}
-			gfx.draw(command_buffer, blit_pipeline, blit_args, 3) or_return
+			gfx.draw(command_buffer, blit_pipeline, gpu_blit_args, 3) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.synchronize(command_buffer, {

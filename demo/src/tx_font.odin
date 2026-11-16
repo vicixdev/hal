@@ -54,6 +54,7 @@ _tx_Font_Atlas :: struct {
 	nodes:			[]rp.Node,
 	glyphs:			[dynamic]_tx_Glyph_Rect,
 	staging_atlas:		^[tx_FONT_ATLAS_SIZE * tx_FONT_ATLAS_SIZE]u8,
+	gpu_staging_atlas:	uintptr,
 	was_modified:		bool,
 }
 
@@ -417,14 +418,14 @@ _tx_init_font_atlas :: proc(
 		usage		= { .Sampled },
 	}
 	texture_size, texture_align := gfx.size_align_of(texture_descriptor) or_return
-	texture_memory := gfx.arena_alloc(private_arena, texture_size, texture_align) or_return
+	_, texture_memory := gfx.arena_alloc(private_arena, texture_size, texture_align) or_return
 	atlas.texture = gfx.create_texture(texture_memory, texture_descriptor) or_return
 	atlas.view = gfx.default_view_of(atlas.texture) or_return
 
 	resource_manager := rd_resource_manager()
 	atlas.resource_index = rd_acquire_resource_id(resource_manager, gfx.View_Type.D2, atlas.view)
 
-	atlas.staging_atlas = gfx.arena_alloc(default_arena, [tx_FONT_ATLAS_SIZE * tx_FONT_ATLAS_SIZE]u8) or_return
+	atlas.staging_atlas, atlas.gpu_staging_atlas = gfx.arena_alloc(default_arena, [tx_FONT_ATLAS_SIZE * tx_FONT_ATLAS_SIZE]u8) or_return
 
 	atlas.nodes	= make([]rp.Node, tx_FONT_ATLAS_SIZE, allocator) or_return
 	atlas.glyphs	= make([dynamic]_tx_Glyph_Rect, allocator) or_return
@@ -451,7 +452,7 @@ _tx_sync_font_atlas :: proc(
 	}
 	gfx.copy_buffer_to_texture(
 		command_buffer,
-		atlas.staging_atlas,
+		atlas.gpu_staging_atlas,
 		atlas.texture,
 		region,
 	) or_return

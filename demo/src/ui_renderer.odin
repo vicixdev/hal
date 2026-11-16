@@ -136,7 +136,7 @@ ui_resize_screen :: proc(screen_size: [2]int, render_size: [2]int) -> (res: gfx.
 		usage		= { .Color_Attachment, .Sampled },
 	}
 	frame_buffer_size, frame_buffer_align := gfx.size_align_of(frame_buffer_descriptor) or_return
-	frame_buffer_memory := gfx.arena_alloc(_ui.frame_buffer_memory, frame_buffer_size, frame_buffer_align) or_return
+	_, frame_buffer_memory := gfx.arena_alloc(_ui.frame_buffer_memory, frame_buffer_size, frame_buffer_align) or_return
 	_ui.frame_buffer = gfx.create_texture(frame_buffer_memory, frame_buffer_descriptor) or_return
 	_ui.frame_buffer_view = gfx.default_view_of(_ui.frame_buffer) or_return
 
@@ -148,7 +148,7 @@ ui_resize_screen :: proc(screen_size: [2]int, render_size: [2]int) -> (res: gfx.
 		usage		= { .Color_Attachment, .Sampled },
 	}
 	resolve_frame_buffer_size, resolve_frame_buffer_align := gfx.size_align_of(resolve_frame_buffer_descriptor) or_return
-	resolve_frame_buffer_memory := gfx.arena_alloc(_ui.frame_buffer_memory, resolve_frame_buffer_size, resolve_frame_buffer_align) or_return
+	_, resolve_frame_buffer_memory := gfx.arena_alloc(_ui.frame_buffer_memory, resolve_frame_buffer_size, resolve_frame_buffer_align) or_return
 	_ui.resolve_frame_buffer = gfx.create_texture(resolve_frame_buffer_memory, resolve_frame_buffer_descriptor) or_return
 	_ui.resolve_frame_buffer_view = gfx.default_view_of(_ui.resolve_frame_buffer) or_return
 	_ui.resolve_frame_buffer_resource_id = rd_acquire_texture_resource_id(rd_resource_manager(), .D2, _ui.resolve_frame_buffer_view)
@@ -1003,13 +1003,12 @@ _ui_draw :: proc(
 		return nil
 	}
 
-	staging_vertices := gfx.scratch_alloc(_ui.frame_memory, []_ui_Vertex, len(vertices)) or_return
-	gpu_vertices := gfx.gpu_address_of(raw_data(staging_vertices)) or_return
+	staging_vertices, gpu_vertices := gfx.scratch_alloc(_ui.frame_memory, []_ui_Vertex, len(vertices)) or_return
 	copy(staging_vertices, vertices)
 
 	norm_color := cast([4]u8)color
 
-	draw_args := gfx.scratch_alloc(_ui.frame_memory, _ui_Draw_Args) or_return
+	draw_args, gpu_draw_args := gfx.scratch_alloc(_ui.frame_memory, _ui_Draw_Args) or_return
 	draw_args^ = {
 		vertices		= gpu_vertices,
 		color			= norm_color,
@@ -1023,7 +1022,7 @@ _ui_draw :: proc(
 			.Texture	= mode == .Texture ? 1 : 0,
 		},
 	}
-	gfx.draw(command_buffer, _ui.pipeline, draw_args, vertices_per_strip, strips) or_return
+	gfx.draw(command_buffer, _ui.pipeline, gpu_draw_args, vertices_per_strip, strips) or_return
 
 	return nil
 }

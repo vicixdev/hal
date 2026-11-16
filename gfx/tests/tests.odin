@@ -38,7 +38,7 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 		defer gfx.destroy_arena(private_memory)
 
 		upload, gpu_upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
-		gpu, gpu_gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
+		_, gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
 		gpu_output: uintptr
 		output, gpu_output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
 
@@ -51,9 +51,9 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
-		gfx.mem_copy(command_buffer, gpu_gpu, gpu_upload, 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer, gpu, gpu_upload, 1024 * size_of(i64)) or_return
 		gfx.barrier(command_buffer, { .Transfer }, { .Transfer }) or_return
-		gfx.mem_copy(command_buffer, gpu_output, gpu_gpu, 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer, gpu_output, gpu, 1024 * size_of(i64)) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal	= {
@@ -99,7 +99,7 @@ memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 		defer gfx.destroy_arena(private_memory)
 
 		upload, gpu_upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
-		gpu, gpu_gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
+		_, gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
 		gpu_output: uintptr
 		output, gpu_output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
 
@@ -114,7 +114,7 @@ memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 		defer gfx.destroy_semaphore(cpu_sema)
 
 		command_buffer_1 := gfx.begin_command_encoding(.Default) or_return
-		gfx.mem_copy(command_buffer_1, gpu_gpu, gpu_upload, 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer_1, gpu, gpu_upload, 1024 * size_of(i64)) or_return
 		gfx.synchronize(command_buffer_1, {
 			signal	= {
 				{ sema, 0, {} },
@@ -123,7 +123,7 @@ memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 		gfx.submit(.Default, command_buffer_1)
 
 		command_buffer_2 := gfx.begin_command_encoding(.Default) or_return
-		gfx.mem_copy(command_buffer_2, gpu_output, gpu_gpu, 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer_2, gpu_output, gpu, 1024 * size_of(i64)) or_return
 		gfx.synchronize(command_buffer_2, {
 			wait	= {
 				{ sema, 0, {} },
@@ -679,9 +679,8 @@ indirect_compute_test :: proc(t: ^testing.T) {
 			command_buffer,
 			command_pool,
 			add_pipeline,
-			// TODO: Make EVERY function take gpu addresses.
-			gfx.gpu_address_of(arguments) or_return,
-			gfx.gpu_address_of(indirect_dispatch_params) or_return,
+			gpu_arguments,
+			gpu_indirect_dispatch_params,
 		) or_return
 
 		gfx.barrier(command_buffer, { .Indirect_Encode }, { .Compute }) or_return
@@ -935,8 +934,8 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 			command_buffer,
 			command_pool,
 			pipeline,
-			gfx.gpu_address_of(arguments) or_return,
-			gfx.gpu_address_of(indirect_dispatch_params) or_return
+			gpu_arguments,
+			gpu_indirect_dispatch_params
 		) or_return
 
 		gfx.barrier(command_buffer, { .Indirect_Encode }, { .Vertex }) or_return
@@ -1214,9 +1213,9 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 			command_buffer,
 			command_pool,
 			pipeline,
-			gfx.gpu_address_of(arguments) or_return,
-			gfx.gpu_address_of(raw_data(indices)) or_return,
-			gfx.gpu_address_of(parameters) or_return,
+			gpu_arguments,
+			gpu_indices,
+			gpu_parameters,
 		) or_return
 
 		gfx.barrier(command_buffer, { .Indirect_Encode }, { .Vertex, .Fragment }) or_return

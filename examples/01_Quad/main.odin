@@ -41,7 +41,7 @@ setup :: proc() {
 	}
 
 	surface_descriptor := gfx.Surface_Descriptor {
-		type			= .Immediate,
+		type			= .V_Sync,
 		dimensions		= { 640, 480 },
 		frames_in_flight	= 3,
 		target			= target,
@@ -86,7 +86,7 @@ app :: proc() -> gfx.Result {
 	}
 
 	Arguments :: struct #packed {
-		vertices:	rawptr,
+		vertices:	uintptr,
 	}
 
 	frame_semaphore := gfx.create_semaphore(.Cpu) or_return
@@ -97,11 +97,10 @@ app :: proc() -> gfx.Result {
 	default_scratch: gfx.Scratch
 	gfx.create_scratch(&default_scratch, .Default, 16 * mem.Megabyte) or_return
 
-	vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
+	vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, size_of(VERTICES)) or_return
 	copy(vertices, VERTICES[:])
-	gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-	indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
+	indices, gpu_indices := gfx.arena_alloc(&default_memory, []u16, size_of(INDICES)) or_return
 	copy(indices, INDICES[:])
 
 	pipeline_bytecode, _ := gfx.load_bytecode_of("triangle", "./shaders", context.temp_allocator)
@@ -157,11 +156,11 @@ app :: proc() -> gfx.Result {
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor)
-			arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
+			arguments, gpu_arguments := gfx.scratch_alloc(&default_scratch, Arguments) or_return
 			arguments^ = Arguments {
 				vertices = gpu_vertices,
 			}
-			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6)
+			gfx.draw_indexed(command_buffer, pipeline, gpu_arguments, gpu_indices, 6)
 		gfx.end_render_pass(command_buffer)
 
 		gfx.synchronize(command_buffer, {
