@@ -154,7 +154,7 @@ size_align_of :: proc(
 }
 
 create_texture :: proc(
-	address:	rawptr,
+	address:	uintptr,
 	descriptor:	Texture_Descriptor,
 	location	:= #caller_location,
 ) -> (handle: Texture, res: Result) {
@@ -347,7 +347,7 @@ _vl_size_align_of :: proc(descriptor: Texture_Descriptor, location: runtime.Sour
 }
 
 _vl_create_texture :: proc(
-	address: rawptr,
+	address: uintptr,
 	descriptor: Texture_Descriptor,
 	location: runtime.Source_Code_Location,
 ) -> (

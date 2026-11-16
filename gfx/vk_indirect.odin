@@ -355,7 +355,6 @@ _vk_emit_execute_indirect :: proc(
 		return _vk_emit_execute_dispatch_indirect(metadata, command, icp_metadata, ic_metadata)
 	case .Draw, .Draw_Count:
 		return _vk_emit_execute_draw_indirect(metadata, command, icp_metadata, ic_metadata)
-
 	case .Draw_Indexed, .Draw_Indexed_Count:
 		return _vk_emit_execute_draw_indexed_indirect(metadata, command, icp_metadata, ic_metadata)
 	}

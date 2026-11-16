@@ -69,35 +69,35 @@ _Indirect_Command_Type :: enum {
 }
 _Dispatch_Indirect_Command_Metadata :: struct {
 	compute_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 }
 _Draw_Indirect_Command_Metadata :: struct {
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 	count:			int,
 }
 _Draw_Count_Indirect_Command_Metadata :: struct {
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
-	count:			rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
+	count:			uintptr,
 }
 _Draw_Indexed_Indirect_Command_Metadata :: struct {
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
+	indirect_parameters:	uintptr,
 	count:			int,
 	index_type:		Index_Type,
 }
 _Draw_Indexed_Count_Indirect_Command_Metadata :: struct {
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
-	indirect_parameters:	rawptr,
-	count:			rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
+	indirect_parameters:	uintptr,
+	count:			uintptr,
 	index_type:		Index_Type,
 }
 
@@ -203,8 +203,8 @@ encode_dispatch_indirect :: proc(
 	command_buffer:		Command_Buffer,
 	command_pool:		Indirect_Command_Pool,
 	compute_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 	lifetime :=		Indirect_Command_Lifetime.One_Shot,
 	location :=		#caller_location,
 ) -> (_indirect_command: Indirect_Command, res: Result) {
@@ -256,8 +256,8 @@ encode_draw_indirect :: proc(
 	command_buffer: 	Command_Buffer,
 	command_pool:		Indirect_Command_Pool,
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 	count :=		1,
 	lifetime :=		Indirect_Command_Lifetime.One_Shot,
 	location :=		#caller_location,
@@ -307,9 +307,9 @@ encode_draw_indirect_count :: proc(
 	command_buffer: 	Command_Buffer,
 	command_pool:		Indirect_Command_Pool,
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
-	count:			rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
+	count:			uintptr,
 	lifetime :=		Indirect_Command_Lifetime.One_Shot,
 	location :=		#caller_location,
 ) -> (_indirect_command: Indirect_Command, res: Result) {
@@ -362,9 +362,9 @@ encode_draw_indexed_indirect :: proc(
 	command_buffer:		Command_Buffer,
 	command_pool:		Indirect_Command_Pool,
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
+	indirect_parameters:	uintptr,
 	count :=		1,
 	index_type :=		Index_Type.U16,
 	lifetime :=		Indirect_Command_Lifetime.One_Shot,
@@ -425,10 +425,10 @@ encode_draw_indexed_indirect_count :: proc(
 	command_buffer:		Command_Buffer,
 	command_pool:		Indirect_Command_Pool,
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
-	indirect_parameters:	rawptr,
-	count:			rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
+	indirect_parameters:	uintptr,
+	count:			uintptr,
 	index_type :=		Index_Type.U16,
 	lifetime :=		Indirect_Command_Lifetime.One_Shot,
 	location :=		#caller_location,
@@ -603,8 +603,8 @@ _vl_encode_indirect_base :: proc(
 _vl_encode_dispatch_indirect :: proc(
 	cb_metadata:		^_Command_Buffer_Metadata,
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
 	when !ENABLE_VALIDATION do return nil
@@ -636,8 +636,8 @@ _vl_encode_dispatch_indirect :: proc(
 _vl_encode_draw_indirect_base :: proc(
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
 	pipeline:		Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
 
@@ -679,8 +679,8 @@ _vl_encode_draw_indirect :: proc(
 	cb_metadata:		^_Command_Buffer_Metadata,
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
 	pipeline:		Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
 	count:			int,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
@@ -716,9 +716,9 @@ _vl_encode_draw_indirect_count :: proc(
 	cb_metadata:		^_Command_Buffer_Metadata,
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
 	pipeline:		Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
-	count:			rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
+	count:			uintptr,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
 	when !ENABLE_VALIDATION do return nil
@@ -736,9 +736,9 @@ _vl_encode_draw_indirect_count :: proc(
 _vl_encode_draw_indexed_indirect_base :: proc(
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
 	pipeline:		Pipeline,
-	arguments:		rawptr,
-	indirect_parameters:	rawptr,
-	indices:		rawptr,
+	arguments:		uintptr,
+	indirect_parameters:	uintptr,
+	indices:		uintptr,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
 
@@ -784,9 +784,9 @@ _vl_encode_draw_indexed_indirect :: proc(
 	cb_metadata:		^_Command_Buffer_Metadata,
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
 	pipeline:		Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
-	indirect_parameters:	rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
+	indirect_parameters:	uintptr,
 	count:			int,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
@@ -830,10 +830,10 @@ _vl_encode_draw_indexed_indirect_count :: proc(
 	cb_metadata:		^_Command_Buffer_Metadata,
 	icp_metadata:		^_Indirect_Command_Pool_Metadata,
 	pipeline:		Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
-	indirect_parameters:	rawptr,
-	count:			rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
+	indirect_parameters:	uintptr,
+	count:			uintptr,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
 	when !ENABLE_VALIDATION do return nil

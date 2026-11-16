@@ -377,9 +377,9 @@ _m3_emit_encode_dispatch_indirect :: proc(
 
 	_m3_Encode_Dispatch_Indirect_Arguments :: struct #packed {
 		// GPU pointer to Dispatch_Indirect_Parameters
-		source:		rawptr,
+		source:		uintptr,
 		// GPU pointer to MTL.DispatchThreadgroupsIndirectArguments
-		destination:	rawptr,
+		destination:	uintptr,
 	}
 
 	destination := cast(uintptr)icp_metadata.m3.dispatch.buffer->gpuAddress() +
@@ -387,7 +387,7 @@ _m3_emit_encode_dispatch_indirect :: proc(
 
 	arguments := _m3_Encode_Dispatch_Indirect_Arguments{
 		source		= ic_metadata.dispatch.indirect_parameters,
-		destination	= cast(rawptr)destination,
+		destination	= destination,
 	}
 
 	_m3_enable_compute_encoder(metadata) or_return
@@ -469,21 +469,21 @@ _m3_emit_encode_draw_icbs :: proc(
 
 	_m3_Encode_Draw_ICBs_Arguments :: struct #packed {
 		// GPU pointer to the root icp buffer (`draw.buffer`)
-		pool:		rawptr,
+		pool:		uintptr,
 		// GPU pointer to MTL.IndirectCommandBufferExecutionRange
-		range:		rawptr,
+		range:		uintptr,
 		// GPU pointer to [count]Draw_Indirect_Parameters
-		parameters:	rawptr,
+		parameters:	uintptr,
 		// GPU pointer to the shader argument buffer
-		arguments:	rawptr,
+		arguments:	uintptr,
 		// GPU pointer to the resource-set root buffer
-		resource_set:	rawptr,
+		resource_set:	uintptr,
 		primitive:	MTL.PrimitiveType,
 	}
 
 	pipeline: Pipeline
-	parameters: rawptr
-	arguments_ptr: rawptr
+	parameters: uintptr
+	arguments_ptr: uintptr
 	#partial switch ic_metadata.type {
 	case .Draw:
 		pipeline = ic_metadata.draw.render_pipeline
@@ -504,12 +504,12 @@ _m3_emit_encode_draw_icbs :: proc(
 	_check_internal_emission_result(resource_set_res) or_return
 
 	arguments := _m3_Encode_Draw_ICBs_Arguments{
-		pool		= cast(rawptr)pool,
-		range		= cast(rawptr)range,
+		pool		= pool,
+		range		= range,
 		primitive	= _m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		parameters	= parameters,
 		arguments	= arguments_ptr,
-		resource_set	= cast(rawptr)cast(uintptr)resource_set_metadata.m3.root_buffer->gpuAddress(),
+		resource_set	= cast(uintptr)resource_set_metadata.m3.root_buffer->gpuAddress(),
 	}
 
 	_m3_enable_compute_encoder(metadata) or_return
@@ -540,36 +540,36 @@ _m3_emit_encode_draw_indexed_icbs :: proc(
 
 	_m3_Encode_Draw_ICBs_Arguments :: struct #packed {
 		// GPU pointer to the root icp buffer (`draw.buffer`)
-		pool:		rawptr,
+		pool:		uintptr,
 		// GPU pointer to MTL.IndirectCommandBufferExecutionRange
-		range:		rawptr,
+		range:		uintptr,
 		// GPU pointer to [count]Draw_Indexed_Indirect_Parameters
-		parameters:	rawptr,
+		parameters:	uintptr,
 		// GPU pointer to the shader argument buffer
-		arguments:	rawptr,
+		arguments:	uintptr,
 		// GPU pointer to the resource-set root buffer
-		resource_set:	rawptr,
-		indices:	rawptr,
+		resource_set:	uintptr,
+		indices:	uintptr,
 		primitive:	MTL.PrimitiveType,
 		index_type:	bool,
 	}
 
 	pipeline: Pipeline
-	parameters: rawptr
-	arguments_ptr: rawptr
-	indices: rawptr
+	parameters: uintptr
+	arguments_ptr: uintptr
+	indices: uintptr
 	index_type: Index_Type
 	#partial switch ic_metadata.type {
 	case .Draw_Indexed:
 		pipeline	= ic_metadata.draw_indexed.render_pipeline
 		parameters	= ic_metadata.draw_indexed.indirect_parameters
-		arguments_ptr = ic_metadata.draw_indexed.arguments
+		arguments_ptr	= ic_metadata.draw_indexed.arguments
 		indices		= ic_metadata.draw_indexed.indices
 		index_type	= ic_metadata.draw_indexed.index_type
 	case .Draw_Indexed_Count:
 		pipeline	= ic_metadata.draw_indexed_count.render_pipeline
 		parameters	= ic_metadata.draw_indexed_count.indirect_parameters
-		arguments_ptr = ic_metadata.draw_indexed_count.arguments
+		arguments_ptr	= ic_metadata.draw_indexed_count.arguments
 		indices		= ic_metadata.draw_indexed_count.indices
 		index_type	= ic_metadata.draw_indexed.index_type
 	}
@@ -583,11 +583,11 @@ _m3_emit_encode_draw_indexed_icbs :: proc(
 	_check_internal_emission_result(resource_set_res) or_return
 
 	arguments := _m3_Encode_Draw_ICBs_Arguments{
-		pool		= cast(rawptr)pool,
-		range		= cast(rawptr)range,
+		pool		= pool,
+		range		= range,
 		parameters	= parameters,
 		arguments	= arguments_ptr,
-		resource_set	= cast(rawptr)cast(uintptr)resource_set_metadata.m3.root_buffer->gpuAddress(),
+		resource_set	= cast(uintptr)resource_set_metadata.m3.root_buffer->gpuAddress(),
 		indices		= indices,
 		primitive	= _m3_TOPOLOGY_TO_MTL[pipeline_metadata.render.topology],
 		index_type	= index_type == .U32,

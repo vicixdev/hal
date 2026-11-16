@@ -84,12 +84,16 @@ Inputs:
 - size: The size of the allocation.
 
 Returns:
-- If `type` != .Private, a dereferenceable pointer containing the Cpu Virtual Mapped Address (CVMA) of the allocated
-buffer.
-- If `type` == .Private, a non-dereferenceable pointer containing the Gpu Virtual Address (GVA) of the allocated
-buffer.
+// - If `type` != .Private, a dereferenceable pointer containing the Cpu Mapped Virtual Address (CMVA) of the allocated
+// buffer.
+// - If `type` == .Private, a non-dereferenceable pointer containing the Gpu Virtual Address (GVA) of the allocated
+// buffer.
 */
-alloc :: proc(type: Memory, size: int, location := #caller_location) -> (address: rawptr, res: Result) {
+alloc :: proc(
+	type:		Memory,
+	size:		int,
+	location :=	#caller_location,
+) -> (cpu_address: rawptr, gpu_address: uintptr, res: Result) {
 
 	_vl_alloc(type, size, location) or_return
 
@@ -128,16 +132,21 @@ alloc :: proc(type: Memory, size: int, location := #caller_location) -> (address
 	_register_address_ranges(metadata) or_return
 
 	if metadata.memory_type == .Private {
-		return cast(rawptr)metadata.gpu_address, nil
+		return nil, metadata.gpu_address, nil
 	} else {
-		return cast(rawptr)metadata.cpu_address, nil
+		return cast(rawptr)metadata.cpu_address, metadata.gpu_address, nil
 	}
 }
 
 /*
 Releases a gpu allocation.
 */
-dealloc :: proc(address: rawptr, location := #caller_location) {
+dealloc :: proc{
+	dealloc_uintptr,
+	dealloc_rawptr,
+}
+
+dealloc_uintptr :: proc(address: uintptr, location := #caller_location) {
 
 	address_info, address_res := _address_info_of(address)
 	_check_address_info(address_res, address, location)
@@ -157,22 +166,26 @@ dealloc :: proc(address: rawptr, location := #caller_location) {
 	_remove_buffer_metadata(address_info.buffer, metadata)
 }
 
+dealloc_rawptr :: proc(address: rawptr, location := #caller_location) {
+	dealloc_uintptr(cast(uintptr)address)
+}
+
 /*
 Returns the Gpu Virtual Address (GVA) of a given Cpu Mapped Virtual Address (CMVA).
 */
-gpu_address_of :: proc(address: rawptr, location := #caller_location) -> (gpu_address: rawptr, res: Result) {
+gpu_address_of :: proc(address: rawptr, location := #caller_location) -> (gpu_address: uintptr, res: Result) {
 	address_info, address_res := _address_info_of(address)
 	_check_address_info(address_res, address, location) or_return
 
 	_vl_gpu_address_of(location) or_return
 
 	if !address_info.is_cpu_address {
-		return cast(rawptr)address_info.address, nil
+		return address_info.address, nil
 	} else {
 		metadata, metadata_res := _metadata_of(address_info.buffer)
 		assert(metadata_res == nil)
 
-		return cast(rawptr)(metadata.gpu_address + address_info.offset), nil
+		return metadata.gpu_address + address_info.offset, nil
 	}
 }
 
@@ -213,7 +226,12 @@ _dealloc_from_handle :: proc(buffer: _Buffer, location := #caller_location) {
 	_remove_buffer_metadata(buffer, metadata)
 }
 
-_check_address_info :: proc(result: Result, address: rawptr, location: runtime.Source_Code_Location) -> Result {
+_check_address_info :: proc{
+	_check_address_info_rawptr,
+	_check_address_info_uintptr,
+}
+
+_check_address_info_uintptr :: proc(result: Result, address: uintptr, location: runtime.Source_Code_Location) -> Result {
 	_check_result(
 		result,
 		.Warning,
@@ -223,6 +241,10 @@ _check_address_info :: proc(result: Result, address: rawptr, location: runtime.S
 		location=location,
 	) or_return
 	return nil
+}
+
+_check_address_info_rawptr :: proc(result: Result, address: rawptr, location: runtime.Source_Code_Location) -> Result {
+	return _check_address_info_uintptr(result, cast(uintptr)address, location)
 }
 
 _check_gpu_address :: proc(
@@ -341,11 +363,16 @@ _register_address_range :: proc(base_ptr: uintptr, length: int, buffer: _Buffer,
 	return nil
 }
 
-_address_info_of :: proc(address: rawptr) -> (info: _Address_Info, res: Result) {
+_address_info_of :: proc{
+	_address_info_of_uintptr,
+	_address_info_of_rawptr,
+}
+
+_address_info_of_uintptr :: proc(address: uintptr) -> (info: _Address_Info, res: Result) {
 	
 	address_range := _Address_Range {
-		start	= cast(uintptr)address,
-		end	= cast(uintptr)address,
+		start	= address,
+		end	= address,
 	}
 	needle := _Address_Map_Node {
 		address = address_range,
@@ -358,7 +385,7 @@ _address_info_of :: proc(address: rawptr) -> (info: _Address_Info, res: Result) 
 			return {}, .Invalid_Buffer
 		}
 
-		info.address		= cast(uintptr)address
+		info.address		= address
 		info.buffer		= node.value.buffer
 		info.base		= node.value.address.start
 		info.offset		= info.address - info.base
@@ -367,6 +394,10 @@ _address_info_of :: proc(address: rawptr) -> (info: _Address_Info, res: Result) 
 	}
 
 	return
+}
+
+_address_info_of_rawptr :: proc(address: rawptr) -> (info: _Address_Info, res: Result) {
+	return _address_info_of_uintptr(cast(uintptr)address)
 }
 
 _is_aligned :: proc(p: uintptr, #any_int align: int) -> bool {
@@ -424,7 +455,7 @@ _vl_alloc :: proc(
 	return nil
 }
 
-_vl_dealloc :: proc(address: rawptr, address_info: _Address_Info, location: runtime.Source_Code_Location) -> Result {
+_vl_dealloc :: proc(address: uintptr, address_info: _Address_Info, location: runtime.Source_Code_Location) -> Result {
 	when !ENABLE_VALIDATION do return nil
 
 	_check_device_selected(location) or_return

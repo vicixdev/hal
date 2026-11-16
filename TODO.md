@@ -3,6 +3,11 @@
   - [X] Support MultiDrawIndirect (using ICB under metal)
   - [X] Metal
   - [X] Vulkan
+  - [ ] Remove the metal GPU allocation strategy: make it similar to how vulkan works (command_count slot of max_call_count_per_command).
+- [ ] Do not accept CVMA in place of GVA
+  - [ ] Make alloc, arena_alloc, scratch_alloc return both the GVA and the CMVA
+  - [ ] Make all GVA arguments uintptr
+  - [ ] Validate addresses
 - [ ] Improve validation
 - [ ] Specialize the Vertex and Fragment stages (Draw_Indirect, ...)
 - [ ] Move ALL validation code to `_vl_*` procedures

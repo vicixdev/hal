@@ -37,9 +37,10 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 64 * mem.Kilobyte) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
-		gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
-		output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
+		upload, gpu_upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
+		gpu, gpu_gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
 
 		for i in 0..<ELEMENT_COUNT {
 			upload[i] = cast(i64)i
@@ -50,9 +51,9 @@ memory_transfers_with_barriers :: proc(t: ^testing.T) {
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
-		gfx.mem_copy(command_buffer, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer, gpu_gpu, gpu_upload, 1024 * size_of(i64)) or_return
 		gfx.barrier(command_buffer, { .Transfer }, { .Transfer }) or_return
-		gfx.mem_copy(command_buffer, raw_data(output), raw_data(gpu), 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer, gpu_output, gpu_gpu, 1024 * size_of(i64)) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal	= {
@@ -97,9 +98,10 @@ memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 64 * mem.Kilobyte) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
-		gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
-		output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
+		upload, gpu_upload := gfx.arena_alloc(&staging_memory, []i64, ELEMENT_COUNT) or_return
+		gpu, gpu_gpu := gfx.arena_alloc(&private_memory, []i64, ELEMENT_COUNT) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []i64, ELEMENT_COUNT) or_return
 
 		for i in 0..<ELEMENT_COUNT {
 			upload[i] = cast(i64)i
@@ -112,7 +114,7 @@ memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 		defer gfx.destroy_semaphore(cpu_sema)
 
 		command_buffer_1 := gfx.begin_command_encoding(.Default) or_return
-		gfx.mem_copy(command_buffer_1, raw_data(gpu), raw_data(upload), 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer_1, gpu_gpu, gpu_upload, 1024 * size_of(i64)) or_return
 		gfx.synchronize(command_buffer_1, {
 			signal	= {
 				{ sema, 0, {} },
@@ -121,7 +123,7 @@ memory_transfers_with_multiple_command_buffers :: proc(t: ^testing.T) {
 		gfx.submit(.Default, command_buffer_1)
 
 		command_buffer_2 := gfx.begin_command_encoding(.Default) or_return
-		gfx.mem_copy(command_buffer_2, raw_data(output), raw_data(gpu), 1024 * size_of(i64)) or_return
+		gfx.mem_copy(command_buffer_2, gpu_output, gpu_gpu, 1024 * size_of(i64)) or_return
 		gfx.synchronize(command_buffer_2, {
 			wait	= {
 				{ sema, 0, {} },
@@ -171,20 +173,21 @@ texture_upload_download :: proc(t: ^testing.T) {
 			usage		= {},
 		}
 		texture_size, texture_align := gfx.size_align_of(texture_desc) or_return
-		texture_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+		_, texture_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
 
 		texture := gfx.create_texture(texture_buffer, texture_desc) or_return
 		defer gfx.destroy_texture(texture)
 
-		upload_buffer := gfx.arena_alloc(&staging_memory, []Pixel, len(REFERENCE)) or_return
+		upload_buffer, gpu_upload_buffer := gfx.arena_alloc(&staging_memory, []Pixel, len(REFERENCE)) or_return
 		copy(upload_buffer, REFERENCE[:])
 
-		output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
 
 		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
-		gfx.copy_buffer_to_texture(command_buffer, raw_data(upload_buffer), texture, gfx.Texture_Region {
+		gfx.copy_buffer_to_texture(command_buffer, gpu_upload_buffer, texture, gfx.Texture_Region {
 			layer_count	= 1,
 			size		= { 2, 2, 1 },
 		}) or_return
@@ -192,7 +195,7 @@ texture_upload_download :: proc(t: ^testing.T) {
 		gfx.copy_texture_to_buffer(command_buffer, texture, gfx.Texture_Region {
 			layer_count	= 1,
 			size		= { 2, 2, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -240,23 +243,24 @@ memory_transfers_with_textures :: proc(t: ^testing.T) {
 		}
 		texture_size, texture_align := gfx.size_align_of(texture_desc) or_return
 
-		texture_1_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+		_, texture_1_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
 		texture_1 := gfx.create_texture(texture_1_buffer, texture_desc) or_return
 		defer gfx.destroy_texture(texture_1)
 
-		texture_2_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+		_, texture_2_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
 		texture_2 := gfx.create_texture(texture_2_buffer, texture_desc) or_return
 		defer gfx.destroy_texture(texture_2)
 
-		upload_buffer := gfx.arena_alloc(&staging_memory, []Pixel, len(REFERENCE)) or_return
+		upload_buffer, gpu_upload_buffer := gfx.arena_alloc(&staging_memory, []Pixel, len(REFERENCE)) or_return
 		copy(upload_buffer, REFERENCE[:])
 
-		output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
 
 		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
-		gfx.copy_buffer_to_texture(command_buffer, raw_data(upload_buffer), texture_1, gfx.Texture_Region {
+		gfx.copy_buffer_to_texture(command_buffer, gpu_upload_buffer, texture_1, gfx.Texture_Region {
 			layer_count	= 1,
 			size		= { 2, 2, 1 },
 		}) or_return
@@ -278,7 +282,7 @@ memory_transfers_with_textures :: proc(t: ^testing.T) {
 		gfx.copy_texture_to_buffer(command_buffer, texture_2, gfx.Texture_Region {
 			layer_count	= 1,
 			size		= { 2, 2, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -349,11 +353,11 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 			usage		= { .Storage },
 		}
 		texture_size, texture_align := gfx.size_align_of(texture_desc) or_return
-		texture_1_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+		_, texture_1_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
 		texture_1 := gfx.create_texture(texture_1_buffer, texture_desc) or_return
 		defer gfx.destroy_texture(texture_1)
 
-		texture_2_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
+		_, texture_2_buffer := gfx.arena_alloc(&private_memory, texture_size, texture_align) or_return
 		texture_2 := gfx.create_texture(texture_2_buffer, texture_desc) or_return
 		defer gfx.destroy_texture(texture_2)
 
@@ -365,23 +369,24 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 			{ texture_1_view, texture_2_view },
 		)
 
-		upload := gfx.arena_alloc(&staging_memory, []Pixel, len(REFERENCE)) or_return
+		upload, gpu_upload := gfx.arena_alloc(&staging_memory, []Pixel, len(REFERENCE)) or_return
 		copy(upload, REFERENCE[:])
 
-		output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, len(REFERENCE)) or_return
 
 		semaphore := gfx.create_semaphore(.Cpu) or_return
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
-		gfx.copy_buffer_to_texture(command_buffer, raw_data(upload), texture_1, gfx.Texture_Region {
+		gfx.copy_buffer_to_texture(command_buffer, gpu_upload, texture_1, gfx.Texture_Region {
 			layer_count	= 1,
 			size		= { 2, 2, 1 },
 		})
 		gfx.barrier(command_buffer, { .Transfer }, { .Compute })
 		gfx.use_resources(command_buffer, resource_set)
 
-		arguments, _ := gfx.arena_alloc(&staging_memory, Texture_Copy_Arguments)
+		arguments, gpu_arguments := gfx.arena_alloc(&staging_memory, Texture_Copy_Arguments) or_return
 		arguments^ = Texture_Copy_Arguments {
 			size		= { 2, 2 },
 			texture_in	= 0,
@@ -390,7 +395,7 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 		gfx.dispatch(
 			command_buffer,
 			pipeline,
-			arguments,
+			gpu_arguments,
 			{ 1, 1, 1 },
 		)
 
@@ -398,7 +403,7 @@ copy_texture_with_compute :: proc(t: ^testing.T) {
 		gfx.copy_texture_to_buffer(command_buffer, texture_2, gfx.Texture_Region {
 			layer_count	= 1,
 			size		= { 2, 2, 1 },
-		}, raw_data(output))
+		}, gpu_output)
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -444,7 +449,8 @@ clear_render_pass :: proc(t: ^testing.T) {
 
 		semaphore := gfx.create_semaphore(.Cpu) or_return
 
-		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
 		framebuffer_descriptor := gfx.Texture_Descriptor {
 			type		= .D2_Array,
@@ -453,7 +459,7 @@ clear_render_pass :: proc(t: ^testing.T) {
 			dimensions	= { **FRAMEBUFFER_SIZE, 1 },
 		}
 		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
-		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+		_, framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
 
 		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
 		framebuffer_view := gfx.default_view_of(framebuffer) or_return
@@ -476,7 +482,7 @@ clear_render_pass :: proc(t: ^testing.T) {
 		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
 			layer_count = 1,
 			size = { **FRAMEBUFFER_SIZE, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -526,9 +532,9 @@ generic_compute_test :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct {
-			in_a:	rawptr,
-			in_b:	rawptr,
-			out:	rawptr,
+			in_a:	uintptr,
+			in_b:	uintptr,
+			out:	uintptr,
 		}
 
 		half: f32 = 0.5
@@ -549,27 +555,24 @@ generic_compute_test :: proc(t: ^testing.T) {
 		gfx.create_arena(&default_memory, .Default, 64 * mem.Kilobyte * 3) or_return
 		defer gfx.destroy_arena(default_memory)
 
-		in_a := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
-		in_b := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
-		output = gfx.arena_alloc(results_memory, []f32, ARRAY_LENGTH) or_return
+		in_a, gpu_a := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
+		in_b, gpu_b := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
+		gpu_out: uintptr
+		output, gpu_out = gfx.arena_alloc(results_memory, []f32, ARRAY_LENGTH) or_return
 
 		for i := 0; i < ARRAY_LENGTH; i += 1 {
 			in_a[i] = cast(f32)i
 			in_b[i] = cast(f32)i * 4
 		}
 
-		gpu_a := gfx.gpu_address_of(raw_data(in_a)) or_return
-		gpu_b := gfx.gpu_address_of(raw_data(in_b)) or_return
-		gpu_out := gfx.gpu_address_of(raw_data(output)) or_return
-
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
-		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
 		arguments^ = Parameters {
 			in_a	= gpu_a,
 			in_b	= gpu_b,
 			out	= gpu_out,
 		}
-		gfx.dispatch(command_buffer, add_pipeline, arguments, { ARRAY_LENGTH / 128, 1, 1 }) or_return
+		gfx.dispatch(command_buffer, add_pipeline, gpu_arguments, { ARRAY_LENGTH / 128, 1, 1 }) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -619,9 +622,9 @@ indirect_compute_test :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct {
-			in_a:	rawptr,
-			in_b:	rawptr,
-			out:	rawptr,
+			in_a:	uintptr,
+			in_b:	uintptr,
+			out:	uintptr,
 		}
 
 		half: f32 = 0.5
@@ -642,18 +645,15 @@ indirect_compute_test :: proc(t: ^testing.T) {
 		gfx.create_arena(&default_memory, .Default, 64 * mem.Kilobyte * 3) or_return
 		defer gfx.destroy_arena(default_memory)
 
-		in_a := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
-		in_b := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
-		output = gfx.arena_alloc(results_memory, []f32, ARRAY_LENGTH) or_return
+		in_a, gpu_a := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
+		in_b, gpu_b := gfx.arena_alloc(&default_memory, []f32, ARRAY_LENGTH) or_return
+		gpu_out: uintptr
+		output, gpu_out = gfx.arena_alloc(results_memory, []f32, ARRAY_LENGTH) or_return
 
 		for i := 0; i < ARRAY_LENGTH; i += 1 {
 			in_a[i] = cast(f32)i
 			in_b[i] = cast(f32)i * 4
 		}
-
-		gpu_a := gfx.gpu_address_of(raw_data(in_a)) or_return
-		gpu_b := gfx.gpu_address_of(raw_data(in_b)) or_return
-		gpu_out := gfx.gpu_address_of(raw_data(output)) or_return
 
 		command_pool := gfx.create_indirect_command_pool(gfx.Indirect_Command_Pool_Descriptor{
 			type		= .Dispatch,
@@ -662,14 +662,14 @@ indirect_compute_test :: proc(t: ^testing.T) {
 		}) or_return
 		defer gfx.destroy_indirect_command_pool(command_pool)
 
-		indirect_dispatch_params := gfx.arena_alloc(&default_memory, gfx.Dispatch_Indirect_Parameters) or_return
+		indirect_dispatch_params, gpu_indirect_dispatch_params := gfx.arena_alloc(&default_memory, gfx.Dispatch_Indirect_Parameters) or_return
 		indirect_dispatch_params^ = {
 			{ ARRAY_LENGTH / 128, 1, 1 },
 		}
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
-		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
 		arguments^ = Parameters {
 			in_a	= gpu_a,
 			in_b	= gpu_b,
@@ -733,7 +733,7 @@ draw_triangle :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct #packed {
-			vertices:	rawptr,
+			vertices:	uintptr,
 		}
 
 		default_memory: gfx.Arena
@@ -744,11 +744,11 @@ draw_triangle :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
 		copy(vertices, VERTICES[:])
-		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
 		pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
 			vertex_stage	= {
@@ -774,7 +774,7 @@ draw_triangle :: proc(t: ^testing.T) {
 			usage		= { .Color_Attachment },
 		}
 		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
-		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+		_, framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
 
 		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
 		defer gfx.destroy_texture(framebuffer)
@@ -795,18 +795,18 @@ draw_triangle :: proc(t: ^testing.T) {
 		}
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor) or_return
-			arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
-			arguments^ = Parameters {
+			arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+			arguments^ = Parameters{
 				vertices = gpu_vertices,
 			}
-			gfx.draw(command_buffer, pipeline, arguments, 3) or_return
+			gfx.draw(command_buffer, pipeline, gpu_arguments, 3) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer }) or_return
 		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
 			layer_count = 1,
 			size = { **FRAMEBUFFER_SIZE, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -852,7 +852,7 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct #packed {
-			vertices:	rawptr,
+			vertices:	uintptr,
 		}
 
 		default_memory: gfx.Arena
@@ -863,16 +863,16 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
 		copy(vertices, VERTICES[:])
-		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
 		command_pool := gfx.create_indirect_command_pool({
 			type		= .Draw,
 			command_count	= 1,
-			max_call_count_per_command	= 1,
+			max_call_count_per_command = 1,
 		}) or_return
 		defer gfx.destroy_indirect_command_pool(command_pool)
 
@@ -900,7 +900,7 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 			usage		= { .Color_Attachment },
 		}
 		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
-		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+		_, framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
 
 		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
 		defer gfx.destroy_texture(framebuffer)
@@ -921,13 +921,13 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 		}
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
-		indirect_dispatch_params := gfx.arena_alloc(&default_memory, gfx.Draw_Indirect_Parameters) or_return
+		indirect_dispatch_params, gpu_indirect_dispatch_params := gfx.arena_alloc(&default_memory, gfx.Draw_Indirect_Parameters) or_return
 		indirect_dispatch_params^ = {
 			3,
 			1,
 			0,
 		}
-		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
 		arguments^ = Parameters {
 			vertices = gpu_vertices,
 		}
@@ -948,7 +948,7 @@ draw_triangle_indirect :: proc(t: ^testing.T) {
 		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
 			layer_count = 1,
 			size = { **FRAMEBUFFER_SIZE, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -1000,7 +1000,7 @@ draw_quad :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct #packed {
-			vertices:	rawptr,
+			vertices:	uintptr,
 		}
 
 		default_memory: gfx.Arena
@@ -1011,14 +1011,14 @@ draw_quad :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
 		copy(vertices, VERTICES[:])
-		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-		indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+		indices, gpu_indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
 		copy(indices, INDICES[:])
 
-		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
 		pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
 			vertex_stage	= {
@@ -1044,7 +1044,7 @@ draw_quad :: proc(t: ^testing.T) {
 			usage		= { .Color_Attachment },
 		}
 		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
-		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+		_, framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
 
 		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
 		defer gfx.destroy_texture(framebuffer)
@@ -1065,18 +1065,18 @@ draw_quad :: proc(t: ^testing.T) {
 		}
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 		gfx.begin_render_pass(command_buffer, render_pass_descriptor) or_return
-			arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+			arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
 			arguments^ = Parameters {
 				vertices = gpu_vertices,
 			}
-			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6) or_return
+			gfx.draw_indexed(command_buffer, pipeline, gpu_arguments, gpu_indices, 6) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer }) or_return
 		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
 			layer_count = 1,
 			size = { **FRAMEBUFFER_SIZE, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -1095,7 +1095,6 @@ draw_quad :: proc(t: ^testing.T) {
 	check_result(t, res)
 	test_against_reference_image(t, REFERENCE_PATH, output)
 }
-
 
 @(test)
 draw_quad_indirect :: proc(t: ^testing.T) {
@@ -1129,7 +1128,7 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 		}
 
 		Parameters :: struct #packed {
-			vertices:	rawptr,
+			vertices:	uintptr,
 		}
 
 		default_memory: gfx.Arena
@@ -1147,14 +1146,14 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 		}) or_return
 		defer gfx.destroy_indirect_command_pool(command_pool)
 
-		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
 		copy(vertices, VERTICES[:])
-		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-		indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+		indices, gpu_indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
 		copy(indices, INDICES[:])
 
-		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
 		pipeline_descriptor := gfx.Render_Pipeline_Descriptor {
 			vertex_stage	= {
@@ -1180,7 +1179,7 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 			usage		= { .Color_Attachment },
 		}
 		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
-		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+		_, framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
 
 		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
 		defer gfx.destroy_texture(framebuffer)
@@ -1202,12 +1201,12 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 
 		command_buffer := gfx.begin_command_encoding(.Default) or_return
 
-		parameters := gfx.arena_alloc(&default_memory, gfx.Draw_Indexed_Indirect_Parameters) or_return
+		parameters, gpu_parameters := gfx.arena_alloc(&default_memory, gfx.Draw_Indexed_Indirect_Parameters) or_return
 		parameters^ = {
 			index_count	= 6,
 			instance_count	= 1,
 		}
-		arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+		arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
 		arguments^ = Parameters {
 			vertices = gpu_vertices,
 		}
@@ -1229,7 +1228,7 @@ draw_quad_indirect :: proc(t: ^testing.T) {
 		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
 			layer_count = 1,
 			size = { **FRAMEBUFFER_SIZE, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {
@@ -1283,7 +1282,7 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 
 		Parameters :: struct #packed {
 			transform:	matrix[4,4]f32,
-			vertices:	rawptr,
+			vertices:	uintptr,
 		}
 
 		default_memory: gfx.Arena
@@ -1294,14 +1293,14 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 		gfx.create_arena(&private_memory, .Private, 16 * mem.Megabyte) or_return
 		defer gfx.destroy_arena(private_memory)
 
-		vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
+		vertices, gpu_vertices := gfx.arena_alloc(&default_memory, []Vertex, len(VERTICES)) or_return
 		copy(vertices, VERTICES[:])
-		gpu_vertices := gfx.gpu_address_of(raw_data(vertices)) or_return
 
-		indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
+		indices, gpu_indices := gfx.arena_alloc(&default_memory, []u16, len(INDICES)) or_return
 		copy(indices, INDICES[:])
 
-		output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
+		gpu_output: uintptr
+		output, gpu_output = gfx.arena_alloc(results_memory, []Pixel, FRAMEBUFFER_SIZE.x * FRAMEBUFFER_SIZE.y) or_return
 
 		depth_stencil := gfx.create_depth_stencil_state(gfx.Depth_Stencil_Descriptor {
 			depth_enable	= true,
@@ -1334,7 +1333,7 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 			usage		= { .Color_Attachment },
 		}
 		framebuffer_size, framebuffer_align := gfx.size_align_of(framebuffer_descriptor) or_return
-		framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
+		_, framebuffer_memory := gfx.arena_alloc(&private_memory, framebuffer_size, framebuffer_align) or_return
 
 		framebuffer := gfx.create_texture(framebuffer_memory, framebuffer_descriptor) or_return
 		defer gfx.destroy_texture(framebuffer)
@@ -1347,7 +1346,7 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 			usage		= { .Depth_Stencil_Attachment },
 		}
 		depthbuffer_size, depthbuffer_align := gfx.size_align_of(depthbuffer_descriptor) or_return
-		depthbuffer_memory := gfx.arena_alloc(&private_memory, depthbuffer_size, depthbuffer_align) or_return
+		_, depthbuffer_memory := gfx.arena_alloc(&private_memory, depthbuffer_size, depthbuffer_align) or_return
 
 		depthbuffer := gfx.create_texture(depthbuffer_memory, depthbuffer_descriptor) or_return
 		defer gfx.destroy_texture(depthbuffer)
@@ -1377,27 +1376,27 @@ depth_buffer_and_depth_state :: proc(t: ^testing.T) {
 			gfx.use_depth_stencil_state(command_buffer, depth_stencil) or_return
 
 			// FRONT - z: 0.5
-			arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
-			arguments^ = Parameters {
+			arguments, gpu_arguments := gfx.arena_alloc(&default_memory, Parameters) or_return
+			arguments^ = Parameters{
 				transform	= 1,
 				vertices	= gpu_vertices,
 			}
-			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6) or_return
+			gfx.draw_indexed(command_buffer, pipeline, gpu_arguments, gpu_indices, 6) or_return
 
 			// BACK - z: 0.75
-			arguments = gfx.arena_alloc(&default_memory, Parameters) or_return
-			arguments^ = Parameters {
+			arguments, gpu_arguments = gfx.arena_alloc(&default_memory, Parameters) or_return
+			arguments^ = Parameters{
 				transform	= la.matrix4_translate_f32({ -0.25, -0.25, 0.25 }),
 				vertices	= gpu_vertices,
 			}
-			gfx.draw_indexed(command_buffer, pipeline, arguments, raw_data(indices), 6) or_return
+			gfx.draw_indexed(command_buffer, pipeline, gpu_arguments, gpu_indices, 6) or_return
 		gfx.end_render_pass(command_buffer) or_return
 
 		gfx.barrier(command_buffer, { .Color_Attachment }, { .Transfer }) or_return
 		gfx.copy_texture_to_buffer(command_buffer, framebuffer, gfx.Texture_Region {
 			layer_count = 1,
 			size = { **FRAMEBUFFER_SIZE, 1 },
-		}, raw_data(output)) or_return
+		}, gpu_output) or_return
 
 		gfx.synchronize(command_buffer, {
 			signal = {

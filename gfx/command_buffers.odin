@@ -366,8 +366,8 @@ use_blend_constant :: proc(
 
 mem_copy :: proc(
 	command_buffer:	Command_Buffer,
-	destination:	rawptr,
-	source:		rawptr,
+	destination:	uintptr,
+	source:		uintptr,
 	size:		int,
 	location :=	#caller_location,
 ) -> (res: Result) {
@@ -517,7 +517,7 @@ copy_texture_to_texture :: proc(
 
 copy_buffer_to_texture :: proc(
 	command_buffer:	Command_Buffer,
-	source:		rawptr,
+	source:		uintptr,
 	texture:	Texture,
 	region:		Texture_Region,
 	location :=	#caller_location,
@@ -579,7 +579,7 @@ copy_texture_to_buffer :: proc(
 	command_buffer:	Command_Buffer,
 	texture:	Texture,
 	region:		Texture_Region,
-	destination:	rawptr,
+	destination:	uintptr,
 	location :=	#caller_location,
 ) -> Result {
 	metadata, metadata_res := _metadata_of(command_buffer)
@@ -656,7 +656,7 @@ generate_mipmaps_for :: proc(command_buffer: Command_Buffer, texture: Texture, l
 dispatch :: proc(
 	command_buffer:		Command_Buffer,
 	compute_pipeline:	Pipeline,
-	arguments:		rawptr,
+	arguments:		uintptr,
 	group_count:		[3]int,
 	location :=		#caller_location,
 ) -> (res: Result) {
@@ -1192,7 +1192,7 @@ use_scissor :: proc(command_buffer: Command_Buffer, scissor: Scissor, location :
 draw :: proc(
 	command_buffer:		Command_Buffer,
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
+	arguments:		uintptr,
 	vertex_count:		int,
 	instance_count :=	1,
 	base_vertex :=		0,
@@ -1234,8 +1234,8 @@ draw :: proc(
 draw_indexed :: proc(
 	command_buffer:		Command_Buffer,
 	render_pipeline:	Pipeline,
-	arguments:		rawptr,
-	indices:		rawptr,
+	arguments:		uintptr,
+	indices:		uintptr,
 	index_count:		int,
 	instance_count :=	1,
 	base_index :=		0,
