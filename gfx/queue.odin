@@ -8,6 +8,7 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
+import "base:runtime"
 import "core:sync"
 import "core:mem"
 
@@ -31,7 +32,7 @@ _Queue_Metadata :: struct {
 _queues: [Queue]_Queue_Metadata
 
 wait_idle :: proc(queue: Queue, location := #caller_location) -> (res: Result) {
-	_check_queue_validity(queue, location) or_return
+	_vl_wait_idle(queue, location) or_return
 
 	queue_metadata := _queue_metadata_of(queue) or_return
 
@@ -93,6 +94,15 @@ _destroy_queue :: proc(queue: Queue) {
 	} else when TARGET_API == .Metal_3 {
 		_m3_destroy_queue(metadata)
 	}
+}
+
+_vl_wait_idle :: proc(queue: Queue, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+	_check_queue_validity(queue, location) or_return
+
+	return nil
 }
 
 _queue_metadata_of :: proc(queue: Queue) -> (^_Queue_Metadata, Result) {

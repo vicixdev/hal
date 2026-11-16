@@ -64,7 +64,7 @@ _default_depth_stencil_state:	Depth_Stencil_State
 enumerate_devices :: proc(
 	location := #caller_location,
 ) -> (available_devices: []Device_Info, res: Result) {
-	_check_initialized(location) or_return
+	_vl_enumerate_devices(location) or_return
 
 	if _available_devices != nil {
 		return _available_devices, nil
@@ -82,20 +82,10 @@ enumerate_devices :: proc(
 }
 
 select_device :: proc(device: Device_Id, location := #caller_location) -> (res: Result) {
-	_check_initialized(location) or_return
-
+	// NOTE: Ensure that the device info list gets populated.
 	enumerate_devices(location) or_return
 
-	_check_condition(
-		cast(uint)device < len(_available_devices),
-		.Invalid_Device,
-		.Error,
-		"Invalid device id",
-		"The user is requesting device %d, while only %d are available",
-		device,
-		len(_available_devices),
-		location=location,
-	) or_return
+	_vl_select_device(device, location) or_return
 
 	_device_is_being_initialized = true
 	defer _device_is_being_initialized = false
@@ -109,10 +99,10 @@ select_device :: proc(device: Device_Id, location := #caller_location) -> (res: 
 		_check_generic_backend_error(res, location) or_return
 	}
 
-	_init_indirect() or_return
-
 	_device_info = &_available_devices[device]
+
 	ensure(_init_queues() == nil, "If the device got selected, then the queue setup should not fail.")
+	ensure(_init_indirect() == nil, "If the device got selected, then the indirect setup should not fail.")
 
 	default_resource_set_res: Result
 	_default_resource_set, default_resource_set_res = create_resource_set()
@@ -159,3 +149,31 @@ _check_device_selected :: proc(location: runtime.Source_Code_Location) -> Result
 	) or_return
 	return nil
 }
+
+_vl_enumerate_devices :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_initialized(location) or_return
+
+	return nil
+}
+
+_vl_select_device :: proc(device: Device_Id, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_initialized(location) or_return
+
+	_check_condition(
+		cast(uint)device < len(_available_devices),
+		.Invalid_Device,
+		.Error,
+		"Invalid device id",
+		"The user is requesting device %d, while only %d are available",
+		device,
+		len(_available_devices),
+		location=location,
+	) or_return
+
+	return nil
+}
+

@@ -39,8 +39,7 @@ _resource_sets:		hm.Dynamic_Handle_Map(_Resource_Set_Metadata, Resource_Set)
 _resource_sets_mutex:	sync.RW_Mutex
 
 create_resource_set :: proc(location := #caller_location) -> (set: Resource_Set, res: Result) {
-	
-	_check_device_selected(location) or_return
+	_vl_create_resource_set(location) or_return
 
 	handle, metadata := _add_resource_set_metadata() or_return
 
@@ -56,6 +55,8 @@ create_resource_set :: proc(location := #caller_location) -> (set: Resource_Set,
 }
 
 destroy_resource_set :: proc(resource_set: Resource_Set, location := #caller_location) {
+	if _vl_destroy_resource_set(location) != nil do return
+
 	metadata, metadata_res := _metadata_of(resource_set)
 	_check_resource_set_handle(metadata_res, resource_set, location)
 	if metadata_res != nil do return
@@ -86,6 +87,98 @@ set_texture_set :: proc(
 
 	metadata, metadata_res := _metadata_of(resource_set)
 	_check_resource_set_handle(metadata_res, resource_set, location) or_return
+
+	_vl_set_texture_set(metadata, type, textures, location) or_return
+
+	delete(metadata.texture_sets[type], _generic_allocator)
+	metadata.texture_sets[type] = slice.clone(textures, _generic_allocator)
+
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = _vk_set_texture_set(metadata, type)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_set_texture_set(metadata, type)
+	}
+
+	_check_generic_backend_error(res, location) or_return
+
+	return nil
+}
+
+set_storage_texture_set :: proc(
+	resource_set: Resource_Set,
+	type: Storage_View_Type,
+	textures: []View,
+	location := #caller_location,
+) -> Result {
+
+	metadata, metadata_res := _metadata_of(resource_set)
+	_check_resource_set_handle(metadata_res, resource_set, location) or_return
+
+	_vl_set_storage_texture_set(metadata, type, textures, location) or_return
+
+	delete(metadata.storage_texture_sets[type], _generic_allocator)
+	metadata.storage_texture_sets[type] = slice.clone(textures, _generic_allocator)
+	
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = _vk_set_storage_texture_set(metadata, type)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_set_storage_texture_set(metadata, type)
+	}
+
+	_check_generic_backend_error(res, location) or_return
+	
+	return nil
+}
+
+set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, location := #caller_location) -> Result {
+	metadata, metadata_res := _metadata_of(resource_set)
+	_check_resource_set_handle(metadata_res, resource_set, location) or_return
+
+	_vl_set_sampler_set(metadata, samplers, location) or_return
+
+	delete(metadata.sampler_set, _generic_allocator)
+	metadata.sampler_set = slice.clone(samplers, _generic_allocator)
+	
+	res: Result
+	when TARGET_API == .Vulkan {
+		res = _vk_set_sampler_set(metadata)
+	} else when TARGET_API == .Metal_3 {
+		res = _m3_set_sampler_set(metadata)
+	}
+
+	_check_generic_backend_error(res, location) or_return
+
+	return nil
+}
+
+_vl_create_resource_set :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_destroy_resource_set :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_set_texture_set :: proc(
+	metadata:	^_Resource_Set_Metadata,
+	type:		View_Type,
+	textures:	[]View,
+	location:	runtime.Source_Code_Location,
+) -> Result {
+
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
 
 	for view, i in textures {
 		view_metadata, view_metadata_res := _metadata_of(view)
@@ -138,30 +231,19 @@ set_texture_set :: proc(
 		) or_return
 	}
 	
-	delete(metadata.texture_sets[type], _generic_allocator)
-	metadata.texture_sets[type] = slice.clone(textures, _generic_allocator)
-
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = _vk_set_texture_set(metadata, type)
-	} else when TARGET_API == .Metal_3 {
-		res = _m3_set_texture_set(metadata, type)
-	}
-
-	_check_generic_backend_error(res, location) or_return
-
 	return nil
 }
 
-set_storage_texture_set :: proc(
-	resource_set: Resource_Set,
-	type: Storage_View_Type,
-	textures: []View,
-	location := #caller_location,
+_vl_set_storage_texture_set :: proc(
+	metadata:	^_Resource_Set_Metadata,
+	type:		Storage_View_Type,
+	textures:	[]View,
+	location:	runtime.Source_Code_Location,
 ) -> Result {
 
-	metadata, metadata_res := _metadata_of(resource_set)
-	_check_resource_set_handle(metadata_res, resource_set, location) or_return
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
 
 	for view, i in textures {
 		view_metadata, view_metadata_res := _metadata_of(view)
@@ -215,41 +297,23 @@ set_storage_texture_set :: proc(
 		) or_return
 	}
 
-	delete(metadata.storage_texture_sets[type], _generic_allocator)
-	metadata.storage_texture_sets[type] = slice.clone(textures, _generic_allocator)
-	
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = _vk_set_storage_texture_set(metadata, type)
-	} else when TARGET_API == .Metal_3 {
-		res = _m3_set_storage_texture_set(metadata, type)
-	}
-
-	_check_generic_backend_error(res, location) or_return
-	
 	return nil
 }
 
-set_sampler_set :: proc(resource_set: Resource_Set, samplers: []Sampler, location := #caller_location) -> Result {
-	metadata, metadata_res := _metadata_of(resource_set)
-	_check_resource_set_handle(metadata_res, resource_set, location) or_return
+_vl_set_sampler_set :: proc(
+	metadata:	^_Resource_Set_Metadata,
+	samplers:	[]Sampler,
+	location:	runtime.Source_Code_Location,
+) -> Result {
+
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
 
 	for sampler in samplers {
 		_, sampler_metadata_res := _metadata_of(sampler)
 		_check_sampler_handle(sampler_metadata_res, sampler, location) or_return
 	}
-
-	delete(metadata.sampler_set, _generic_allocator)
-	metadata.sampler_set = slice.clone(samplers, _generic_allocator)
-	
-	res: Result
-	when TARGET_API == .Vulkan {
-		res = _vk_set_sampler_set(metadata)
-	} else when TARGET_API == .Metal_3 {
-		res = _m3_set_sampler_set(metadata)
-	}
-
-	_check_generic_backend_error(res, location) or_return
 
 	return nil
 }

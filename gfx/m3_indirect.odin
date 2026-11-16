@@ -434,13 +434,13 @@ _m3_emit_allocate_icb_range :: proc(
 		arguments.count = cast(u64)ic_metadata.draw.count
 		pipeline = _m3_allocate_icb_range_pso
 	case .Draw_Count:
-		arguments.count = cast(u64)cast(uintptr)ic_metadata.draw_count.count
+		arguments.count = cast(u64)ic_metadata.draw_count.count
 		pipeline = _m3_allocate_icb_range_count_pso
 	case .Draw_Indexed:
 		arguments.count = cast(u64)ic_metadata.draw_indexed.count
 		pipeline = _m3_allocate_icb_range_pso
 	case .Draw_Indexed_Count:
-		arguments.count = cast(u64)cast(uintptr)ic_metadata.draw_indexed_count.count
+		arguments.count = cast(u64)ic_metadata.draw_indexed_count.count
 		pipeline = _m3_allocate_icb_range_count_pso
 	case .Dispatch:
 		log.panic("Invalid indirect command type: `.Dispatch` found, while any draw expected.")

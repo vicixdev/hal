@@ -139,7 +139,7 @@ scratch_alloc_raw :: proc(scratch: ^Scratch, #any_int size: int, align := 128) -
 	return
 }
 
-scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 16) -> (ptr: ^T, res: Result)
+scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 16) -> (ptr: ^T, gpu_address: uintptr, res: Result)
 	where !intrinsics.type_is_slice(T) {
 
 	address: rawptr
@@ -148,7 +148,7 @@ scratch_alloc_ptr :: proc(scratch: ^Scratch, $T: typeid, align := 16) -> (ptr: ^
 	return cast(^T)address, gpu_address, nil
 }
 
-scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, #any_int length: int, align := 16) -> (slice: []E, res: Result) {
+scratch_alloc_slice :: proc(scratch: ^Scratch, $T: typeid/[]$E, #any_int length: int, align := 16) -> (slice: []E, gpu_address: uintptr, res: Result) {
 	address: rawptr
 	address, gpu_address = scratch_alloc_raw(scratch, size_of(E) * length, align) or_return
 

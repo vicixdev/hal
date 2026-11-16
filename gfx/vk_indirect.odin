@@ -192,7 +192,7 @@ _vk_emit_encode_dispatch_indirect :: proc(
 		destination:	uintptr,
 	}
 
-	source := cast(uintptr)ic_metadata.dispatch.indirect_parameters
+	source := ic_metadata.dispatch.indirect_parameters
 	destination := icp_metadata.vk.address + _vk_dispatch_icp_indirect_command_offset(ic_metadata)
 
 	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, _vk_encode_dispatch_pso)
@@ -235,9 +235,9 @@ _vk_emit_encode_draw_indirect :: proc(
 	vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &barrier_info)
 
 	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, _vk_encode_draw_pso)
-	source := cast(uintptr)ic_metadata.draw.indirect_parameters
+	source := ic_metadata.draw.indirect_parameters
 	if ic_metadata.type == .Draw_Count {
-		source = cast(uintptr)ic_metadata.draw_count.indirect_parameters
+		source = ic_metadata.draw_count.indirect_parameters
 	}
 	encode_arguments := _vk_Encode_Draw_Arguments {
 		source = source,
@@ -280,9 +280,9 @@ _vk_emit_encode_draw_indexed_indirect :: proc(
 	vk.CmdPipelineBarrier2KHR(metadata.vk.command_buffer, &barrier_info)
 
 	vk.CmdBindPipeline(metadata.vk.command_buffer, .COMPUTE, _vk_encode_indexed_draw_pso)
-	source := cast(uintptr)ic_metadata.draw_indexed.indirect_parameters
+	source := ic_metadata.draw_indexed.indirect_parameters
 	if ic_metadata.type == .Draw_Indexed_Count {
-		source = cast(uintptr)ic_metadata.draw_indexed_count.indirect_parameters
+		source = ic_metadata.draw_indexed_count.indirect_parameters
 	}
 	encode_arguments := _vk_Encode_Indexed_Draw_Arguments {
 		source = source,
@@ -319,7 +319,7 @@ _vk_emit_icp_prepare_draw_encoding_dispatch :: proc(
 		}
 		arguments := _vk_Prepare_Draw_Encoding_Dispatch_Count_Arguments {
 			dispatch = dispatch,
-			count = cast(uintptr)count,
+			count = count,
 		}
 		vk.CmdPushConstants(metadata.vk.command_buffer, _vk_compute_pipeline_layout, { .COMPUTE }, 0, size_of(arguments), &arguments)
 	case .Draw, .Draw_Indexed:
@@ -371,7 +371,7 @@ _vk_emit_execute_dispatch_indirect :: proc(
 	_, pipeline_res := _metadata_of(ic_metadata.dispatch.compute_pipeline)
 	_check_internal_emission_result(pipeline_res) or_return
 
-	arguments := cast(uintptr)ic_metadata.dispatch.arguments
+	arguments := ic_metadata.dispatch.arguments
 
 	_vk_use_resource_set(metadata, command.resource_set) or_return
 	_vk_use_compute_pipeline(metadata, ic_metadata.dispatch.compute_pipeline) or_return
@@ -395,7 +395,7 @@ _vk_emit_execute_draw_indirect :: proc(
 
 	pipeline := ic_metadata.draw.render_pipeline
 	arguments := ic_metadata.draw.arguments
-	arguments_ptr := cast(uintptr)arguments
+	arguments_ptr := arguments
 
 	_vk_use_resource_set(metadata, command.resource_set) or_return
 	_vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return
@@ -404,7 +404,7 @@ _vk_emit_execute_draw_indirect :: proc(
 	vk.CmdPushConstants(metadata.vk.command_buffer, _vk_render_pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(uintptr), &arguments_ptr)
 
 	if ic_metadata.type == .Draw_Count || ic_metadata.type == .Draw_Indexed_Count {
-		count_buffer := cast(uintptr)ic_metadata.draw_count.count
+		count_buffer := ic_metadata.draw_count.count
 		count_info, count_info_res := _address_info_of(cast(rawptr)count_buffer)
 		_check_internal_emission_result(count_info_res) or_return
 		count_metadata, count_metadata_res := _metadata_of(count_info.buffer)
@@ -438,7 +438,7 @@ _vk_emit_execute_draw_indexed_indirect :: proc(
 
 	pipeline := ic_metadata.draw_indexed.render_pipeline
 	arguments := ic_metadata.draw_indexed.arguments
-	arguments_ptr := cast(uintptr)arguments
+	arguments_ptr := arguments
 
 	_vk_use_resource_set(metadata, command.resource_set) or_return
 	_vk_use_depth_stencil_state(metadata, command.depth_stencil_state) or_return

@@ -162,8 +162,12 @@ create_texture :: proc(
 	descriptor := descriptor
 	_normalize_texture_descriptor(&descriptor)
 
-	address_info, buffer_metadata :=
-		_vl_create_texture(address, descriptor, location) or_return
+	address_info, address_res := _address_info_of(address)
+	_check_address_info(address_res, address, location) or_return
+	buffer_metadata, buffer_metadata_res := _metadata_of(address_info.buffer)
+	assert(buffer_metadata_res == nil)
+
+	_vl_create_texture(address_info, buffer_metadata, address, descriptor, location) or_return
 
 	texture, metadata := _add_texture_metadata() or_return
 	defer if res != nil do _remove_texture_metadata(texture)
@@ -208,7 +212,7 @@ destroy_texture :: proc(texture: Texture, location := #caller_location) {
 	}
 
 	metadata, res := _metadata_of(texture)
-	_vl_check_texture_handle(res, texture, location)
+	_check_texture_handle(res, texture, location)
 	if res != nil {
 		return
 	}
@@ -248,7 +252,7 @@ label_texture :: proc(texture: Texture, label: string, location := #caller_locat
 	if _vl_label_texture(location) != nil do return
 
 	metadata, metadata_res := _metadata_of(texture)
-	_vl_check_texture_handle(metadata_res, texture, location)
+	_check_texture_handle(metadata_res, texture, location)
 	if metadata_res != nil {
 		return
 	}
@@ -267,7 +271,7 @@ default_view_of :: proc(texture: Texture, location := #caller_location) -> (view
 	_vl_default_view_of(location) or_return
 
 	metadata, metadata_res := _metadata_of(texture)
-	_vl_check_texture_handle(metadata_res, texture, location) or_return
+	_check_texture_handle(metadata_res, texture, location) or_return
 
 	return metadata.default_view, nil
 }
@@ -282,7 +286,7 @@ create_view :: proc(
 	_normalize_view_descriptor(&descriptor)
 
 	texture_metadata, texture_metadata_res := _metadata_of(texture)
-	_vl_check_texture_handle(texture_metadata_res, texture, location) or_return
+	_check_texture_handle(texture_metadata_res, texture, location) or_return
 
 	_vl_create_view(descriptor, texture_metadata, location) or_return
 
@@ -341,34 +345,26 @@ _vl_size_align_of :: proc(descriptor: Texture_Descriptor, location: runtime.Sour
 	when !ENABLE_VALIDATION do return nil
 
 	_check_device_selected(location) or_return
-	_vl_check_texture_descriptor(descriptor, location) or_return
+	_check_texture_descriptor(descriptor, location) or_return
 
 	return nil
 }
 
 _vl_create_texture :: proc(
+	address_info: _Address_Info,
+	buffer_metadata: ^_Buffer_Metadata,
 	address: uintptr,
 	descriptor: Texture_Descriptor,
 	location: runtime.Source_Code_Location,
-) -> (
-	address_info: _Address_Info,
-	buffer_metadata: ^_Buffer_Metadata,
-	res: Result,
-) {
-	required_size, required_align := size_align_of(descriptor, location) or_return
-
-	address_res: Result
-	address_info, address_res = _address_info_of(address)
-	_check_address_info(address_res, address, location) or_return
-
-	buffer_metadata_res: Result
-	buffer_metadata, buffer_metadata_res = _metadata_of(address_info.buffer)
-	assert(buffer_metadata_res == nil)
-
+) -> (res: Result) {
 	when !ENABLE_VALIDATION do return
 
+	// NOTE: running size_align_of also checks the descriptor
+	required_size, required_align := size_align_of(descriptor, location) or_return
+
+	_check_device_selected(location) or_return
 	_check_condition(
-		_is_aligned(cast(uintptr)address, required_align),
+		_is_aligned(address, required_align),
 		.Invalid_Align,
 		.Error,
 		"Invalid align",
@@ -435,7 +431,7 @@ _vl_create_view :: proc(
 	when !ENABLE_VALIDATION do return nil
 
 	_check_device_selected(location) or_return
-	_vl_check_view_descriptor(descriptor, texture_metadata^, location) or_return
+	_check_view_descriptor(descriptor, texture_metadata^, location) or_return
 
 	return nil
 }
@@ -454,7 +450,7 @@ _is_cube_compatible :: proc(descriptor: Texture_Descriptor) -> bool {
 		descriptor.dimensions.x == descriptor.dimensions.y
 }
 
-_vl_check_texture_region :: proc(
+_check_texture_region :: proc(
 	metadata:	^_Texture_Metadata,
 	region:		Texture_Region,
 	location:	runtime.Source_Code_Location,
@@ -590,7 +586,7 @@ _normalize_view_descriptor :: proc(descriptor: ^View_Descriptor) {
 	}
 }
 
-_vl_check_texture_handle :: proc(result: Result, texture: Texture, location: runtime.Source_Code_Location) -> Result {
+_check_texture_handle :: proc(result: Result, texture: Texture, location: runtime.Source_Code_Location) -> Result {
 	_check_result(
 		result,
 		.Warning,
@@ -613,7 +609,7 @@ _texture_metadata_of :: proc(texture: Texture) -> (^_Texture_Metadata, Result) {
 	return metadata, nil
 }
 
-_vl_check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: runtime.Source_Code_Location) -> Result {
+_check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: runtime.Source_Code_Location) -> Result {
 	_check_condition(
 		_impl(descriptor.type == .D1, descriptor.dimensions.z > 0 && descriptor.dimensions.yz == { 1, 1 }),
 		.Invalid_Descriptor,
@@ -719,7 +715,7 @@ _vl_check_texture_descriptor :: proc(descriptor: Texture_Descriptor, location: r
 	return nil
 }
 
-_vl_check_view_descriptor :: proc(
+_check_view_descriptor :: proc(
 	descriptor:		View_Descriptor,
 	texture_descriptor:	_Texture_Metadata,
 	location:		runtime.Source_Code_Location,

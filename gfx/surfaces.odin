@@ -78,7 +78,7 @@ supported_formats_of :: proc(
 	location :=	#caller_location,
 ) -> (formats: []Pixel_Format, res: Result) {
 
-	_check_surface_target(descriptor.target, location) or_return
+	_vl_supported_formats_of(descriptor, location) or_return
 
 	when TARGET_API == .Vulkan {
 		formats, res = _vk_supported_formats_for_target(descriptor, allocator)
@@ -96,22 +96,9 @@ create_surface :: proc(
 	location :=	#caller_location,
 ) -> (surface: Surface, res: Result) {
 	
-	supported_formats := supported_formats_of(descriptor, _temp_allocator) or_return
-	_check_condition(
-		slice.contains(supported_formats, descriptor.format),
-		.Invalid_Arguments,
-		.Error,
-		"Invalid surface format",
-		"The specified surface format %v is not compatible with the list of supported formats for the " +
-		"provided descriptor. Please query the supported surface formats with `gfx::supported_formats_of`.",
-		descriptor.format,
-		location=location,
-	) or_return
-
-	_check_surface_target(descriptor.target, location) or_return
+	_vl_create_surface(descriptor, location) or_return
 
 	handle, metadata := _add_surface_metadata() or_return
-
 	metadata.desc = descriptor
 
 	when TARGET_API == .Vulkan {
@@ -127,6 +114,7 @@ create_surface :: proc(
 }
 
 destroy_surface :: proc(surface: Surface, location := #caller_location) {
+	if _vl_destroy_surface(location) != nil do return
 
 	metadata, metadata_res := _metadata_of(surface)
 	if metadata_res != nil do return
@@ -147,6 +135,8 @@ acquire_surface_view :: proc(surface: Surface, location := #caller_location) -> 
 	res: Result,
 ) {
 	
+	_vl_acquire_surface_view(location) or_return
+
 	metadata, metadata_res := _metadata_of(surface)
 	_check_surface_handle(metadata_res, surface, location)
 
@@ -188,35 +178,18 @@ present :: proc(
 	location :=	#caller_location,
 ) -> (res: Result) {
 	
+	_vl_present(view, after, location) or_return
+
 	_check_queue_validity(queue) or_return
 	queue_metadata, _ := _metadata_of(queue)
 
 	view_metadata, view_res := _metadata_of(view)
 	_check_view_handle(view_res, view, location) or_return
 
-	surface, is_referencing_surface := view_metadata.reference.(Surface)
-	_check_condition(
-		is_referencing_surface,
-		.Invalid_View,
-		.Error,
-		"Invalid view",
-		"Only views referencing a surface can be presented. View %v is referencing a texture.",
-		view,
-		location=location,
-	) or_return
+	surface := view_metadata.reference.(Surface)
 
 	surface_metadata, surface_res := _metadata_of(surface)
 	_check_surface_handle(surface_res, surface, location) or_return
-
-	_check_condition(
-		view_metadata.used,
-		.Invalid_View,
-		.Warning,
-		"Presenting unused view",
-		"The view %v is being presented when it has not been used in a renderpass.",
-		view,
-		location=location,
-	) or_return
 
 	waits := make([]_Semaphore_Wait, len(after), _temp_allocator) or_return
 	for wait, i in after {
@@ -246,11 +219,14 @@ present :: proc(
 
 resize_surface :: proc(surface: Surface, dimensions: [2]int, location := #caller_location) -> (res: Result) {
 	
+	_vl_resize_surface(dimensions, location) or_return
+
 	metadata, surface_res := _metadata_of(surface)
 	_check_surface_handle(surface_res, surface, location) or_return
 
 	metadata.dimensions = dimensions
 
+	// TODO: Remove waiting
 	wait_idle(.Default)
 	if _device_info.properties.transfer_queue {
 		wait_idle(.Transfer)
@@ -287,6 +263,134 @@ _destroy_surface_view :: proc(view: View, location := #caller_location) {
 	_remove_view_metadata(view)
 
 	_check_generic_backend_error(res, location)
+}
+
+_vl_supported_formats_of :: proc(descriptor: Surface_Descriptor, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+	_check_surface_descriptor(descriptor, location) or_return
+	_check_surface_target(descriptor.target, location) or_return
+
+	return nil
+}
+
+_vl_create_surface :: proc(descriptor: Surface_Descriptor, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	// NOTE: Getting the supported formats also validates the descriptor.
+	supported_formats := supported_formats_of(descriptor, _temp_allocator) or_return
+	_check_condition(
+		slice.contains(supported_formats, descriptor.format),
+		.Invalid_Arguments,
+		.Error,
+		"Invalid surface format",
+		"The specified surface format %v is not compatible with the list of supported formats for the " +
+		"provided descriptor. Please query the supported surface formats with `gfx::supported_formats_of`.",
+		descriptor.format,
+		location=location,
+	) or_return
+
+	return nil
+}
+
+_vl_destroy_surface :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+// TODO: Check that the previous view has been used.
+_vl_acquire_surface_view :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_present :: proc(view: View, after: []Present_Semaphore_Wait, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	view_metadata, view_res := _metadata_of(view)
+	_check_view_handle(view_res, view, location) or_return
+
+	surface, is_referencing_surface := view_metadata.reference.(Surface)
+	_check_condition(
+		is_referencing_surface,
+		.Invalid_View,
+		.Error,
+		"Invalid view",
+		"Only views referencing a surface can be presented. View %v is referencing a texture.",
+		view,
+		location=location,
+	) or_return
+
+	_, surface_res := _metadata_of(surface)
+	_check_surface_handle(surface_res, surface, location) or_return
+
+	_check_condition(
+		view_metadata.used,
+		.Invalid_View,
+		.Warning,
+		"Presenting unused view",
+		"The view %v is being presented when it has not been used in a renderpass.",
+		view,
+		location=location,
+	) or_return
+
+	for wait in after {
+		_, semaphore_res := _metadata_of(wait.semaphore)
+		_check_semaphore_handle(semaphore_res, wait.semaphore, location) or_return
+	}
+
+	return nil
+}
+
+_vl_resize_surface :: proc(dimensions: [2]int, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	_check_condition(
+		dimensions.x != 0 && dimensions.y != 0,
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid surface dimensions",
+		"The surface x and y dimensions must not be 0. Got dimensions %v",
+		dimensions,
+		location=location,
+	) or_return
+
+
+	return nil
+}
+
+_check_surface_descriptor :: proc(descriptor: Surface_Descriptor, location: runtime.Source_Code_Location) -> Result {
+	_check_condition(
+		descriptor.dimensions.x != 0 && descriptor.dimensions.y != 0,
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid surface dimensions",
+		"The surface x and y dimensions must not be 0. Got dimensions %v",
+		descriptor.dimensions,
+		location=location,
+	) or_return
+	_check_condition(
+		descriptor.frames_in_flight >= 0 || descriptor.frames_in_flight <= 3,
+		.Invalid_Descriptor,
+		.Error,
+		"Invalid surface frames-in-flight",
+		"The surface `frames_in_flight` property must be positive and less or equal to 3. Got %v.",
+		descriptor.frames_in_flight,
+		location=location,
+	) or_return
+
+	return nil
 }
 
 _check_surface_target :: proc(target: Surface_Target, location: runtime.Source_Code_Location) -> Result {

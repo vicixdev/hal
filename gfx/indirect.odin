@@ -524,6 +524,7 @@ _vl_create_indirect_command_pool :: proc(
 ) -> Result {
 	when !ENABLE_VALIDATION do return nil
 
+	_check_device_selected(location) or_return
 	_check_condition(
 		_impl(descriptor.type == .Dispatch, descriptor.max_call_count_per_command == 1),
 		.Invalid_Descriptor,
@@ -560,6 +561,7 @@ _vl_destroy_indirect_command :: proc(command: Indirect_Command, location: runtim
 
 	metadata := _metadata_of(command) or_return
 
+	_check_device_selected(location) or_return
 	_check_condition(
 		metadata.lifetime == .Manual,
 		.Invalid_Indirect_Command_Lifetime,
@@ -587,6 +589,7 @@ _vl_encode_indirect_base :: proc(
 	cb_metadata:		^_Command_Buffer_Metadata,
 	location:		runtime.Source_Code_Location,
 ) -> Result {
+	_check_device_selected(location) or_return
 	_check_condition(
 		!cb_metadata.is_encoding_render_pass,
 		.Incompatible_Command_Buffer_Stage,
@@ -861,6 +864,8 @@ _vl_execute_indirect :: proc(
 	location:	runtime.Source_Code_Location,
 ) -> Result {
 	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
 
 	switch ic_metadata.type {
 	case .Dispatch:

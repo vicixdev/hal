@@ -84,10 +84,8 @@ Inputs:
 - size: The size of the allocation.
 
 Returns:
-// - If `type` != .Private, a dereferenceable pointer containing the Cpu Mapped Virtual Address (CMVA) of the allocated
-// buffer.
-// - If `type` == .Private, a non-dereferenceable pointer containing the Gpu Virtual Address (GVA) of the allocated
-// buffer.
+- cpu_address: the CVMA of the allocated buffer. nil if `type == .Private`.
+- cpu_address: the GVA of the allocated buffer.
 */
 alloc :: proc(
 	type:		Memory,

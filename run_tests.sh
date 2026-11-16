@@ -11,7 +11,7 @@ case "$target_api" in
 		slangc ./gfx/tests/triangle.slang -profile glsl_450 -target spirv -o ./gfx/tests/shaders/triangle.spv -fvk-use-entrypoint-name -g2 -DGFX_VULKAN=1
 		slangc ./gfx/tests/triangle_with_transform.slang -profile glsl_450 -target spirv -o ./gfx/tests/shaders/triangle_with_transform.spv -fvk-use-entrypoint-name -g2 -DGFX_VULKAN=1
 		# odin test -debug -vet -out:tests -define:ODIN_TEST_THREADS=8 -define:GFX_TARGET_API=Vulkan -keep-executable ./gfx/tests
-		odin test -debug -out:tests -define:ODIN_TEST_THREADS=8 -define:GFX_TARGET_API=Vulkan -define:GFX_ENABLE_TRACING=true -define:GFX_ENABLE_VALIDATION=true -keep-executable ./gfx/tests
+		odin test -debug -vet -out:tests -define:ODIN_TEST_THREADS=8 -define:GFX_TARGET_API=Vulkan -define:GFX_ENABLE_TRACING=true -define:GFX_ENABLE_VALIDATION=true -keep-executable ./gfx/tests
 	;;
 	Metal_3)
 		cd gfx; ./build_shaders.sh Metal_3 Debug; cd ..
@@ -20,8 +20,7 @@ case "$target_api" in
 		slangc ./gfx/tests/texture_copy.slang -target metallib -o ./gfx/tests/shaders/texture_copy.metallib -fvk-use-entrypoint-name -g2 -Xmetal -g -Xmetal -frecord-sources -DGFX_METAL=1
 		slangc ./gfx/tests/triangle.slang -target metallib -o ./gfx/tests/shaders/triangle.metallib -fvk-use-entrypoint-name -g2 -Xmetal -g -Xmetal -frecord-sources -DGFX_METAL=1
 		slangc ./gfx/tests/triangle_with_transform.slang -target metallib -o ./gfx/tests/shaders/triangle_with_transform.metallib -fvk-use-entrypoint-name -g2 -Xmetal -g -Xmetal -frecord-sources -DGFX_METAL=1
-		# odin test -debug -vet -out:tests -define:ODIN_TEST_THREADS=8 -define:GFX_TARGET_API=Metal_3 -keep-executable ./gfx/tests
-		odin test -debug -out:tests -define:ODIN_TEST_THREADS=8 -define:GFX_TARGET_API=Metal_3 -define:GFX_ENABLE_TRACING=true -define:GFX_ENABLE_VALIDATION=true -keep-executable ./gfx/tests
+		odin test -debug -vet -out:tests -define:ODIN_TEST_THREADS=8 -define:GFX_TARGET_API=Metal_3 -define:GFX_ENABLE_TRACING=true -define:GFX_ENABLE_VALIDATION=true -keep-executable ./gfx/tests
 	;;
 	*)
 		echo "Invalid target api (expected Vulkan or Metal_3)".

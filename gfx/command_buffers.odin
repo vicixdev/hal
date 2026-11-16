@@ -464,13 +464,13 @@ copy_texture_to_texture :: proc(
 	_check_not_in_render_pass(metadata, location) or_return
 
 	source_metadata, source_res := _metadata_of(source)
-	_vl_check_texture_handle(source_res, source, location) or_return
+	_check_texture_handle(source_res, source, location) or_return
 
 	destination_metadata, destination_res := _metadata_of(destination)
-	_vl_check_texture_handle(destination_res, destination, location) or_return
+	_check_texture_handle(destination_res, destination, location) or_return
 
-	_vl_check_texture_region(source_metadata, source_region, location) or_return
-	_vl_check_texture_region(destination_metadata, destination_region, location) or_return
+	_check_texture_region(source_metadata, source_region, location) or_return
+	_check_texture_region(destination_metadata, destination_region, location) or_return
 
 	_check_condition(
 		source_region.size == destination_region.size,
@@ -528,7 +528,7 @@ copy_buffer_to_texture :: proc(
 	_check_not_in_render_pass(metadata, location) or_return
 
 	texture_metadata, texture_res := _metadata_of(texture)
-	_vl_check_texture_handle(texture_res, texture, location) or_return
+	_check_texture_handle(texture_res, texture, location) or_return
 
 	source_info, source_res := _address_info_of(source)
 	_check_address_info(source_res, source, location) or_return
@@ -588,7 +588,7 @@ copy_texture_to_buffer :: proc(
 	_check_not_in_render_pass(metadata, location) or_return
 
 	texture_metadata, texture_res := _metadata_of(texture)
-	_vl_check_texture_handle(texture_res, texture, location) or_return
+	_check_texture_handle(texture_res, texture, location) or_return
 
 	destination_info, destination_res := _address_info_of(destination)
 	_check_address_info(destination_res, destination, location) or_return
@@ -641,7 +641,7 @@ generate_mipmaps_for :: proc(command_buffer: Command_Buffer, texture: Texture, l
 	_check_command_buffer_handle(metadata_res, command_buffer, location) or_return
 
 	_, texture_res := _metadata_of(texture)
-	_vl_check_texture_handle(texture_res, texture, location) or_return
+	_check_texture_handle(texture_res, texture, location) or_return
 	
 	_check_not_in_render_pass(metadata, location) or_return
 
@@ -810,7 +810,7 @@ begin_render_pass :: proc(
 		switch v in view_metadata.reference {
 		case Texture:
 			texture_metadata, texture_res := _metadata_of(v)
-			_vl_check_texture_handle(texture_res, v, location) or_return
+			_check_texture_handle(texture_res, v, location) or_return
 		
 			_check_condition(
 				.Color_Attachment in texture_metadata.usage,
@@ -998,7 +998,7 @@ begin_render_pass :: proc(
 		) or_return
 
 		texture_metadata, texture_res := _metadata_of(reference)
-		_vl_check_texture_handle(texture_res, reference, location) or_return
+		_check_texture_handle(texture_res, reference, location) or_return
 		
 		_check_condition(
 			.Depth_Stencil_Attachment in texture_metadata.usage,
@@ -1087,7 +1087,7 @@ begin_render_pass :: proc(
 		) or_return
 
 		texture_metadata, texture_res := _metadata_of(reference)
-		_vl_check_texture_handle(texture_res, reference, location) or_return
+		_check_texture_handle(texture_res, reference, location) or_return
 		
 		_check_condition(
 			.Depth_Stencil_Attachment in texture_metadata.usage,

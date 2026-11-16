@@ -63,7 +63,10 @@ _samplers:		hm.Dynamic_Handle_Map(_Sampler_Metadata, Sampler)
 _samplers_mutex:	sync.RW_Mutex
 
 create_sampler :: proc(descriptor: Sampler_Descriptor, location := #caller_location) -> (sampler: Sampler, res: Result) {
-	_check_device_selected(location) or_return
+	descriptor := descriptor
+	_normalize_sampler_descriptor(&descriptor)
+
+	_vl_create_sampler(descriptor, location) or_return
 
 	handle, metadata := _add_sampler_metadata() or_return
 	defer if res != nil do _remove_sampler_metadata(handle)
@@ -80,9 +83,7 @@ create_sampler :: proc(descriptor: Sampler_Descriptor, location := #caller_locat
 }
 
 destroy_sampler :: proc(sampler: Sampler, location := #caller_location) {
-	if _check_device_selected(location) != nil {
-		return
-	}
+	if _vl_destroy_sampler(location) != nil do return
 
 	metadata, metadata_res := _metadata_of(sampler)
 	_check_sampler_handle(metadata_res, sampler, location)
@@ -100,7 +101,7 @@ destroy_sampler :: proc(sampler: Sampler, location := #caller_location) {
 }
 
 label_sampler :: proc(sampler: Sampler, label: string, location := #caller_location) {
-	if _check_device_selected(location) != nil do return
+	if _vl_label_sampler(location) != nil do return
 
 	metadata, metadata_res := _metadata_of(sampler)
 	_check_sampler_handle(metadata_res, sampler, location)
@@ -116,6 +117,36 @@ label_sampler :: proc(sampler: Sampler, label: string, location := #caller_locat
 	}
 
 	_check_generic_backend_error(res, location)
+}
+
+_normalize_sampler_descriptor :: proc(descriptor: ^Sampler_Descriptor) {
+	if descriptor.max_anisotropy == 0 {
+		descriptor.max_anisotropy = 1
+	}
+}
+
+_vl_create_sampler :: proc(descriptor: Sampler_Descriptor, location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_destroy_sampler :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
+}
+
+_vl_label_sampler :: proc(location: runtime.Source_Code_Location) -> Result {
+	when !ENABLE_VALIDATION do return nil
+
+	_check_device_selected(location) or_return
+
+	return nil
 }
 
 _check_sampler_handle :: proc(result: Result, sampler: Sampler, location: runtime.Source_Code_Location) -> Result {
